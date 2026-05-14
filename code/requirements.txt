@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+bandit
+sqlmodel
+psycopg2-binary
