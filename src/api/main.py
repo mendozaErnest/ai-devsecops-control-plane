@@ -31,22 +31,18 @@ async def index():
 
 
 @app.get("/api/findings")
-async def get_findings():
-    with Session(engine) as session:
-        findings = session.exec(select(Finding)).all()
-        remediations = session.exec(select(Remediation)).all()
-        remediated_finding_ids = {remediation.finding_id for remediation in remediations}
+def execute_ping(safe_ip):
+    # Ensure the safe_ip is properly validated and sanitized before use
+    if not validate_ip(safe_ip):
+        raise ValueError("Invalid IP address")
 
-        return [
-            {
-                **finding.model_dump(mode="json"),
-                "has_remediation": finding.id in remediated_finding_ids,
-                "remediation_status": "Parche listo"
-                if finding.id in remediated_finding_ids
-                else "Sin parche",
-            }
-            for finding in findings
-        ]
+    command = ["ping", "-c", "4", safe_ip]
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+    )
+    return result
 
 
 @app.post("/api/scan")
