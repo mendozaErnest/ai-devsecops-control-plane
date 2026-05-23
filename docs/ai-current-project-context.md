@@ -45,6 +45,9 @@ psycopg2-binary
 httpx>=0.27.0
 PyJWT>=2.8.0
 cryptography>=42.0.0
+python-multipart>=0.0.9
+semgrep>=1.163.0
+pytest>=8.0.0
 ```
 
 ## Archivos Clave
@@ -481,8 +484,10 @@ Prioridad alta:
 Instalar dependencias:
 
 ```bash
-pip install -r code/requirements.txt
+/home/zamaer/anaconda3/envs/devsecops-control-plane/bin/pip install -r code/requirements.txt
 ```
+
+Regla permanente para este proyecto: instalar siempre con el `pip` del entorno activo `devsecops-control-plane`, no con el `pip` global ni el de base Anaconda.
 
 Levantar backend:
 

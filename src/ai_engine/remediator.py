@@ -18,6 +18,20 @@ OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
 OLLAMA_MODEL = "qwen2.5-coder:14b"
 OLLAMA_HEALTH_TIMEOUT_SECONDS = 2
 SUPPORTED_TECHNOLOGIES = {"python", "angular", "typescript", "java"}
+ANGULAR_SECRET_KEYWORDS = (
+    "apikey",
+    "token",
+    "secret",
+    "password",
+    "credential",
+    "auth",
+    "key",
+)
+ANGULAR_SECRET_PREFIXES = (
+    "ANG-SECRET",
+    "SEMGREP-SECRET",
+    "javascript.lang.security.audit.hardcoded",
+)
 
 
 def normalize_technology(value: object) -> str:
@@ -139,7 +153,31 @@ Security context:
 """.strip()
 
 
-def build_angular_prompt(finding_details: dict) -> str:
+def is_angular_secret_finding(finding_details: dict) -> bool:
+    rule_id = str(finding_details.get("rule_id") or "")
+    snippet = str(finding_details.get("code_snippet") or "").lower()
+
+    return (
+        any(rule_id.upper().startswith(prefix.upper()) for prefix in ANGULAR_SECRET_PREFIXES)
+        or any(keyword in snippet for keyword in ANGULAR_SECRET_KEYWORDS)
+    )
+
+
+def build_angular_secret_instruction() -> str:
+    return """
+INSTRUCCION ESPECIAL — HALLAZGO DE SECRET HARDCODEADO:
+El valor sensible NUNCA debe aparecer en el codigo fuente ni en el bundle.
+- Si el archivo es environment.ts: deja el campo vacio con un comentario
+  indicando que el valor real se inyecta desde CI/CD:
+  // Valor real: NG_APP_API_KEY=${{ secrets.API_KEY }} en el pipeline
+- Muestra como leer la variable con process.env o import.meta.env.
+- Si el secret se necesita en runtime: usa un ConfigService que haga
+  GET /api/config al backend; el frontend nunca recibe el secret directo.
+Devuelve el archivo TypeScript completo con los comentarios de CI/CD incluidos.
+""".strip()
+
+
+def _base_angular_prompt(finding_details: dict) -> str:
     return f"""
 Eres un Arquitecto Senior de Frontend y Experto en Seguridad en Angular/TypeScript.
 Genera un parche quirurgico para el siguiente hallazgo de seguridad.
@@ -179,6 +217,15 @@ Security context:
 - Normaliza, valida y codifica valores antes de renderizarlos en plantillas.
 - Evita construir URLs, estilos o scripts dinamicos desde entrada de usuario.
 """.strip()
+
+
+def build_angular_prompt(finding_details: dict) -> str:
+    prompt = _base_angular_prompt(finding_details)
+
+    if is_angular_secret_finding(finding_details):
+        prompt += f"\n\n{build_angular_secret_instruction()}"
+
+    return prompt
 
 
 def build_java_prompt(finding_details: dict) -> str:
