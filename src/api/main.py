@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from .database import create_db_and_tables, engine
-from .models import Finding, Project, Remediation, Scan
+from .models import Finding, FindingAuditEvent, Project, Remediation, Scan
 from src.ai_engine.remediator import (
     OLLAMA_MODEL,
     build_prompt,
@@ -45,6 +45,10 @@ class CloneRepoRequest(BaseModel):
     name: str
     repo_url: str
     technology: str
+
+
+class FindingLifecycleRequest(BaseModel):
+    reason: str
 
 
 @app.on_event("startup")
@@ -546,6 +550,64 @@ async def delete_remediation_pr_branch(finding_id: uuid.UUID):
         "branch": result["branch"],
         "deleted": result["deleted"],
     }
+
+
+def _set_finding_lifecycle_status(
+    finding_id: uuid.UUID,
+    new_status: str,
+    event_type: str,
+    reason: str,
+) -> dict:
+    with Session(engine) as session:
+        finding = session.get(Finding, finding_id)
+
+        if not finding:
+            raise HTTPException(status_code=404, detail="Finding not found")
+
+        from_status = finding.status
+        finding.status = new_status
+        session.add(FindingAuditEvent(
+            finding_id=finding_id,
+            event_type=event_type,
+            from_status=from_status,
+            to_status=new_status,
+            reason=reason,
+        ))
+        session.commit()
+
+    return {"finding_id": str(finding_id), "status": new_status}
+
+
+@app.post("/api/findings/{finding_id}/accept-risk")
+async def accept_finding_risk(finding_id: uuid.UUID, request: FindingLifecycleRequest):
+    return _set_finding_lifecycle_status(finding_id, "accepted_risk", "accept_risk", request.reason)
+
+
+@app.post("/api/findings/{finding_id}/false-positive")
+async def mark_finding_false_positive(finding_id: uuid.UUID, request: FindingLifecycleRequest):
+    return _set_finding_lifecycle_status(finding_id, "false_positive", "false_positive", request.reason)
+
+
+@app.get("/api/findings/{finding_id}/audit")
+async def get_finding_audit(finding_id: uuid.UUID):
+    with Session(engine) as session:
+        finding = session.get(Finding, finding_id)
+
+        if not finding:
+            raise HTTPException(status_code=404, detail="Finding not found")
+
+        events = session.exec(
+            select(FindingAuditEvent)
+            .where(FindingAuditEvent.finding_id == finding_id)
+            .order_by(FindingAuditEvent.created_at)
+        ).all()
+
+        return {
+            "finding_id": str(finding_id),
+            "current_status": finding.status,
+            "regression_count": finding.regression_count,
+            "events": [event.model_dump(mode="json") for event in events],
+        }
 
 
 def validate_ipv4(ip: str) -> str:

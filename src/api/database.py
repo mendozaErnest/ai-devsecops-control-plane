@@ -38,4 +38,10 @@ def ensure_sqlite_schema() -> None:
         if "target_id" in scan_columns:
             # Older development databases created target_id as NOT NULL. New
             # project scans still create a legacy target row for compatibility.
-            return
+            pass
+
+    if "findings" in inspector.get_table_names():
+        finding_columns = {col["name"] for col in inspector.get_columns("findings")}
+        with engine.begin() as connection:
+            if "regression_count" not in finding_columns:
+                connection.execute(text("ALTER TABLE findings ADD COLUMN regression_count INTEGER NOT NULL DEFAULT 0"))

@@ -67,12 +67,14 @@ class Finding(SQLModel, table=True):
     line_end: int | None = None
     code_snippet: str | None = None
     status: str
+    regression_count: int = Field(default=0)
     first_seen_at: datetime = Field(default_factory=datetime.utcnow)
     last_seen_at: datetime = Field(default_factory=datetime.utcnow)
     fingerprint: str = Field(sa_column=Column(String, unique=True, nullable=False, index=True))
 
     scan: Scan = Relationship(back_populates="findings")
     remediations: List["Remediation"] = Relationship(back_populates="finding")
+    audit_events: List["FindingAuditEvent"] = Relationship(back_populates="finding")
 
 
 class Remediation(SQLModel, table=True):
@@ -89,6 +91,20 @@ class Remediation(SQLModel, table=True):
     outcome: str
 
     finding: Finding = Relationship(back_populates="remediations")
+
+
+class FindingAuditEvent(SQLModel, table=True):
+    __tablename__ = "finding_audit_events"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    finding_id: uuid.UUID = Field(foreign_key="findings.id", index=True)
+    event_type: str  # accept_risk | false_positive | regression | status_change
+    from_status: str
+    to_status: str
+    reason: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    finding: Finding = Relationship(back_populates="audit_events")
 
 
 class MetricsSnapshot(SQLModel, table=True):
