@@ -45,3 +45,5 @@ def ensure_sqlite_schema() -> None:
         with engine.begin() as connection:
             if "regression_count" not in finding_columns:
                 connection.execute(text("ALTER TABLE findings ADD COLUMN regression_count INTEGER NOT NULL DEFAULT 0"))
+            if "sla_deadline" not in finding_columns:
+                connection.execute(text("ALTER TABLE findings ADD COLUMN sla_deadline DATETIME"))

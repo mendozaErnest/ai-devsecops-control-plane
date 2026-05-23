@@ -4,7 +4,7 @@ import json
 import os
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from sqlmodel import Session, select
@@ -31,6 +31,20 @@ REGRESSION_STATUS = "regression"
 ACCEPTED_RISK_STATUS = "accepted_risk"
 FALSE_POSITIVE_STATUS = "false_positive"
 IGNORED_FINDING_STATUSES = {ACCEPTED_RISK_STATUS, FALSE_POSITIVE_STATUS}
+
+_SLA_DAYS: dict[str, int] = {
+    "critical": 3,
+    "high": 7,
+    "medium": 30,
+    "low": 90,
+}
+
+
+def compute_sla_deadline(severity: str, first_seen_at: datetime) -> datetime | None:
+    days = _SLA_DAYS.get(severity.lower())
+    if days is None:
+        return None
+    return first_seen_at + timedelta(days=days)
 
 
 class CombinedScannerAdapter(BaseScannerAdapter):
@@ -256,6 +270,7 @@ def persist_scan(
                     line_end=normalized_finding.line_end,
                     code_snippet=normalized_finding.code_snippet,
                     status="open",
+                    sla_deadline=compute_sla_deadline(normalized_finding.severity, now),
                     first_seen_at=now,
                     last_seen_at=now,
                     fingerprint=fingerprint,
@@ -328,6 +343,7 @@ def upsert_finding(
         line_end=line_end,
         code_snippet=result.get("code"),
         status=OPEN_STATUS,
+        sla_deadline=compute_sla_deadline(severity, now),
         first_seen_at=now,
         last_seen_at=now,
         fingerprint=fingerprint,
