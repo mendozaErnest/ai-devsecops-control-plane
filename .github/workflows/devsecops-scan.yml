@@ -1,0 +1,141 @@
+name: AI DevSecOps Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write   # required for SARIF upload
+  checks: write             # required for Check Runs
+
+jobs:
+  sast-scan:
+    name: SAST + SCA Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install bandit pip-audit semgrep
+          pip install -r code/requirements.txt || true
+
+      - name: Run Bandit (Python SAST)
+        id: bandit
+        run: |
+          bandit -r src/ -f json -o bandit-report.json --exit-zero || true
+          echo "bandit_findings=$(python -c "
+          import json, sys
+          data = json.load(open('bandit-report.json'))
+          results = data.get('results', [])
+          high = [r for r in results if r.get('issue_severity') in ('HIGH','CRITICAL')]
+          print(len(results))
+          sys.exit(1 if high else 0)
+          " 2>&1 || echo error)" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Run pip-audit (Python SCA)
+        id: pip_audit
+        run: |
+          pip-audit --format json --output pip-audit-report.json -r code/requirements.txt \
+            || pip-audit --format json --output pip-audit-report.json || true
+        continue-on-error: true
+
+      - name: Run Semgrep (multi-language SAST)
+        id: semgrep
+        run: |
+          semgrep --config=auto --json --output semgrep-report.json src/ \
+            || true
+        continue-on-error: true
+
+      - name: Parse and summarize results
+        id: summary
+        run: |
+          python - <<'EOF'
+          import json, os, sys
+
+          def load(path):
+              try:
+                  return json.load(open(path))
+              except Exception:
+                  return {}
+
+          bandit_data = load("bandit-report.json")
+          bandit_results = bandit_data.get("results", [])
+          bandit_criticals = [r for r in bandit_results if r.get("issue_severity") in ("HIGH", "CRITICAL")]
+
+          pip_data = load("pip-audit-report.json")
+          pip_vulns = [v for dep in pip_data.get("dependencies", []) for v in dep.get("vulns", [])]
+
+          semgrep_data = load("semgrep-report.json")
+          semgrep_results = semgrep_data.get("results", [])
+          semgrep_criticals = [r for r in semgrep_results if r.get("extra", {}).get("severity") in ("ERROR",)]
+
+          total_bandit = len(bandit_results)
+          total_pip    = len(pip_vulns)
+          total_semgrep = len(semgrep_results)
+          crit_bandit  = len(bandit_criticals)
+          crit_pip     = len(pip_vulns)  # all CVEs count as high
+          crit_semgrep = len(semgrep_criticals)
+          total_critical = crit_bandit + crit_pip + crit_semgrep
+
+          summary = f"""
+          ## AI DevSecOps Scan Summary
+
+          | Scanner  | Findings | Critical/High |
+          |----------|----------|---------------|
+          | Bandit   | {total_bandit} | {crit_bandit} |
+          | pip-audit | {total_pip} | {crit_pip} |
+          | Semgrep  | {total_semgrep} | {crit_semgrep} |
+          | **Total**| **{total_bandit + total_pip + total_semgrep}** | **{total_critical}** |
+          """
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write(summary)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"total_critical={total_critical}\n")
+              f.write(f"has_criticals={'true' if total_critical > 0 else 'false'}\n")
+          EOF
+
+      - name: Upload Bandit report artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.json
+          retention-days: 14
+
+      - name: Upload pip-audit report artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pip-audit-report
+          path: pip-audit-report.json
+          retention-days: 14
+
+      - name: Upload Semgrep report artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-report
+          path: semgrep-report.json
+          retention-days: 14
+
+      - name: Fail if critical findings found
+        if: steps.summary.outputs.has_criticals == 'true'
+        run: |
+          echo "::error::${{ steps.summary.outputs.total_critical }} critical/high findings detected. Review the scan reports before merging."
+          exit 1
