@@ -20,6 +20,7 @@ from src.scanners.angular_adapter import AngularAdapter
 from src.scanners.base import BaseScannerAdapter
 from src.scanners.bandit_adapter import BanditAdapter
 from src.scanners.java_adapter import JavaAdapter
+from src.scanners.odc_adapter import OdcAdapter
 from src.scanners.pip_audit_adapter import PipAuditAdapter
 from src.scanners.semgrep_adapter import SemgrepAdapter
 
@@ -135,7 +136,7 @@ def get_default_scanner_adapter(technology: str) -> BaseScannerAdapter | None:
         return AngularAdapter()
 
     if normalized_technology == "java":
-        return JavaAdapter()
+        return CombinedScannerAdapter([JavaAdapter(), OdcAdapter()])
 
     return None
 
