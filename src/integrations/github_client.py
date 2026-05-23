@@ -1404,6 +1404,66 @@ async def create_pull_request(
         return existing_pr
 
 
+async def create_check_run(
+    repo: str,
+    head_sha: str,
+    name: str = "AI DevSecOps Security Scan",
+    status: str = "in_progress",
+) -> dict:
+    app_id, installation_id, _repo, private_key_path, _base = get_github_config()
+    installation_token = await get_installation_token(app_id, installation_id, private_key_path)
+
+    async with httpx.AsyncClient(
+        base_url=GITHUB_API_URL,
+        headers={**build_headers(installation_token), "Accept": "application/vnd.github+json"},
+        timeout=GITHUB_TIMEOUT_SECONDS,
+    ) as client:
+        return await github_request(
+            client,
+            "POST",
+            f"/repos/{repo}/check-runs",
+            {
+                "name": name,
+                "head_sha": head_sha,
+                "status": status,
+            },
+        )
+
+
+async def update_check_run(
+    repo: str,
+    check_run_id: int,
+    conclusion: str,
+    summary: str,
+    details_url: str | None = None,
+) -> dict:
+    app_id, installation_id, _repo, private_key_path, _base = get_github_config()
+    installation_token = await get_installation_token(app_id, installation_id, private_key_path)
+
+    payload: dict = {
+        "status": "completed",
+        "conclusion": conclusion,
+        "output": {
+            "title": "AI DevSecOps Security Scan",
+            "summary": summary,
+        },
+    }
+    if details_url:
+        payload["details_url"] = details_url
+
+    async with httpx.AsyncClient(
+        base_url=GITHUB_API_URL,
+        headers={**build_headers(installation_token), "Accept": "application/vnd.github+json"},
+        timeout=GITHUB_TIMEOUT_SECONDS,
+    ) as client:
+        return await github_request(
+            client,
+            "PATCH",
+            f"/repos/{repo}/check-runs/{check_run_id}",
+            payload,
+        )
+
+
 async def delete_security_branch(branch_name: str) -> dict:
     app_id, installation_id, repo, private_key_path, _base_branch = get_github_config()
     installation_token = await get_installation_token(app_id, installation_id, private_key_path)
