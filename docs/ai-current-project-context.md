@@ -312,10 +312,14 @@ Para tecnologias no Python se usa validacion ligera:
   - Java: `java`.
 - Si hay fences pero ninguno coincide con la tecnologia, falla con error claro.
 - Reemplaza full-file solo si el parche tiene tamano comparable.
-- Si es snippet corto, reemplaza el rango `line_start` - `line_end`.
+- Si es snippet corto, intenta parcheo semantico antes de reemplazar lineas:
+  - Angular/TypeScript: `find_ts_method_range()` localiza metodo/funcion y `find_ts_class_range()` es fallback por clase.
+  - Java: `find_java_method_range()` localiza metodo y `find_java_class_range()` es fallback por clase/interfaz.
+  - Orden de fallback: unidad semantica -> clase -> rango `line_start` - `line_end`.
 - Valida delimitadores balanceados `{}`, `()`, `[]`.
 - Para HTML no trata comillas como strings, para evitar falsos positivos con atributos.
 - Rechaza salida vacia o archivo final inesperadamente corto.
+- Para Angular/Java rechaza el resultado si un archivo de mas de 30 lineas queda por debajo del 60% del tamano original.
 
 Funciones clave:
 
@@ -324,12 +328,17 @@ normalize_patch_technology()
 code_fence_label_for_technology()
 extract_generic_code_block()
 has_balanced_delimiters()
+find_ts_method_range()
+find_ts_class_range()
+find_java_method_range()
+find_java_class_range()
 build_lightweight_patched_content()
 ```
 
 Limitacion actual:
 
-- Angular/Java todavia no tienen parseo semantico real ni compilacion. Es intencional por ahora para no romper con `ast.parse`.
+- Angular/Java usan deteccion semantica por firmas y balanceo de llaves. Si no hay certeza, degradan a rango de lineas para no romper el flujo existente.
+- Angular/Java todavia no tienen compilacion real de proyecto. Es intencional por ahora para no romper con `ast.parse`.
 
 Siguiente paso recomendado:
 

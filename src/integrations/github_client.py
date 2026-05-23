@@ -432,6 +432,251 @@ def has_balanced_delimiters(code: str, *, track_strings: bool = True) -> bool:
     return not stack and in_string is None
 
 
+def include_leading_decorators(lines: list[str], signature_index: int) -> int:
+    start_index = signature_index
+    inside_multiline_decorator = False
+
+    for index in range(signature_index - 1, -1, -1):
+        stripped = lines[index].strip()
+
+        if not stripped:
+            break
+
+        if stripped.startswith("@"):
+            start_index = index
+            inside_multiline_decorator = False
+            continue
+
+        if (
+            inside_multiline_decorator
+            or stripped in {")", "})", "});", "]", "])", "]);"}
+            or stripped.endswith((")", "})", "});", "]", "])", "]);", ","))
+        ):
+            start_index = index
+            inside_multiline_decorator = True
+            continue
+
+        break
+
+    return start_index
+
+
+def count_code_braces(line: str) -> int:
+    balance = 0
+    in_string: str | None = None
+    escape = False
+
+    for character in line:
+        if in_string:
+            if escape:
+                escape = False
+            elif character == "\\":
+                escape = True
+            elif character == in_string:
+                in_string = None
+
+            continue
+
+        if character in {"'", '"', "`"}:
+            in_string = character
+            continue
+
+        if character == "{":
+            balance += 1
+        elif character == "}":
+            balance -= 1
+
+    return balance
+
+
+def find_braced_block_range(lines: list[str], signature_index: int) -> tuple[int, int] | None:
+    brace_balance = 0
+    found_opening_brace = False
+
+    for index in range(signature_index, len(lines)):
+        brace_delta = count_code_braces(lines[index])
+
+        if "{" in lines[index]:
+            found_opening_brace = True
+
+        if found_opening_brace:
+            brace_balance += brace_delta
+
+            if brace_balance == 0:
+                return include_leading_decorators(lines, signature_index) + 1, index + 1
+
+    return None
+
+
+def ts_line_looks_like_method_signature(line: str) -> bool:
+    stripped = line.strip()
+
+    if not stripped or stripped.startswith(("//", "*", "/*", "@")):
+        return False
+
+    if re.match(r"^(if|for|while|switch|catch|function)\b", stripped):
+        return False
+
+    modifier_pattern = r"(?:async|public|private|protected|readonly|static|override)\s+"
+    identifier_pattern = r"[A-Za-z_$][\w$]*"
+    method_pattern = (
+        rf"^(?:{modifier_pattern})*(?:{identifier_pattern}\s+)?"
+        rf"{identifier_pattern}\s*\([^)]*\)\s*(?::\s*[^{{=>]+)?\s*(?:{{|$)"
+    )
+
+    return bool(
+        re.search(r"\b(?:async|public|private|protected|readonly|ngOnInit|ngOnDestroy|constructor)\b", stripped)
+        or re.match(method_pattern, stripped)
+    )
+
+
+def find_ts_method_range(original_content: str, line_start: object) -> tuple[int, int] | None:
+    line_start = coerce_line_number(line_start)
+
+    if line_start is None:
+        return None
+
+    try:
+        lines = original_content.splitlines()
+        search_index = min(max(line_start - 1, 0), len(lines) - 1)
+
+        for index in range(search_index, -1, -1):
+            if not ts_line_looks_like_method_signature(lines[index]):
+                continue
+
+            block_range = find_braced_block_range(lines, index)
+
+            if block_range and block_range[0] <= line_start <= block_range[1]:
+                return block_range
+
+        return None
+    except Exception:
+        return None
+
+
+def extract_ts_class_name(patch_content: str) -> str | None:
+    match = re.search(r"\bclass\s+([A-Za-z_$][\w$]*)\b", patch_content)
+    return match.group(1) if match else None
+
+
+def find_ts_class_range(original_content: str, class_name: str | None) -> tuple[int, int] | None:
+    if not class_name:
+        return None
+
+    try:
+        lines = original_content.splitlines()
+        class_pattern = re.compile(rf"\bclass\s+{re.escape(class_name)}\b")
+
+        for index, line in enumerate(lines):
+            if not class_pattern.search(line):
+                continue
+
+            return find_braced_block_range(lines, index)
+
+        return None
+    except Exception:
+        return None
+
+
+JAVA_CONTROL_KEYWORDS = {"if", "for", "while", "switch", "catch", "return", "new"}
+
+
+def java_line_looks_like_method_signature(line: str) -> bool:
+    stripped = line.strip()
+
+    if not stripped or stripped.startswith(("//", "*", "/*", "@")):
+        return False
+
+    if "(" not in stripped or ")" not in stripped:
+        return False
+
+    if re.match(r"^(if|for|while|switch|catch)\b", stripped):
+        return False
+
+    signature_pattern = re.compile(
+        r"^(?:public|private|protected|static|final|synchronized|abstract|default|native|strictfp|\s)*"
+        r"(?:<[^>]+>\s*)?"
+        r"([A-Za-z_$][\w$<>\[\], ?]*\s+)?"
+        r"([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*(?:throws\s+[^{]+)?\s*(?:\{|$)"
+    )
+    match = signature_pattern.match(stripped)
+
+    if not match:
+        return False
+
+    method_name = match.group(2)
+    return method_name not in JAVA_CONTROL_KEYWORDS
+
+
+def find_java_method_range(original_content: str, line_start: object) -> tuple[int, int] | None:
+    line_start = coerce_line_number(line_start)
+
+    if line_start is None:
+        return None
+
+    try:
+        lines = original_content.splitlines()
+        search_index = min(max(line_start - 1, 0), len(lines) - 1)
+
+        for index in range(search_index, -1, -1):
+            if not java_line_looks_like_method_signature(lines[index]):
+                continue
+
+            block_range = find_braced_block_range(lines, index)
+
+            if block_range and block_range[0] <= line_start <= block_range[1]:
+                return block_range
+
+        return None
+    except Exception:
+        return None
+
+
+def extract_java_class_name(patch_content: str) -> str | None:
+    match = re.search(r"\b(?:class|interface)\s+([A-Za-z_$][\w$]*)\b", patch_content)
+    return match.group(1) if match else None
+
+
+def find_java_class_range(original_content: str, class_name: str | None) -> tuple[int, int] | None:
+    if not class_name:
+        return None
+
+    try:
+        lines = original_content.splitlines()
+        class_pattern = re.compile(rf"\b(?:class|interface)\s+{re.escape(class_name)}\b")
+
+        for index, line in enumerate(lines):
+            if not class_pattern.search(line):
+                continue
+
+            return find_braced_block_range(lines, index)
+
+        return None
+    except Exception:
+        return None
+
+
+def find_semantic_patch_range(
+    original_content: str,
+    patch_content: str,
+    line_start: int | None,
+    technology: str,
+) -> tuple[int, int] | None:
+    if technology == "angular":
+        return (
+            find_ts_method_range(original_content, line_start)
+            or find_ts_class_range(original_content, extract_ts_class_name(patch_content))
+        )
+
+    if technology == "java":
+        return (
+            find_java_method_range(original_content, line_start)
+            or find_java_class_range(original_content, extract_java_class_name(patch_content))
+        )
+
+    return None
+
+
 def build_lightweight_patched_content(
     original_content: str,
     patch_content: str,
@@ -468,7 +713,13 @@ def build_lightweight_patched_content(
                 },
             )
 
-        candidate = replace_line_range(original_content, patch_content, line_start, line_end)
+        patch_range = find_semantic_patch_range(
+            original_content,
+            patch_content,
+            line_start,
+            technology,
+        ) or (line_start, line_end)
+        candidate = replace_line_range(original_content, patch_content, patch_range[0], patch_range[1])
 
     if not candidate.strip():
         raise GitHubClientError("Patched source file is empty. Refusing to commit.")
@@ -487,8 +738,23 @@ def build_lightweight_patched_content(
             details={"file_path": finding_details.get("file_path"), "technology": technology},
         )
 
-    if line_count(original_content) > 100 and line_count(candidate) < line_count(original_content) * 0.5:
-        raise GitHubClientError("Patched source file is unexpectedly short. Refusing to commit.")
+    if line_count(original_content) > 30 and line_count(candidate) < line_count(original_content) * 0.6:
+        raise GitHubClientError(
+            "Patched source file is unexpectedly short after semantic patching. "
+            "Refusing to commit because the result is below 60% of the original file size.",
+            code="patched_source_too_short",
+            user_message=(
+                "La remediación generada redujo demasiado el archivo. "
+                "No se empujaron cambios porque el resultado queda por debajo del 60% del tamaño original."
+            ),
+            retryable=True,
+            details={
+                "file_path": finding_details.get("file_path"),
+                "technology": technology,
+                "original_lines": line_count(original_content),
+                "patched_lines": line_count(candidate),
+            },
+        )
 
     return candidate
 
