@@ -1,397 +1,545 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AI DevSecOps Control Plane</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root {
+        --bg-base:    #0d1117;
+        --bg-surface: #161b22;
+        --bg-card:    #1c2128;
+        --bg-hover:   #21262d;
+        --border:     #30363d;
+        --text:       #e6edf3;
+        --muted:      #8b949e;
+        --accent:     #2f81f7;
+        --accent-h:   #388bfd;
+        --success:    #3fb950;
+        --crit:       #f85149;
+        --high:       #e3693e;
+        --med:        #d29922;
+        --low:        #58a6ff;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body { background: var(--bg-base); color: var(--text); font-family: Inter, system-ui, -apple-system, sans-serif; min-height: 100vh; }
+
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: var(--bg-surface); }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+      /* Dark inputs */
+      input, select, textarea {
+        background: var(--bg-base) !important;
+        border: 1px solid var(--border) !important;
+        color: var(--text) !important;
+        border-radius: 6px;
+        outline: none;
+      }
+      input:focus, select:focus, textarea:focus {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 2px rgba(47,129,247,0.25);
+      }
+      input::placeholder, textarea::placeholder { color: var(--muted) !important; }
+      select option { background: var(--bg-card); color: var(--text); }
+
+      /* Sticky action column */
+      .col-action { position: sticky; right: 0; background: var(--bg-card); z-index: 2; }
+      tr:hover .col-action { background: var(--bg-hover); }
+
+      /* Animations */
+      @keyframes pulse-dot  { 0%,100%{opacity:1} 50%{opacity:.3} }
+      @keyframes blink-red  { 0%,100%{border-color:var(--crit)} 50%{border-color:transparent} }
+      @keyframes spin-anim  { to{transform:rotate(360deg)} }
+
+      .pulse-green { animation: pulse-dot 1.4s ease-in-out infinite; color: var(--success); }
+      .pulse-red   { animation: pulse-dot 2s ease-in-out infinite; color: var(--crit); }
+      .badge-regression { animation: blink-red 1.1s ease-in-out infinite; }
+      .spinner {
+        display: inline-block; width:13px; height:13px;
+        border: 2px solid rgba(255,255,255,.25); border-top-color:#fff;
+        border-radius:50%; animation: spin-anim .7s linear infinite;
+        vertical-align: middle;
+      }
+
+      /* Modal tabs */
+      .tab-btn { padding: 6px 18px; border-radius: 20px; font-size:.8rem; font-weight:600; cursor:pointer; transition: background .15s; border:none; }
+      .tab-active  { background: var(--accent); color:#fff; }
+      .tab-inactive{ background: var(--bg-hover); color: var(--muted); }
+      .tab-inactive:hover { color: var(--text); }
+
+      /* Panel switch */
+      .form-panel { transition: opacity .18s ease; }
+      .form-panel.hidden-panel { opacity:0; height:0; overflow:hidden; pointer-events:none; }
+      .form-panel.visible-panel { opacity:1; height:auto; pointer-events:auto; }
+
+      /* Severity badge overrides (solid, enterprise style) */
+      .sev-critical { background:#f85149; color:#fff; }
+      .sev-high     { background:#e3693e; color:#fff; }
+      .sev-medium   { background:#d29922; color:#fff; }
+      .sev-low      { background:#58a6ff; color:#fff; }
+      .sev-info     { background:#8b949e; color:#fff; }
+
+      /* Project button */
+      .proj-btn { display:block; width:100%; padding:14px 20px; text-align:left; background:transparent; border:none; cursor:pointer; transition: background .12s; }
+      .proj-btn:hover { background: var(--bg-hover); }
+      .proj-btn.active { background: rgba(47,129,247,.12); border-left: 2px solid var(--accent); }
+
+      /* Table row hover */
+      .findings-row { transition: background .1s; }
+      .findings-row:hover { background: var(--bg-hover); }
+
+      /* Feedback */
+      .fb-info    { background:rgba(47,129,247,.12); border:1px solid rgba(47,129,247,.35); color:#6cb6ff; }
+      .fb-success { background:rgba(63,185,80,.12);  border:1px solid rgba(63,185,80,.35); color:#56d364; }
+      .fb-error   { background:rgba(248,81,73,.12);  border:1px solid rgba(248,81,73,.35); color:#ff7b72; }
+    </style>
   </head>
-  <body class="bg-slate-100 text-slate-900 antialiased">
-    <main class="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-7xl space-y-6">
-        <header class="flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p class="text-sm font-medium uppercase tracking-wide text-slate-500">AI DevSecOps</p>
-            <h1 class="mt-1 text-3xl font-semibold tracking-normal text-slate-950">Control Plane</h1>
+  <body>
+
+    <!-- ══════════════ STICKY HEADER ══════════════ -->
+    <header style="background:var(--bg-surface);border-bottom:1px solid var(--border);" class="sticky top-0 z-40 px-6 py-3">
+      <div class="mx-auto max-w-screen-xl flex items-center justify-between gap-4 flex-wrap">
+
+        <div>
+          <p style="color:var(--muted);font-size:.68rem;letter-spacing:.1em;font-weight:600;text-transform:uppercase;">AI DevSecOps</p>
+          <h1 style="color:var(--text);font-size:1.15rem;font-weight:700;line-height:1.2;">Control Plane</h1>
+        </div>
+
+        <div class="flex items-center gap-3 flex-wrap">
+          <!-- AI Engine badge -->
+          <span id="ai-status-badge"
+            style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:9999px;font-size:.75rem;font-weight:600;background:var(--bg-card);border:1px solid var(--border);color:var(--muted);">
+            <span class="pulse-red">●</span>
+            <span id="ai-badge-text">AI Engine: Checking…</span>
+          </span>
+
+          <!-- Lang toggle -->
+          <button id="lang-toggle"
+            style="padding:4px 14px;border-radius:9999px;font-size:.75rem;font-weight:700;background:var(--bg-hover);border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:color .15s;">
+            ES | EN
+          </button>
+
+          <!-- New Project -->
+          <button type="button" id="new-project"
+            style="padding:7px 16px;border-radius:6px;font-size:.82rem;font-weight:600;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);cursor:pointer;transition:background .15s;"
+            data-i18n="new-project">Nuevo Proyecto</button>
+
+          <!-- Scan -->
+          <button type="button" id="run-scan"
+            style="padding:7px 16px;border-radius:6px;font-size:.82rem;font-weight:600;background:var(--accent);border:none;color:#fff;cursor:pointer;transition:background .15s;display:inline-flex;align-items:center;gap:6px;"
+            data-i18n="scan-project">▶ Escanear Proyecto</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ══════════════ METRICS STRIP ══════════════ -->
+    <section style="background:var(--bg-surface);border-bottom:1px solid var(--border);" class="px-6 py-3">
+      <div class="mx-auto max-w-screen-xl grid grid-cols-2 sm:grid-cols-4 gap-3">
+
+        <article style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;" class="p-4">
+          <p style="font-size:.7rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;">Critical / High</p>
+          <p id="high-count" style="font-size:2rem;font-weight:700;color:var(--crit);margin-top:6px;">0</p>
+        </article>
+
+        <article style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;" class="p-4">
+          <p style="font-size:.7rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;">Medium / Low</p>
+          <p id="medium-count" style="font-size:2rem;font-weight:700;color:var(--med);margin-top:6px;">0</p>
+        </article>
+
+        <article style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;" class="p-4">
+          <p style="font-size:.7rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;" data-i18n="open-findings">Hallazgos abiertos</p>
+          <p id="total-count" style="font-size:2rem;font-weight:700;color:var(--text);margin-top:6px;">0</p>
+        </article>
+
+        <article style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;" class="p-4">
+          <p style="font-size:.7rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;" data-i18n="last-scan">Último escaneo</p>
+          <p id="scan-status" style="font-size:.9rem;font-weight:600;color:var(--muted);margin-top:6px;" data-i18n="not-executed">Sin ejecutar</p>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- Feedback banner -->
+    <div class="px-6 pt-3 mx-auto max-w-screen-xl">
+      <section id="feedback" class="hidden" aria-live="polite"
+        style="border-radius:6px;padding:12px 18px;font-size:.83rem;font-weight:500;"></section>
+    </div>
+
+    <!-- ══════════════ MAIN LAYOUT ══════════════ -->
+    <main class="mx-auto max-w-screen-xl px-6 py-4">
+      <div class="grid gap-4 lg:grid-cols-[290px_minmax(0,1fr)]">
+
+        <!-- ── SIDEBAR ── -->
+        <aside style="background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+          <div style="border-bottom:1px solid var(--border);" class="px-5 py-4">
+            <h2 style="color:var(--text);font-size:1rem;font-weight:700;" data-i18n="projects">Proyectos</h2>
+            <p id="project-status" style="color:var(--muted);font-size:.78rem;margin-top:4px;">Cargando proyectos…</p>
           </div>
-          <div class="flex flex-col gap-2 sm:items-end">
-            <span
-              id="ai-status-badge"
-              class="inline-flex min-h-8 items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200"
-            >
-              ● AI Engine: Checking...
-            </span>
-            <div class="flex flex-col gap-2 sm:flex-row">
-              <button
-                type="button"
-                id="new-project"
-                class="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-              >
-                Nuevo Proyecto
-              </button>
-              <button
-                type="button"
-                id="run-scan"
-                class="inline-flex min-h-11 items-center justify-center rounded-lg bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-              >
-                Escanear Proyecto
-              </button>
-            </div>
-          </div>
-        </header>
+          <div id="projects-list" style="max-height:600px;overflow-y:auto;"></div>
+        </aside>
 
-        <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <article class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <p class="text-sm font-medium text-slate-500">Critical / High</p>
-            <p id="high-count" class="mt-3 text-3xl font-semibold text-red-600">0</p>
-          </article>
-          <article class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <p class="text-sm font-medium text-slate-500">Medium / Low</p>
-            <p id="medium-count" class="mt-3 text-3xl font-semibold text-amber-600">0</p>
-          </article>
-          <article class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <p class="text-sm font-medium text-slate-500">Open Findings</p>
-            <p id="total-count" class="mt-3 text-3xl font-semibold text-slate-950">0</p>
-          </article>
-          <article class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <p class="text-sm font-medium text-slate-500">Last Scan</p>
-            <p id="scan-status" class="mt-3 text-base font-semibold text-slate-700">Sin ejecutar</p>
-          </article>
-        </section>
-
-        <section
-          id="feedback"
-          class="hidden rounded-lg border px-5 py-4 text-sm font-medium shadow-sm"
-          aria-live="polite"
-        ></section>
-
-        <section class="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-          <aside class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
-            <div class="border-b border-slate-200 px-5 py-4">
-              <h2 class="text-lg font-semibold text-slate-950">Proyectos</h2>
-              <p id="project-status" class="mt-1 text-sm text-slate-500">Cargando proyectos...</p>
-            </div>
-            <div id="projects-list" class="max-h-[640px] divide-y divide-slate-100 overflow-auto"></div>
-          </aside>
-
-          <section class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
-          <div class="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <!-- ── FINDINGS PANEL ── -->
+        <section style="background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+          <div style="border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;" class="px-5 py-4">
             <div>
-              <h2 id="current-project-title" class="text-lg font-semibold text-slate-950">Selecciona un proyecto</h2>
-              <p id="table-status" class="mt-1 text-sm text-slate-500">Los hallazgos aparecerán aquí.</p>
+              <h2 id="current-project-title" style="color:var(--text);font-size:1rem;font-weight:700;" data-i18n="select-project">Selecciona un proyecto</h2>
+              <p id="table-status" style="color:var(--muted);font-size:.78rem;margin-top:4px;" data-i18n="findings-appear">Los hallazgos aparecerán aquí.</p>
             </div>
-            <button
-              type="button"
-              id="refresh-findings"
-              class="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
-            >
-              Actualizar
-            </button>
+            <button type="button" id="refresh-findings"
+              style="padding:6px 16px;border-radius:6px;font-size:.8rem;font-weight:600;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);cursor:pointer;transition:background .15s;"
+              data-i18n="refresh">Actualizar</button>
           </div>
 
-          <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-slate-200">
-              <thead class="bg-slate-50">
+          <!-- Table -->
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead style="background:var(--bg-card);">
                 <tr>
-                  <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">ID</th>
-                  <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Severidad</th>
-                  <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Archivo</th>
-                  <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Regla</th>
-                  <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Descripción</th>
-                  <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Estado</th>
-                  <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Acciones</th>
+                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:80px;">ID</th>
+                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:110px;">Severidad</th>
+                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);width:180px;">Archivo</th>
+                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:140px;">Regla</th>
+                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);">Descripción</th>
+                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:160px;">Estado</th>
+                  <th class="col-action" style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:180px;box-shadow:-2px 0 6px rgba(0,0,0,.3);">Acciones</th>
                 </tr>
               </thead>
-              <tbody id="findings-table-body" class="divide-y divide-slate-100 bg-white"></tbody>
+              <tbody id="findings-table-body" style="border-top:1px solid var(--border);"></tbody>
             </table>
           </div>
-          </section>
         </section>
+
       </div>
     </main>
 
-    <div
-      id="project-modal"
-      class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/50 px-4 py-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="project-modal-title"
-    >
-      <section class="w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-xl ring-1 ring-slate-200">
-        <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-          <div>
-            <h2 id="project-modal-title" class="text-lg font-semibold text-slate-950">Nuevo Proyecto</h2>
-            <p class="mt-1 text-sm text-slate-500">Carga un ZIP o clona un repositorio para escanearlo en un espacio aislado.</p>
-          </div>
-          <button
-            type="button"
-            id="close-project-modal"
-            class="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg font-semibold text-slate-600 hover:bg-slate-50"
-            aria-label="Cerrar modal"
-          >
-            x
-          </button>
+    <!-- ══════════════ PROJECT MODAL (tabs) ══════════════ -->
+    <div id="project-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);padding:24px;"
+      role="dialog" aria-modal="true" aria-labelledby="project-modal-title">
+      <section style="width:100%;max-width:520px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 20px;border-bottom:1px solid var(--border);">
+          <h2 id="project-modal-title" style="color:var(--text);font-size:1rem;font-weight:700;" data-i18n="new-project">Nuevo Proyecto</h2>
+          <button type="button" id="close-project-modal"
+            style="width:32px;height:32px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;"
+            aria-label="Cerrar">✕</button>
         </div>
-        <div class="grid gap-5 p-5 md:grid-cols-2">
+
+        <!-- Tabs -->
+        <div style="display:flex;gap:8px;padding:16px 20px 0;">
+          <button type="button" id="tab-zip" class="tab-btn tab-active">📦 <span data-i18n="upload-zip">Subir ZIP</span></button>
+          <button type="button" id="tab-clone" class="tab-btn tab-inactive">🔗 <span data-i18n="clone-repo">Clonar Repo</span></button>
+        </div>
+
+        <!-- Panel ZIP -->
+        <div id="panel-zip" class="form-panel visible-panel" style="padding:16px 20px 20px;">
           <form id="upload-project-form" class="space-y-3">
-            <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Subir ZIP</h3>
-            <input id="zip-name" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Nombre del proyecto">
-            <select id="zip-technology" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <input id="zip-name" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="Nombre del proyecto" data-i18n-placeholder="project-name">
+            <select id="zip-technology" style="width:100%;padding:8px 12px;font-size:.83rem;">
               <option value="python">Python</option>
               <option value="angular">Angular</option>
               <option value="java">Java</option>
             </select>
-            <input id="zip-file" type="file" accept=".zip" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-            <button class="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700" type="submit">Crear desde ZIP</button>
-          </form>
-          <form id="clone-project-form" class="space-y-3">
-            <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Clonar Repo</h3>
-            <input id="repo-name" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Nombre del proyecto">
-            <input id="repo-url" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="https://github.com/org/repo.git">
-            <select id="repo-technology" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-              <option value="python">Python</option>
-              <option value="angular">Angular</option>
-              <option value="java">Java</option>
-            </select>
-            <button class="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800" type="submit">Clonar y Escanear</button>
+            <input id="zip-file" type="file" accept=".zip" style="width:100%;padding:8px 12px;font-size:.83rem;">
+            <button type="submit"
+              style="width:100%;padding:9px;border-radius:6px;background:var(--accent);color:#fff;font-size:.83rem;font-weight:700;border:none;cursor:pointer;transition:background .15s;"
+              data-i18n="create-from-zip">Crear desde ZIP</button>
           </form>
         </div>
+
+        <!-- Panel Clone -->
+        <div id="panel-clone" class="form-panel hidden-panel" style="padding:16px 20px 20px;">
+          <form id="clone-project-form" class="space-y-3">
+            <input id="repo-name" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="Nombre del proyecto" data-i18n-placeholder="project-name">
+            <input id="repo-url" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="https://github.com/org/repo.git">
+            <select id="repo-technology" style="width:100%;padding:8px 12px;font-size:.83rem;">
+              <option value="python">Python</option>
+              <option value="angular">Angular</option>
+              <option value="java">Java</option>
+            </select>
+            <button type="submit"
+              style="width:100%;padding:9px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);font-size:.83rem;font-weight:700;cursor:pointer;transition:background .15s;"
+              data-i18n="clone-scan">Clonar y Escanear</button>
+          </form>
+        </div>
+
       </section>
     </div>
 
-    <div
-      id="remediation-modal"
-      class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/50 px-4 py-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="remediation-title"
-    >
-      <section class="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-lg bg-white shadow-xl ring-1 ring-slate-200">
-        <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+    <!-- ══════════════ REMEDIATION MODAL ══════════════ -->
+    <div id="remediation-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);padding:24px;"
+      role="dialog" aria-modal="true" aria-labelledby="remediation-title">
+      <section style="width:100%;max-width:900px;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0;">
           <div>
-            <h2 id="remediation-title" class="text-lg font-semibold text-slate-950">Remediación sugerida</h2>
-            <p id="remediation-subtitle" class="mt-1 text-sm text-slate-500">Parche generado por el motor de IA</p>
+            <h2 id="remediation-title" style="color:var(--text);font-size:1rem;font-weight:700;" data-i18n="suggested-remediation">Remediación sugerida</h2>
+            <p id="remediation-subtitle" style="color:var(--muted);font-size:.78rem;margin-top:3px;"></p>
           </div>
-          <button
-            type="button"
-            id="close-remediation"
-            class="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg font-semibold text-slate-600 hover:bg-slate-50"
-            aria-label="Cerrar modal"
-          >
-            x
-          </button>
+          <button type="button" id="close-remediation"
+            style="width:32px;height:32px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;"
+            aria-label="Cerrar">✕</button>
         </div>
-        <div class="grid max-h-[70vh] overflow-auto bg-slate-950 md:grid-cols-2">
-          <section class="border-b border-slate-800 p-5 md:border-b-0 md:border-r">
-            <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Código vulnerable</h3>
-            <pre id="vulnerable-code" class="whitespace-pre-wrap text-sm leading-6 text-slate-100"></pre>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;overflow:auto;max-height:60vh;flex:1;background:#0d1117;">
+          <section style="padding:18px;border-right:1px solid var(--border);">
+            <h3 style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px;" data-i18n="vulnerable-code">Código vulnerable</h3>
+            <pre id="vulnerable-code" style="white-space:pre-wrap;font-size:.8rem;line-height:1.6;color:#e6edf3;font-family:'Fira Code',Consolas,monospace;"></pre>
           </section>
-          <section class="p-5">
-            <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Código seguro propuesto</h3>
-            <pre id="remediation-content" class="whitespace-pre-wrap text-sm leading-6 text-slate-100"></pre>
+          <section style="padding:18px;">
+            <h3 style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px;" data-i18n="proposed-code">Código seguro propuesto</h3>
+            <pre id="remediation-content" style="white-space:pre-wrap;font-size:.8rem;line-height:1.6;color:#56d364;font-family:'Fira Code',Consolas,monospace;"></pre>
           </section>
         </div>
-        <div class="flex flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <p class="text-sm text-slate-500">Convierte esta remediación en una propuesta de revisión en GitHub.</p>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 20px;border-top:1px solid var(--border);background:var(--bg-card);flex-shrink:0;">
+          <p style="color:var(--muted);font-size:.8rem;">Convierte esta remediación en una propuesta de revisión en GitHub.</p>
           <div id="pr-action-container">
-            <button
-              type="button"
-              id="btn-pr"
-              class="inline-flex min-h-10 items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-            >
-              🚀 Convertir a Pull Request
+            <button type="button" id="btn-pr"
+              style="padding:8px 18px;border-radius:6px;background:var(--accent);color:#fff;font-size:.82rem;font-weight:700;border:none;cursor:pointer;transition:background .15s;">
+              🚀 <span data-i18n="convert-pr">Convertir a Pull Request</span>
             </button>
           </div>
         </div>
       </section>
     </div>
 
-    <!-- Reason modal: shared for Accept Risk and False Positive -->
-    <div
-      id="reason-modal"
-      class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/50 px-4 py-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="reason-modal-title"
-    >
-      <section class="w-full max-w-md overflow-hidden rounded-lg bg-white shadow-xl ring-1 ring-slate-200">
-        <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-          <h2 id="reason-modal-title" class="text-lg font-semibold text-slate-950">Justificación requerida</h2>
-          <button type="button" id="close-reason-modal" class="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg font-semibold text-slate-600 hover:bg-slate-50" aria-label="Cerrar">x</button>
+    <!-- ══════════════ REASON MODAL ══════════════ -->
+    <div id="reason-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;background:rgba(0,0,0,.72);backdrop-filter:blur(4px);padding:24px;"
+      role="dialog" aria-modal="true" aria-labelledby="reason-modal-title">
+      <section style="width:100%;max-width:440px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);">
+          <h2 id="reason-modal-title" style="color:var(--text);font-size:1rem;font-weight:700;">Justificación requerida</h2>
+          <button type="button" id="close-reason-modal"
+            style="width:32px;height:32px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;"
+            aria-label="Cerrar">✕</button>
         </div>
-        <div class="p-5 space-y-4">
-          <p id="reason-modal-desc" class="text-sm text-slate-600"></p>
-          <textarea id="reason-input" rows="3" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Escribe la razón..."></textarea>
-          <button type="button" id="confirm-reason-btn" class="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Confirmar</button>
+        <div style="padding:18px 20px 20px;display:flex;flex-direction:column;gap:12px;">
+          <p id="reason-modal-desc" style="color:var(--muted);font-size:.83rem;"></p>
+          <textarea id="reason-input" rows="3" style="width:100%;padding:9px 12px;font-size:.83rem;resize:vertical;" placeholder="Escribe la razón…"></textarea>
+          <button type="button" id="confirm-reason-btn"
+            style="width:100%;padding:9px;border-radius:6px;background:var(--accent);color:#fff;font-size:.83rem;font-weight:700;border:none;cursor:pointer;transition:background .15s;">
+            Confirmar
+          </button>
         </div>
       </section>
     </div>
 
-    <!-- Audit history modal -->
-    <div
-      id="audit-modal"
-      class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/50 px-4 py-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="audit-modal-title"
-    >
-      <section class="w-full max-w-2xl max-h-[80vh] overflow-hidden rounded-lg bg-white shadow-xl ring-1 ring-slate-200 flex flex-col">
-        <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 flex-shrink-0">
+    <!-- ══════════════ AUDIT MODAL ══════════════ -->
+    <div id="audit-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;background:rgba(0,0,0,.72);backdrop-filter:blur(4px);padding:24px;"
+      role="dialog" aria-modal="true" aria-labelledby="audit-modal-title">
+      <section style="width:100%;max-width:620px;max-height:80vh;display:flex;flex-direction:column;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0;">
           <div>
-            <h2 id="audit-modal-title" class="text-lg font-semibold text-slate-950">Historial del finding</h2>
-            <p id="audit-modal-meta" class="mt-1 text-sm text-slate-500"></p>
+            <h2 id="audit-modal-title" style="color:var(--text);font-size:1rem;font-weight:700;">Historial del finding</h2>
+            <p id="audit-modal-meta" style="color:var(--muted);font-size:.78rem;margin-top:3px;"></p>
           </div>
-          <button type="button" id="close-audit-modal" class="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg font-semibold text-slate-600 hover:bg-slate-50" aria-label="Cerrar">x</button>
+          <button type="button" id="close-audit-modal"
+            style="width:32px;height:32px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;"
+            aria-label="Cerrar">✕</button>
         </div>
-        <div id="audit-events-list" class="overflow-y-auto p-5 space-y-3 flex-1"></div>
+        <div id="audit-events-list" style="overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:10px;flex:1;"></div>
       </section>
     </div>
 
+    <!-- ══════════════ JAVASCRIPT ══════════════ -->
     <script>
-      const runScanButton = document.getElementById("run-scan");
-      const newProjectButton = document.getElementById("new-project");
-      const refreshButton = document.getElementById("refresh-findings");
-      const projectsList = document.getElementById("projects-list");
-      const projectStatus = document.getElementById("project-status");
+      // ── i18n (< 80 lines) ──────────────────────────────────────────────
+      const i18n = {
+        es: {
+          "new-project":        "Nuevo Proyecto",
+          "scan-project":       "▶ Escanear Proyecto",
+          "projects":           "Proyectos",
+          "registered-projects":"proyectos registrados",
+          "findings-loaded":    "hallazgos cargados",
+          "refresh":            "Actualizar",
+          "not-executed":       "Sin ejecutar",
+          "last-scan":          "Último escaneo",
+          "open-findings":      "Hallazgos abiertos",
+          "convert-pr":         "Convertir a Pull Request",
+          "delete-branch":      "Eliminar Rama",
+          "suggested-remediation": "Remediación sugerida",
+          "vulnerable-code":    "Código vulnerable",
+          "proposed-code":      "Código seguro propuesto",
+          "upload-zip":         "Subir ZIP",
+          "clone-repo":         "Clonar Repo",
+          "project-name":       "Nombre del proyecto",
+          "clone-scan":         "Clonar y Escanear",
+          "create-from-zip":    "Crear desde ZIP",
+          "select-project":     "Selecciona un proyecto",
+          "findings-appear":    "Los hallazgos aparecerán aquí.",
+          "no-findings":        "Sin hallazgos detectados para este proyecto.",
+        },
+        en: {
+          "new-project":        "New Project",
+          "scan-project":       "▶ Scan Project",
+          "projects":           "Projects",
+          "registered-projects":"registered projects",
+          "findings-loaded":    "findings loaded",
+          "refresh":            "Refresh",
+          "not-executed":       "Not executed",
+          "last-scan":          "Last scan",
+          "open-findings":      "Open Findings",
+          "convert-pr":         "Open Pull Request",
+          "delete-branch":      "Delete Branch",
+          "suggested-remediation": "Suggested Remediation",
+          "vulnerable-code":    "Vulnerable Code",
+          "proposed-code":      "Proposed Secure Code",
+          "upload-zip":         "Upload ZIP",
+          "clone-repo":         "Clone Repo",
+          "project-name":       "Project name",
+          "clone-scan":         "Clone and Scan",
+          "create-from-zip":    "Create from ZIP",
+          "select-project":     "Select a project",
+          "findings-appear":    "Findings will appear here.",
+          "no-findings":        "No findings detected for this project.",
+        },
+      };
+      let currentLang = localStorage.getItem("lang") || "es";
+      function t(key) { return i18n[currentLang]?.[key] ?? i18n.es[key] ?? key; }
+      function applyI18n() {
+        document.querySelectorAll("[data-i18n]").forEach((el) => {
+          const v = t(el.dataset.i18n); if (v) el.textContent = v;
+        });
+      }
+
+      // ── DOM refs ───────────────────────────────────────────────────────
+      const runScanButton       = document.getElementById("run-scan");
+      const newProjectButton    = document.getElementById("new-project");
+      const refreshButton       = document.getElementById("refresh-findings");
+      const projectsList        = document.getElementById("projects-list");
+      const projectStatus       = document.getElementById("project-status");
       const currentProjectTitle = document.getElementById("current-project-title");
-      const tableBody = document.getElementById("findings-table-body");
-      const tableStatus = document.getElementById("table-status");
-      const scanStatus = document.getElementById("scan-status");
-      const feedback = document.getElementById("feedback");
-      const highCount = document.getElementById("high-count");
-      const mediumCount = document.getElementById("medium-count");
-      const totalCount = document.getElementById("total-count");
-      const aiStatusBadge = document.getElementById("ai-status-badge");
-      const remediationModal = document.getElementById("remediation-modal");
+      const tableBody           = document.getElementById("findings-table-body");
+      const tableStatus         = document.getElementById("table-status");
+      const scanStatus          = document.getElementById("scan-status");
+      const feedback            = document.getElementById("feedback");
+      const highCount           = document.getElementById("high-count");
+      const mediumCount         = document.getElementById("medium-count");
+      const totalCount          = document.getElementById("total-count");
+      const aiStatusBadge       = document.getElementById("ai-status-badge");
+      const aiBadgeText         = document.getElementById("ai-badge-text");
+      const remediationModal    = document.getElementById("remediation-modal");
       const remediationSubtitle = document.getElementById("remediation-subtitle");
-      const vulnerableCode = document.getElementById("vulnerable-code");
-      const remediationContent = document.getElementById("remediation-content");
+      const vulnerableCode      = document.getElementById("vulnerable-code");
+      const remediationContent  = document.getElementById("remediation-content");
       const closeRemediationButton = document.getElementById("close-remediation");
-      const createPrButton = document.getElementById("btn-pr");
-      const prActionContainer = document.getElementById("pr-action-container");
-      const projectModal = document.getElementById("project-modal");
+      const createPrButton      = document.getElementById("btn-pr");
+      const prActionContainer   = document.getElementById("pr-action-container");
+      const projectModal        = document.getElementById("project-modal");
       const closeProjectModalButton = document.getElementById("close-project-modal");
-      const uploadProjectForm = document.getElementById("upload-project-form");
-      const cloneProjectForm = document.getElementById("clone-project-form");
+      const uploadProjectForm   = document.getElementById("upload-project-form");
+      const cloneProjectForm    = document.getElementById("clone-project-form");
+      const langToggle          = document.getElementById("lang-toggle");
+      const tabZip              = document.getElementById("tab-zip");
+      const tabClone            = document.getElementById("tab-clone");
+      const panelZip            = document.getElementById("panel-zip");
+      const panelClone          = document.getElementById("panel-clone");
+      const reasonModal         = document.getElementById("reason-modal");
+      const reasonModalTitle    = document.getElementById("reason-modal-title");
+      const reasonModalDesc     = document.getElementById("reason-modal-desc");
+      const reasonInput         = document.getElementById("reason-input");
+      const confirmReasonBtn    = document.getElementById("confirm-reason-btn");
+      const closeReasonModalBtn = document.getElementById("close-reason-modal");
+      const auditModal          = document.getElementById("audit-modal");
+      const auditModalMeta      = document.getElementById("audit-modal-meta");
+      const auditEventsList     = document.getElementById("audit-events-list");
+      const closeAuditModalBtn  = document.getElementById("close-audit-modal");
+
+      // ── State ──────────────────────────────────────────────────────────
       let currentRemediationFindingId;
       let currentPrBranch;
       let selectedProject;
-      let projects = [];
-      let aiStatus = { available: false, reason: "Checking AI engine" };
+      let projects      = [];
+      let aiStatus      = { available: false, reason: "Checking AI engine" };
       let currentFindings = [];
       let feedbackTimeout;
-
-      // Reason modal
-      const reasonModal = document.getElementById("reason-modal");
-      const reasonModalTitle = document.getElementById("reason-modal-title");
-      const reasonModalDesc = document.getElementById("reason-modal-desc");
-      const reasonInput = document.getElementById("reason-input");
-      const confirmReasonBtn = document.getElementById("confirm-reason-btn");
-      const closeReasonModalBtn = document.getElementById("close-reason-modal");
       let reasonModalCallback = null;
 
-      // Audit modal
-      const auditModal = document.getElementById("audit-modal");
-      const auditModalMeta = document.getElementById("audit-modal-meta");
-      const auditEventsList = document.getElementById("audit-events-list");
-      const closeAuditModalBtn = document.getElementById("close-audit-modal");
-
+      // ── Helpers ────────────────────────────────────────────────────────
       function showFeedback(message, tone = "info") {
-        const toneClasses = {
-          info: "border-blue-200 bg-blue-50 text-blue-800",
-          success: "border-emerald-200 bg-emerald-50 text-emerald-800",
-          error: "border-red-200 bg-red-50 text-red-800",
-        };
-
-        feedback.className = `rounded-lg border px-5 py-4 text-sm font-medium shadow-sm ${toneClasses[tone] || toneClasses.info}`;
+        feedback.className = { info: "fb-info", success: "fb-success", error: "fb-error" }[tone] || "fb-info";
         feedback.textContent = message;
-        feedback.classList.remove("hidden");
-
+        feedback.style.display = "block";
         window.clearTimeout(feedbackTimeout);
         feedbackTimeout = window.setTimeout(() => {
-          feedback.classList.add("hidden");
+          feedback.style.display = "none";
           feedback.textContent = "";
         }, 10000);
       }
 
       function ensureServerContext() {
         if (window.location.protocol === "file:") {
-          showFeedback("Abre el dashboard desde http://127.0.0.1:8000 para ejecutar escaneos desde la web.", "error");
+          showFeedback("Abre el dashboard desde http://127.0.0.1:8000 para ejecutar escaneos.", "error");
           return false;
         }
-
         return true;
       }
 
-      function severityClasses(severity) {
-        const value = String(severity || "UNKNOWN").toUpperCase();
-
-        if (value === "CRITICAL" || value === "HIGH") {
-          return "bg-red-50 text-red-700 ring-red-200";
-        }
-
-        if (value === "MEDIUM" || value === "LOW") {
-          return "bg-amber-50 text-amber-700 ring-amber-200";
-        }
-
-        return "bg-slate-100 text-slate-700 ring-slate-200";
-      }
-
-      function technologyClasses(technology) {
-        const value = String(technology || "").toLowerCase();
-
-        if (value === "python") {
-          return "bg-blue-50 text-blue-700 ring-blue-200";
-        }
-
-        if (value === "angular" || value === "typescript") {
-          return "bg-red-50 text-red-700 ring-red-200";
-        }
-
-        if (value === "java") {
-          return "bg-amber-50 text-amber-700 ring-amber-200";
-        }
-
-        return "bg-slate-100 text-slate-700 ring-slate-200";
-      }
-
       function escapeHtml(value) {
-        const element = document.createElement("span");
-        element.textContent = value == null ? "" : String(value);
-        return element.innerHTML;
+        const el = document.createElement("span");
+        el.textContent = value == null ? "" : String(value);
+        return el.innerHTML;
       }
 
-      function lifecycleClasses(status) {
+      // ── Severity ───────────────────────────────────────────────────────
+      function sevStyle(severity) {
+        const v = String(severity || "").toUpperCase();
         const map = {
-          open:            "bg-blue-50 text-blue-700 ring-blue-200",
-          regression:      "bg-amber-50 text-amber-700 ring-amber-200",
-          fixed:           "bg-emerald-50 text-emerald-700 ring-emerald-200",
-          accepted_risk:   "bg-orange-50 text-orange-700 ring-orange-200",
-          false_positive:  "bg-slate-100 text-slate-600 ring-slate-200",
+          CRITICAL: "sev-critical", HIGH: "sev-high",
+          MEDIUM:   "sev-medium",  LOW:  "sev-low",
         };
-        return map[String(status).toLowerCase()] || "bg-slate-100 text-slate-600 ring-slate-200";
+        return map[v] || "sev-info";
+      }
+
+      // ── Technology badge color ─────────────────────────────────────────
+      function techStyle(tech) {
+        const v = String(tech || "").toLowerCase();
+        if (v === "python")    return "background:#1a3a5c;color:#58a6ff;border:1px solid #1d4b7a;";
+        if (v === "angular" || v === "typescript") return "background:#3a1a1a;color:#f85149;border:1px solid #5a2323;";
+        if (v === "java")      return "background:#3a2e1a;color:#d29922;border:1px solid #5a471a;";
+        return "background:var(--bg-hover);color:var(--muted);border:1px solid var(--border);";
+      }
+
+      // ── Lifecycle badge ────────────────────────────────────────────────
+      function lifecycleStyle(status) {
+        const map = {
+          open:           "background:rgba(47,129,247,.15);color:#6cb6ff;border:1px solid rgba(47,129,247,.35);",
+          regression:     "background:rgba(248,81,73,.15);color:#ff7b72;border:1px solid rgba(248,81,73,.5);",
+          fixed:          "background:rgba(63,185,80,.15);color:#56d364;border:1px solid rgba(63,185,80,.35);",
+          accepted_risk:  "background:rgba(210,153,34,.1);color:#d29922;border:1px solid rgba(210,153,34,.3);",
+          false_positive: "background:var(--bg-hover);color:var(--muted);border:1px solid var(--border);",
+        };
+        return map[String(status).toLowerCase()] || map.open;
       }
 
       function buildLifecycleBadge(record) {
         const wrap = document.createElement("span");
-        wrap.className = "inline-flex items-center gap-1.5";
+        wrap.style.cssText = "display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap;";
 
         const badge = document.createElement("span");
-        badge.className = `inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${lifecycleClasses(record.status)}`;
+        const isRegression = String(record.status).toLowerCase() === "regression";
+        badge.style.cssText = `display:inline-flex;padding:2px 8px;border-radius:4px;font-size:.72rem;font-weight:600;${lifecycleStyle(record.status)}`;
         badge.textContent = (record.status || "open").replace("_", " ");
+        if (isRegression) badge.classList.add("badge-regression");
         wrap.appendChild(badge);
 
         if (record.regression_count > 0) {
           const rc = document.createElement("span");
-          rc.className = "inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800 ring-1 ring-amber-300";
+          rc.style.cssText = "padding:1px 6px;border-radius:4px;font-size:.7rem;font-weight:700;background:rgba(248,81,73,.15);color:#ff7b72;border:1px solid rgba(248,81,73,.3);";
           rc.title = `Reapareció ${record.regression_count} vez/veces`;
-          rc.textContent = `↩ ${record.regression_count}`;
+          rc.textContent = `↩${record.regression_count}`;
           wrap.appendChild(rc);
         }
 
         if (record.has_remediation) {
           const rem = document.createElement("span");
-          rem.className = "inline-flex rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-200";
+          rem.style.cssText = "padding:1px 6px;border-radius:4px;font-size:.7rem;font-weight:600;background:rgba(47,129,247,.15);color:#6cb6ff;border:1px solid rgba(47,129,247,.3);";
           rem.textContent = "fix";
           wrap.appendChild(rem);
         }
@@ -399,62 +547,56 @@
         return wrap;
       }
 
+      // ── Action buttons ─────────────────────────────────────────────────
       function buildActionButtons(record) {
         const wrap = document.createElement("span");
-        wrap.className = "inline-flex items-center gap-1";
+        wrap.style.cssText = "display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap;";
 
-        const btnCls = "inline-flex min-h-8 items-center justify-center rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors duration-150";
+        const btnBase = "border:none;cursor:pointer;border-radius:4px;padding:4px 8px;font-size:.72rem;font-weight:600;transition:background .12s;";
         const isIgnored = record.status === "accepted_risk" || record.status === "false_positive";
 
         // Auto-Fix
         const fixBtn = document.createElement("button");
         fixBtn.type = "button";
         fixBtn.title = aiStatus.available ? "Generar Parche" : "Ollama no disponible";
-        fixBtn.className = aiStatus.available
-          ? `${btnCls} bg-transparent text-slate-400 hover:bg-indigo-50 hover:text-indigo-600`
-          : `${btnCls} bg-slate-100 text-slate-400 ring-1 ring-slate-200 cursor-not-allowed`;
+        fixBtn.style.cssText = btnBase + (aiStatus.available
+          ? "background:transparent;color:#6cb6ff;"
+          : "background:var(--bg-hover);color:var(--muted);cursor:not-allowed;");
         fixBtn.textContent = "✨ Fix";
         fixBtn.disabled = !aiStatus.available;
         fixBtn.addEventListener("click", () => remediateFinding(record, fixBtn));
         wrap.appendChild(fixBtn);
 
         if (!isIgnored) {
-          // Accept Risk
           const arBtn = document.createElement("button");
           arBtn.type = "button";
-          arBtn.title = "Marcar como riesgo aceptado";
-          arBtn.className = `${btnCls} bg-transparent text-orange-400 hover:bg-orange-50 hover:text-orange-600`;
+          arBtn.title = "Riesgo aceptado";
+          arBtn.style.cssText = btnBase + "background:transparent;color:#d29922;";
           arBtn.textContent = "⚠ Risk";
           arBtn.addEventListener("click", () => openReasonModal(
             "Aceptar riesgo",
-            `Justifica por qué se acepta el riesgo para el finding ${String(record.id).slice(0, 8)}`,
-            async (reason) => {
-              await postLifecycle(record.id, "accept-risk", reason);
-            }
+            `Justifica el riesgo aceptado para el finding ${String(record.id).slice(0, 8)}`,
+            (reason) => postLifecycle(record.id, "accept-risk", reason)
           ));
           wrap.appendChild(arBtn);
 
-          // False Positive
           const fpBtn = document.createElement("button");
           fpBtn.type = "button";
-          fpBtn.title = "Marcar como falso positivo";
-          fpBtn.className = `${btnCls} bg-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600`;
+          fpBtn.title = "Falso positivo";
+          fpBtn.style.cssText = btnBase + "background:transparent;color:var(--muted);";
           fpBtn.textContent = "✗ FP";
           fpBtn.addEventListener("click", () => openReasonModal(
             "Falso positivo",
             `Justifica por qué el finding ${String(record.id).slice(0, 8)} es un falso positivo`,
-            async (reason) => {
-              await postLifecycle(record.id, "false-positive", reason);
-            }
+            (reason) => postLifecycle(record.id, "false-positive", reason)
           ));
           wrap.appendChild(fpBtn);
         }
 
-        // Audit history
         const auditBtn = document.createElement("button");
         auditBtn.type = "button";
         auditBtn.title = "Ver historial";
-        auditBtn.className = `${btnCls} bg-transparent text-slate-300 hover:bg-slate-100 hover:text-slate-600`;
+        auditBtn.style.cssText = btnBase + "background:transparent;color:var(--muted);";
         auditBtn.textContent = "⏱";
         auditBtn.addEventListener("click", () => openAuditModal(record));
         wrap.appendChild(auditBtn);
@@ -462,19 +604,18 @@
         return wrap;
       }
 
+      // ── Reason modal ───────────────────────────────────────────────────
       function openReasonModal(title, description, onConfirm) {
         reasonModalTitle.textContent = title;
         reasonModalDesc.textContent = description;
         reasonInput.value = "";
         reasonModalCallback = onConfirm;
-        reasonModal.classList.remove("hidden");
-        reasonModal.classList.add("flex");
+        reasonModal.style.display = "flex";
         reasonInput.focus();
       }
 
       function closeReasonModal() {
-        reasonModal.classList.add("hidden");
-        reasonModal.classList.remove("flex");
+        reasonModal.style.display = "none";
         reasonModalCallback = null;
       }
 
@@ -485,157 +626,387 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ reason }),
           });
-
           if (!response.ok) {
             const err = await response.json().catch(() => ({}));
             throw new Error(err.detail || `HTTP ${response.status}`);
           }
-
           showFeedback("Estado actualizado correctamente.", "success");
-
-          if (selectedProject) {
-            await loadFindings(selectedProject.id);
-          }
+          if (selectedProject) await loadFindings(selectedProject.id);
         } catch (error) {
           showFeedback(`Error al actualizar estado: ${error.message}`, "error");
         }
       }
 
+      // ── Audit modal ────────────────────────────────────────────────────
       async function openAuditModal(record) {
         auditModalMeta.textContent = `Finding ${String(record.id).slice(0, 8)} — ${record.rule_id || ""}`;
-        auditEventsList.innerHTML = `<p class="text-sm text-slate-500">Cargando historial...</p>`;
-        auditModal.classList.remove("hidden");
-        auditModal.classList.add("flex");
+        auditEventsList.innerHTML = `<p style="color:var(--muted);font-size:.83rem;">Cargando historial…</p>`;
+        auditModal.style.display = "flex";
 
         try {
           const response = await fetch(`/api/findings/${record.id}/audit`);
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const data = await response.json();
-
           auditEventsList.innerHTML = "";
 
           const meta = document.createElement("p");
-          meta.className = "text-sm text-slate-600 mb-3";
-          meta.innerHTML = `Estado actual: <strong>${data.current_status}</strong> — Regresiones: <strong>${data.regression_count}</strong>`;
+          meta.style.cssText = "font-size:.82rem;color:var(--text);margin-bottom:4px;";
+          meta.innerHTML = `Estado: <strong style="color:#6cb6ff;">${data.current_status}</strong> &nbsp;·&nbsp; Regresiones: <strong style="color:#ff7b72;">${data.regression_count}</strong>`;
           auditEventsList.appendChild(meta);
 
           if (data.events.length === 0) {
             const empty = document.createElement("p");
-            empty.className = "text-sm text-slate-400";
+            empty.style.cssText = "font-size:.82rem;color:var(--muted);";
             empty.textContent = "Sin eventos de auditoría registrados.";
             auditEventsList.appendChild(empty);
             return;
           }
 
-          const eventTypeLabel = {
-            regression:     "Regresión detectada",
-            accept_risk:    "Riesgo aceptado",
-            false_positive: "Falso positivo",
-            status_change:  "Cambio de estado",
-          };
+          const label = { regression:"Regresión detectada", accept_risk:"Riesgo aceptado", false_positive:"Falso positivo", status_change:"Cambio de estado" };
 
           data.events.forEach((evt) => {
             const card = document.createElement("div");
-            card.className = "rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm";
+            card.style.cssText = "background:var(--bg-hover);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:.8rem;";
             card.innerHTML = `
-              <div class="flex items-center justify-between gap-2">
-                <span class="font-semibold text-slate-800">${eventTypeLabel[evt.event_type] || evt.event_type}</span>
-                <span class="text-xs text-slate-400">${new Date(evt.created_at).toLocaleString()}</span>
+              <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;">
+                <span style="font-weight:700;color:var(--text);">${label[evt.event_type] || evt.event_type}</span>
+                <span style="color:var(--muted);font-size:.7rem;">${new Date(evt.created_at).toLocaleString()}</span>
               </div>
-              <div class="mt-1 text-slate-600">
-                <span class="font-mono text-xs">${evt.from_status}</span>
-                <span class="mx-1 text-slate-400">→</span>
-                <span class="font-mono text-xs">${evt.to_status}</span>
+              <div style="color:var(--muted);">
+                <code style="font-size:.72rem;">${evt.from_status}</code>
+                <span style="margin:0 4px;"> → </span>
+                <code style="font-size:.72rem;">${evt.to_status}</code>
               </div>
-              ${evt.reason ? `<p class="mt-1 text-slate-500 italic">"${escapeHtml(evt.reason)}"</p>` : ""}
+              ${evt.reason ? `<p style="margin-top:6px;color:var(--muted);font-style:italic;font-size:.78rem;">"${escapeHtml(evt.reason)}"</p>` : ""}
             `;
             auditEventsList.appendChild(card);
           });
         } catch (error) {
-          auditEventsList.innerHTML = `<p class="text-sm text-red-500">Error al cargar historial: ${error.message}</p>`;
+          auditEventsList.innerHTML = `<p style="color:var(--crit);font-size:.83rem;">Error al cargar historial: ${error.message}</p>`;
         }
       }
 
-      function closeAuditModal() {
-        auditModal.classList.add("hidden");
-        auditModal.classList.remove("flex");
-      }
+      function closeAuditModal() { auditModal.style.display = "none"; }
 
+      // ── Project rendering ──────────────────────────────────────────────
       function renderProjects() {
         projectsList.innerHTML = "";
-        projectStatus.textContent = `${projects.length} proyectos registrados`;
+        projectStatus.textContent = `${projects.length} ${t("registered-projects")}`;
 
         if (projects.length === 0) {
           const empty = document.createElement("p");
-          empty.className = "px-5 py-8 text-sm text-slate-500";
+          empty.style.cssText = "padding:32px 20px;font-size:.83rem;color:var(--muted);text-align:center;";
           empty.textContent = "Aún no hay proyectos. Carga un ZIP o clona un repositorio.";
           projectsList.appendChild(empty);
           return;
         }
 
         projects.forEach((project) => {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.className = `block w-full px-5 py-4 text-left transition hover:bg-slate-50 ${
-            selectedProject && selectedProject.id === project.id ? "bg-indigo-50" : "bg-white"
-          }`;
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "proj-btn" + (selectedProject && selectedProject.id === project.id ? " active" : "");
+          const createdAt = project.created_at ? new Date(project.created_at).toLocaleString() : "—";
+          const critCount = project.critical_findings || 0;
+          const totalF   = project.finding_count || 0;
 
-          const createdAt = project.created_at ? new Date(project.created_at).toLocaleString() : "Sin fecha";
-          const projectName = escapeHtml(project.name);
-          const targetPath = escapeHtml(project.target_path);
-          const technology = escapeHtml(project.technology);
-          const sourceType = escapeHtml(String(project.source_type || "").toUpperCase());
-          button.innerHTML = `
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p class="truncate text-sm font-semibold text-slate-950">${projectName}</p>
-                <p class="mt-1 truncate text-xs text-slate-500">${targetPath}</p>
-              </div>
-              <span class="rounded-full bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-200">${project.critical_findings || 0}</span>
+          btn.innerHTML = `
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+              <span style="font-size:.85rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">${escapeHtml(project.name)}</span>
+              ${critCount > 0 ? `<span style="flex-shrink:0;padding:1px 8px;border-radius:9999px;font-size:.7rem;font-weight:700;background:rgba(248,81,73,.15);color:#ff7b72;border:1px solid rgba(248,81,73,.3);">${critCount}</span>` : `<span style="flex-shrink:0;padding:1px 8px;border-radius:9999px;font-size:.7rem;font-weight:600;background:var(--bg-hover);color:var(--muted);border:1px solid var(--border);">${totalF}</span>`}
             </div>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <span class="rounded-full px-2 py-1 text-xs font-semibold ring-1 ${technologyClasses(project.technology)}">${technology}</span>
-              <span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">${sourceType}</span>
+            <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+              <span style="padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:600;${techStyle(project.technology)}">${escapeHtml(project.technology)}</span>
+              <span style="padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:600;background:var(--bg-hover);color:var(--muted);border:1px solid var(--border);">${escapeHtml(String(project.source_type || "").toUpperCase())}</span>
             </div>
-            <p class="mt-2 text-xs text-slate-400">${escapeHtml(createdAt)}</p>
+            <p style="margin-top:6px;font-size:.7rem;color:var(--muted);">${escapeHtml(createdAt)}</p>
           `;
-          button.addEventListener("click", () => selectProject(project));
-          projectsList.appendChild(button);
+          btn.addEventListener("click", () => selectProject(project));
+          projectsList.appendChild(btn);
         });
       }
 
-      async function loadProjects(selectFirst = true) {
-        if (!ensureServerContext()) {
+      // ── AI status badge ────────────────────────────────────────────────
+      function renderAiStatusBadge() {
+        const dot = aiStatusBadge.querySelector(".pulse-green, .pulse-red");
+        if (aiStatus.available) {
+          if (dot) { dot.className = "pulse-green"; }
+          aiStatusBadge.style.background = "rgba(63,185,80,.12)";
+          aiStatusBadge.style.borderColor = "rgba(63,185,80,.35)";
+          aiStatusBadge.style.color = "#56d364";
+          aiBadgeText.textContent = `AI Engine: Online (${aiStatus.model || "local model"})`;
+        } else {
+          if (dot) { dot.className = "pulse-red"; }
+          aiStatusBadge.style.background = "var(--bg-card)";
+          aiStatusBadge.style.borderColor = "var(--border)";
+          aiStatusBadge.style.color = "var(--muted)";
+          aiBadgeText.textContent = "AI Engine: Offline";
+        }
+      }
+
+      // ── Table rendering ────────────────────────────────────────────────
+      function renderMessage(message) {
+        tableBody.innerHTML = "";
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 7;
+        cell.style.cssText = "padding:60px 20px;text-align:center;";
+        cell.innerHTML = `
+          <svg style="margin:0 auto 16px;display:block;opacity:.25;" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/>
+          </svg>
+          <p style="font-size:.9rem;color:var(--muted);">${escapeHtml(message)}</p>
+        `;
+        row.appendChild(cell);
+        tableBody.appendChild(row);
+      }
+
+      function updateCounters(records) {
+        const highTotal = records.filter((r) => ["CRITICAL","HIGH"].includes(String(r.severity||"").toUpperCase())).length;
+        const medTotal  = records.filter((r) => ["MEDIUM","LOW"].includes(String(r.severity||"").toUpperCase())).length;
+        highCount.textContent   = highTotal;
+        mediumCount.textContent = medTotal;
+        totalCount.textContent  = records.length;
+      }
+
+      function renderRows(records) {
+        tableBody.innerHTML = "";
+        updateCounters(records);
+
+        if (records.length === 0) {
+          renderMessage(t("no-findings"));
           return;
         }
 
+        records.forEach((record) => {
+          const row = document.createElement("tr");
+          row.className = "findings-row";
+          row.style.cssText = "border-bottom:1px solid var(--border);";
+
+          const tdStyle = "padding:12px 16px;font-size:.82rem;white-space:nowrap;";
+          const tdTrunc = "padding:12px 16px;font-size:.82rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+
+          const idCell = document.createElement("td");
+          idCell.style.cssText = tdStyle + "color:var(--muted);font-family:monospace;font-size:.75rem;";
+          idCell.textContent = String(record.id).slice(0, 8);
+
+          const sevCell = document.createElement("td");
+          sevCell.style.cssText = tdStyle;
+          const sevBadge = document.createElement("span");
+          sevBadge.className = sevStyle(record.severity);
+          sevBadge.style.cssText = "padding:2px 8px;border-radius:4px;font-size:.72rem;font-weight:600;";
+          sevBadge.textContent = record.severity || "UNKNOWN";
+          sevCell.appendChild(sevBadge);
+
+          const fileCell = document.createElement("td");
+          fileCell.style.cssText = tdTrunc + "color:var(--muted);";
+          fileCell.textContent = record.file_path || "—";
+          fileCell.title = record.file_path || "";
+
+          const ruleCell = document.createElement("td");
+          ruleCell.style.cssText = tdStyle + "color:var(--text);font-weight:600;font-size:.78rem;font-family:monospace;";
+          ruleCell.textContent = record.rule_id || "—";
+
+          const descCell = document.createElement("td");
+          descCell.style.cssText = tdTrunc + "color:var(--muted);white-space:nowrap;";
+          descCell.textContent = record.description || "—";
+          descCell.title = record.description || "";
+
+          const statusCell = document.createElement("td");
+          statusCell.style.cssText = "padding:12px 16px;";
+          statusCell.appendChild(buildLifecycleBadge(record));
+
+          const actionCell = document.createElement("td");
+          actionCell.className = "col-action";
+          actionCell.style.cssText = "padding:10px 14px;box-shadow:-2px 0 6px rgba(0,0,0,.25);";
+          actionCell.appendChild(buildActionButtons(record));
+
+          row.append(idCell, sevCell, fileCell, ruleCell, descCell, statusCell, actionCell);
+          tableBody.appendChild(row);
+        });
+      }
+
+      // ── Remediation modal ──────────────────────────────────────────────
+      function showRemediationModal(record, patch) {
+        currentRemediationFindingId = record.id;
+        currentPrBranch = undefined;
+        remediationSubtitle.textContent = `${record.rule_id || "UNKNOWN"} — ${record.file_path || "Archivo desconocido"}`;
+        vulnerableCode.textContent = record.code_snippet || "No vulnerable code snippet was captured by the scanner.";
+        remediationContent.textContent = patch;
+        resetPullRequestAction(record.has_remediation && selectedProject && selectedProject.source_type === "repo");
+        remediationModal.style.display = "flex";
+      }
+
+      function resetPullRequestAction(hasRemediation = true) {
+        prActionContainer.innerHTML = "";
+        prActionContainer.appendChild(createPrButton);
+        createPrButton.style.display = hasRemediation ? "" : "none";
+        createPrButton.disabled = false;
+        createPrButton.querySelector("[data-i18n='convert-pr']").textContent = t("convert-pr");
+        createPrButton.style.opacity = "1";
+        createPrButton.style.cursor = "pointer";
+      }
+
+      function hideRemediationModal() {
+        remediationModal.style.display = "none";
+        vulnerableCode.textContent = "";
+        remediationContent.textContent = "";
+        currentRemediationFindingId = undefined;
+        currentPrBranch = undefined;
+      }
+
+      function formatApiError(detail, fallback) {
+        if (!detail) return fallback;
+        if (typeof detail === "string") return detail;
+        return detail.message || detail.technical_detail || fallback;
+      }
+
+      // ── PR creation ────────────────────────────────────────────────────
+      async function createPullRequest() {
+        if (!currentRemediationFindingId) {
+          showFeedback("Primero genera una remediación para este hallazgo.", "error");
+          return;
+        }
+        createPrButton.disabled = true;
+        createPrButton.style.opacity = ".5";
+        createPrButton.style.cursor = "not-allowed";
+        createPrButton.querySelector("[data-i18n='convert-pr']").textContent = "⏳ Creando PR…";
+
+        try {
+          const response = await fetch(`/api/remediate/${currentRemediationFindingId}/pr`, { method: "POST" });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(formatApiError(result.detail, "Error al crear el PR."));
+          currentPrBranch = result.branch;
+          renderPullRequestSuccess(result.pr_url);
+          showFeedback("Pull Request creado correctamente.", "success");
+        } catch (error) {
+          createPrButton.disabled = false;
+          createPrButton.style.opacity = "1";
+          createPrButton.style.cursor = "pointer";
+          createPrButton.querySelector("[data-i18n='convert-pr']").textContent = t("convert-pr");
+          const prev = prActionContainer.querySelector("p");
+          if (prev) prev.remove();
+          const errP = document.createElement("p");
+          errP.style.cssText = "color:var(--crit);font-size:.8rem;margin-top:6px;";
+          errP.textContent = error.message;
+          prActionContainer.appendChild(errP);
+        }
+      }
+
+      function renderPullRequestSuccess(prUrl) {
+        prActionContainer.innerHTML = "";
+        const wrap = document.createElement("div");
+        wrap.style.cssText = "display:flex;align-items:center;gap:10px;flex-wrap:wrap;";
+
+        const link = document.createElement("a");
+        link.href = prUrl; link.target = "_blank"; link.rel = "noopener noreferrer";
+        link.style.cssText = "color:var(--accent);font-size:.83rem;text-decoration:underline;";
+        link.textContent = "🔗 Ver Pull Request en GitHub";
+
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.style.cssText = "padding:7px 14px;border-radius:6px;background:#5a1d1d;border:1px solid #8b2020;color:#ff7b72;font-size:.8rem;font-weight:600;cursor:pointer;transition:background .15s;";
+        delBtn.textContent = `🗑 ${t("delete-branch")}`;
+        delBtn.addEventListener("click", () => deletePullRequestBranch(delBtn));
+
+        wrap.append(link, delBtn);
+        prActionContainer.appendChild(wrap);
+      }
+
+      async function deletePullRequestBranch(button) {
+        if (!currentRemediationFindingId) {
+          showFeedback("No hay rama asociada al hallazgo actual.", "error");
+          return;
+        }
+        const confirmed = window.confirm(`¿Eliminar la rama ${currentPrBranch || ""} en GitHub?`);
+        if (!confirmed) return;
+
+        const orig = button.textContent;
+        button.disabled = true;
+        button.textContent = "⏳ Eliminando…";
+
+        try {
+          const response = await fetch(`/api/remediate/${currentRemediationFindingId}/pr`, { method: "DELETE" });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(formatApiError(result.detail, "Error al eliminar la rama."));
+          button.style.display = "none";
+          showFeedback("Rama eliminada de GitHub.", "success");
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = orig;
+          showFeedback(`No se pudo eliminar la rama: ${error.message}`, "error");
+        }
+      }
+
+      // ── Remediate ──────────────────────────────────────────────────────
+      async function remediateFinding(record, button) {
+        if (!aiStatus.available) {
+          showFeedback("AI Engine offline: inicia Ollama para generar remediaciones locales.", "error");
+          return;
+        }
+        const orig = button.textContent;
+        button.disabled = true;
+        button.innerHTML = `<span class="spinner"></span> Pensando…`;
+        showFeedback("El motor de IA está generando una remediación sugerida.", "info");
+
+        try {
+          const response = await fetch(`/api/remediate/${record.id}`, { method: "POST" });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(formatApiError(result.detail, `HTTP ${response.status}`));
+          record.has_remediation = true;
+          showRemediationModal(record, result.patch || "No patch was returned.");
+          showFeedback("Remediación generada y guardada.", "success");
+        } catch (error) {
+          showFeedback(`No se pudo generar la remediación: ${error.message}`, "error");
+        } finally {
+          button.disabled = false;
+          button.textContent = orig;
+        }
+      }
+
+      // ── Load findings ──────────────────────────────────────────────────
+      async function loadFindings() {
+        if (!ensureServerContext()) { renderMessage("El dashboard debe abrirse desde el servidor local."); return; }
+        if (!selectedProject) {
+          currentProjectTitle.textContent = t("select-project");
+          tableStatus.textContent = t("findings-appear");
+          updateCounters([]);
+          renderMessage(t("select-project"));
+          return;
+        }
+        refreshButton.disabled = true;
+        currentProjectTitle.textContent = selectedProject.name;
+        tableStatus.textContent = "Cargando hallazgos…";
+
+        try {
+          const response = await fetch(`/api/projects/${selectedProject.id}/findings`);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const records = await response.json();
+          currentFindings = records;
+          renderRows(records);
+          tableStatus.textContent = `${records.length} ${t("findings-loaded")} · ${selectedProject.technology} · ${selectedProject.source_type}`;
+        } catch (error) {
+          currentFindings = [];
+          updateCounters([]);
+          renderMessage("No se pudieron cargar los hallazgos.");
+          tableStatus.textContent = "Error al cargar hallazgos";
+        } finally {
+          refreshButton.disabled = false;
+        }
+      }
+
+      // ── Load projects ──────────────────────────────────────────────────
+      async function loadProjects(selectFirst = true) {
+        if (!ensureServerContext()) return;
         try {
           const response = await fetch("/api/projects");
-
-          if (!response.ok) {
-            throw new Error(`Request failed with status ${response.status}`);
-          }
-
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
           projects = await response.json();
-
-          if (selectedProject) {
-            selectedProject = projects.find((project) => project.id === selectedProject.id);
-          }
-
-          if (!selectedProject && selectFirst && projects.length > 0) {
-            selectedProject = projects[0];
-          }
-
+          if (selectedProject) selectedProject = projects.find((p) => p.id === selectedProject.id);
+          if (!selectedProject && selectFirst && projects.length > 0) selectedProject = projects[0];
           renderProjects();
-
-          if (selectedProject) {
-            await loadFindings();
-          } else {
-            updateCounters([]);
-            renderMessage("Selecciona o crea un proyecto para ver hallazgos.");
-          }
+          if (selectedProject) await loadFindings();
+          else { updateCounters([]); renderMessage("Selecciona o crea un proyecto para ver hallazgos."); }
         } catch (error) {
-          console.error("Error loading projects:", error);
           projectStatus.textContent = "Error al cargar proyectos";
           showFeedback(`No se pudieron cargar los proyectos: ${error.message}`, "error");
         }
@@ -647,431 +1018,97 @@
         await loadFindings();
       }
 
-      function renderAiStatusBadge() {
-        if (aiStatus.available) {
-          aiStatusBadge.className = "inline-flex min-h-8 items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200";
-          aiStatusBadge.textContent = `● AI Engine: Online (${aiStatus.model || "local model"})`;
-          return;
-        }
-
-        aiStatusBadge.className = "inline-flex min-h-8 items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-300";
-        aiStatusBadge.textContent = "● AI Engine: Offline (Local Remediation Disabled)";
-      }
-
+      // ── Load AI status ─────────────────────────────────────────────────
       async function loadAiStatus() {
-        if (!ensureServerContext()) {
-          return;
-        }
-
+        if (!ensureServerContext()) return;
         try {
           const response = await fetch("/api/ai-status");
-
-          if (!response.ok) {
-            throw new Error(`Request failed with status ${response.status}`);
-          }
-
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
           aiStatus = await response.json();
-        } catch (error) {
-          console.error("Error loading AI status:", error);
+        } catch {
           aiStatus = { available: false, reason: "Ollama service offline" };
         }
-
         renderAiStatusBadge();
-
-        if (currentFindings.length > 0) {
-          renderRows(currentFindings);
-        }
+        if (currentFindings.length > 0) renderRows(currentFindings);
       }
 
-      function renderMessage(message) {
-        tableBody.innerHTML = "";
-
-        const row = document.createElement("tr");
-        const cell = document.createElement("td");
-        cell.colSpan = 7;
-        cell.className = "px-5 py-10 text-center text-sm text-slate-500";
-        cell.textContent = message;
-
-        row.appendChild(cell);
-        tableBody.appendChild(row);
-      }
-
-      function updateCounters(records) {
-        const highTotal = records.filter((record) => {
-          const severity = String(record.severity || "").toUpperCase();
-          return severity === "CRITICAL" || severity === "HIGH";
-        }).length;
-        const mediumTotal = records.filter((record) => {
-          const severity = String(record.severity || "").toUpperCase();
-          return severity === "MEDIUM" || severity === "LOW";
-        }).length;
-
-        highCount.textContent = highTotal;
-        mediumCount.textContent = mediumTotal;
-        totalCount.textContent = records.length;
-      }
-
-      function renderRows(records) {
-        tableBody.innerHTML = "";
-        updateCounters(records);
-
-        if (records.length === 0) {
-          renderMessage("No hay hallazgos registrados para este proyecto.");
-          return;
-        }
-
-        records.forEach((record) => {
-          const row = document.createElement("tr");
-          row.className = "transition-colors duration-150 hover:bg-slate-50";
-
-          const idCell = document.createElement("td");
-          idCell.className = "whitespace-nowrap px-5 py-4 text-sm font-medium text-slate-700";
-          idCell.textContent = String(record.id).slice(0, 8);
-
-          const severityCell = document.createElement("td");
-          severityCell.className = "whitespace-nowrap px-5 py-4 text-sm";
-
-          const severityBadge = document.createElement("span");
-          severityBadge.className = `inline-flex rounded-lg px-2.5 py-1 text-xs font-semibold ring-1 ${severityClasses(record.severity)}`;
-          severityBadge.textContent = record.severity || "UNKNOWN";
-          severityCell.appendChild(severityBadge);
-
-          const fileCell = document.createElement("td");
-          fileCell.className = "max-w-xs truncate px-5 py-4 text-sm text-slate-600";
-          fileCell.textContent = record.file_path || "-";
-          fileCell.title = record.file_path || "";
-
-          const ruleCell = document.createElement("td");
-          ruleCell.className = "whitespace-nowrap px-5 py-4 text-sm font-semibold text-slate-700";
-          ruleCell.textContent = record.rule_id || "-";
-
-          const descriptionCell = document.createElement("td");
-          descriptionCell.className = "max-w-xs truncate px-5 py-4 text-sm text-slate-600";
-          descriptionCell.textContent = record.description || "-";
-          descriptionCell.title = record.description || "";
-
-          const statusCell = document.createElement("td");
-          statusCell.className = "whitespace-nowrap px-5 py-4 text-sm";
-          statusCell.appendChild(buildLifecycleBadge(record));
-
-          const actionCell = document.createElement("td");
-          actionCell.className = "whitespace-nowrap px-5 py-4 text-sm";
-          actionCell.appendChild(buildActionButtons(record));
-
-          row.append(idCell, severityCell, fileCell, ruleCell, descriptionCell, statusCell, actionCell);
-          tableBody.appendChild(row);
-        });
-      }
-
-      function showRemediationModal(record, patch) {
-        currentRemediationFindingId = record.id;
-        currentPrBranch = undefined;
-        remediationSubtitle.textContent = `${record.rule_id || "UNKNOWN"} - ${record.file_path || "Archivo desconocido"}`;
-        vulnerableCode.textContent = record.code_snippet || "No vulnerable code snippet was captured by the scanner.";
-        remediationContent.textContent = patch;
-        resetPullRequestAction(record.has_remediation && selectedProject && selectedProject.source_type === "repo");
-        remediationModal.classList.remove("hidden");
-        remediationModal.classList.add("flex");
-      }
-
-      function resetPullRequestAction(hasRemediation = true) {
-        prActionContainer.innerHTML = "";
-        prActionContainer.appendChild(createPrButton);
-        createPrButton.style.display = hasRemediation ? "" : "none";
-        createPrButton.disabled = false;
-        createPrButton.textContent = "🚀 Convertir a Pull Request";
-        createPrButton.classList.remove("opacity-50", "cursor-not-allowed");
-      }
-
-      function hideRemediationModal() {
-        remediationModal.classList.add("hidden");
-        remediationModal.classList.remove("flex");
-        vulnerableCode.textContent = "";
-        remediationContent.textContent = "";
-        currentRemediationFindingId = undefined;
-        currentPrBranch = undefined;
-      }
-
-      function formatApiError(detail, fallbackMessage) {
-        if (!detail) {
-          return fallbackMessage;
-        }
-
-        if (typeof detail === "string") {
-          return detail;
-        }
-
-        return detail.message || detail.technical_detail || fallbackMessage;
-      }
-
-      async function createPullRequest() {
-        if (!currentRemediationFindingId) {
-          showFeedback("Primero genera una remediación para este hallazgo.", "error");
-          return;
-        }
-
-        createPrButton.disabled = true;
-        createPrButton.textContent = "⏳ Creando PR…";
-        createPrButton.classList.add("opacity-50", "cursor-not-allowed");
-
-        try {
-          const response = await fetch(`/api/remediate/${currentRemediationFindingId}/pr`, { method: "POST" });
-          const result = await response.json().catch(() => ({}));
-
-          if (!response.ok) {
-            throw new Error(formatApiError(result.detail, "Error al crear el PR. Intenta de nuevo."));
-          }
-
-          currentPrBranch = result.branch;
-          renderPullRequestSuccess(result.pr_url);
-          showFeedback("Pull Request creado correctamente.", "success");
-        } catch (error) {
-          console.error("Error creating PR:", error);
-          createPrButton.disabled = false;
-          createPrButton.textContent = "🚀 Convertir a Pull Request";
-          createPrButton.classList.remove("opacity-50", "cursor-not-allowed");
-
-          const existingError = prActionContainer.querySelector("p");
-          if (existingError) {
-            existingError.remove();
-          }
-
-          const errorMessage = document.createElement("p");
-          errorMessage.className = "text-red-400 text-sm mt-1";
-          errorMessage.textContent = error.message || "Error al crear el PR. Intenta de nuevo.";
-          prActionContainer.appendChild(errorMessage);
-        }
-      }
-
-      function renderPullRequestSuccess(prUrl) {
-        prActionContainer.innerHTML = "";
-
-        const actions = document.createElement("div");
-        actions.className = "flex flex-col gap-2 sm:flex-row sm:items-center";
-
-        const link = document.createElement("a");
-        link.href = prUrl;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.className = "text-blue-400 underline hover:text-blue-300";
-        link.textContent = "🔗 Ver Pull Request en GitHub";
-
-        const deleteBranchButton = document.createElement("button");
-        deleteBranchButton.type = "button";
-        deleteBranchButton.className = "inline-flex min-h-10 items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50";
-        deleteBranchButton.textContent = "🗑️ Eliminar Rama";
-        deleteBranchButton.addEventListener("click", () => deletePullRequestBranch(deleteBranchButton));
-
-        actions.append(link, deleteBranchButton);
-        prActionContainer.appendChild(actions);
-      }
-
-      async function deletePullRequestBranch(button) {
-        if (!currentRemediationFindingId) {
-          showFeedback("No hay rama asociada al hallazgo actual.", "error");
-          return;
-        }
-
-        const confirmed = window.confirm(`¿Eliminar la rama ${currentPrBranch || ""} en GitHub?`);
-
-        if (!confirmed) {
-          return;
-        }
-
-        const originalText = button.textContent;
-        button.disabled = true;
-        button.textContent = "⏳ Eliminando…";
-
-        try {
-          const response = await fetch(`/api/remediate/${currentRemediationFindingId}/pr`, { method: "DELETE" });
-          const result = await response.json().catch(() => ({}));
-
-          if (!response.ok) {
-            throw new Error(formatApiError(result.detail, "Error al eliminar la rama. Intenta de nuevo."));
-          }
-
-          button.style.display = "none";
-          showFeedback("Rama eliminada de GitHub con éxito", "success");
-        } catch (error) {
-          console.error("Error deleting branch:", error);
-          button.disabled = false;
-          button.textContent = originalText;
-          showFeedback(`No se pudo eliminar la rama: ${error.message}`, "error");
-        }
-      }
-
-      async function remediateFinding(record, button) {
-        if (!aiStatus.available) {
-          showFeedback("AI Engine offline: inicia Ollama para generar remediaciones locales.", "error");
-          return;
-        }
-
-        const originalText = button.textContent;
-        button.disabled = true;
-        button.textContent = "Pensando...";
-        showFeedback("El motor de IA está generando una remediación sugerida.", "info");
-
-        try {
-          const response = await fetch(`/api/remediate/${record.id}`, { method: "POST" });
-          const result = await response.json().catch(() => ({}));
-
-          if (!response.ok) {
-            throw new Error(formatApiError(result.detail, `Request failed with status ${response.status}`));
-          }
-
-          record.has_remediation = true;
-          showRemediationModal(record, result.patch || "No patch was returned.");
-          showFeedback("Remediación generada y guardada correctamente.", "success");
-        } catch (error) {
-          console.error("Error generating remediation:", error);
-          showFeedback(`No se pudo generar la remediación: ${error.message}`, "error");
-        } finally {
-          button.disabled = false;
-          button.textContent = originalText;
-        }
-      }
-
-      async function loadFindings() {
-        if (!ensureServerContext()) {
-          renderMessage("El dashboard debe abrirse desde el servidor local.");
-          return;
-        }
-
-        if (!selectedProject) {
-          currentProjectTitle.textContent = "Selecciona un proyecto";
-          tableStatus.textContent = "Los hallazgos aparecerán aquí.";
-          updateCounters([]);
-          renderMessage("Selecciona o crea un proyecto para ver hallazgos.");
-          return;
-        }
-
-        refreshButton.disabled = true;
-        currentProjectTitle.textContent = selectedProject.name;
-        tableStatus.textContent = "Cargando hallazgos...";
-
-        try {
-          const response = await fetch(`/api/projects/${selectedProject.id}/findings`);
-
-          if (!response.ok) {
-            throw new Error(`Request failed with status ${response.status}`);
-          }
-
-          const records = await response.json();
-          currentFindings = records;
-          renderRows(records);
-          tableStatus.textContent = `${records.length} hallazgos cargados · ${selectedProject.technology} · ${selectedProject.source_type}`;
-        } catch (error) {
-          console.error("Error loading findings:", error);
-          currentFindings = [];
-          updateCounters([]);
-          renderMessage("No se pudieron cargar los hallazgos.");
-          tableStatus.textContent = "Error al cargar hallazgos";
-        } finally {
-          refreshButton.disabled = false;
-        }
-      }
-
+      // ── Scan ───────────────────────────────────────────────────────────
       async function runScan() {
-        if (!ensureServerContext()) {
-          return;
-        }
-
-        if (!selectedProject) {
-          showFeedback("Selecciona un proyecto antes de escanear.", "error");
-          return;
-        }
+        if (!ensureServerContext()) return;
+        if (!selectedProject) { showFeedback("Selecciona un proyecto antes de escanear.", "error"); return; }
 
         runScanButton.disabled = true;
         refreshButton.disabled = true;
-        runScanButton.textContent = "Escaneando código...";
+        runScanButton.innerHTML = `<span class="spinner"></span> Scanning…`;
         scanStatus.textContent = "En progreso";
-        tableStatus.textContent = "Ejecutando Bandit...";
-        showFeedback("Escaneo en curso. Bandit está analizando el backend y guardando resultados.", "info");
+        tableStatus.textContent = "Ejecutando scanner…";
+        showFeedback("Escaneo en curso. El scanner está analizando el código.", "info");
 
         try {
           const response = await fetch(`/api/projects/${selectedProject.id}/scan`, { method: "POST" });
-
-          if (!response.ok) {
-            throw new Error(`Request failed with status ${response.status}`);
-          }
-
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const result = await response.json();
-          if (!result.success) {
-            throw new Error(result.error || "Scan failed");
-          }
-
+          if (!result.success) throw new Error(result.error || "Scan failed");
           const finishedAt = new Date().toLocaleTimeString();
           scanStatus.textContent = `${result.saved_findings} guardados`;
-          showFeedback(`Escaneo completado a las ${finishedAt}. ${result.saved_findings} hallazgos guardados o actualizados.`, "success");
+          showFeedback(`Escaneo completado a las ${finishedAt}. ${result.saved_findings} hallazgos guardados.`, "success");
           await loadProjects(false);
           await loadFindings();
         } catch (error) {
-          console.error("Error running scan:", error);
           scanStatus.textContent = "Error";
           tableStatus.textContent = "No se pudo ejecutar el escaneo";
           showFeedback(`No se pudo ejecutar el escaneo: ${error.message}`, "error");
         } finally {
           runScanButton.disabled = false;
           refreshButton.disabled = false;
-          runScanButton.textContent = "Escanear Proyecto";
+          runScanButton.innerHTML = `▶ ${t("scan-project").replace("▶ ", "")}`;
+          applyI18n();
         }
       }
 
-      function showProjectModal() {
-        projectModal.classList.remove("hidden");
-        projectModal.classList.add("flex");
+      // ── Project modal ──────────────────────────────────────────────────
+      function setModalTab(tab) {
+        const isZip = tab === "zip";
+        tabZip.className   = "tab-btn " + (isZip ? "tab-active" : "tab-inactive");
+        tabClone.className = "tab-btn " + (isZip ? "tab-inactive" : "tab-active");
+        panelZip.className   = "form-panel " + (isZip ? "visible-panel" : "hidden-panel");
+        panelClone.className = "form-panel " + (isZip ? "hidden-panel" : "visible-panel");
       }
 
-      function hideProjectModal() {
-        projectModal.classList.add("hidden");
-        projectModal.classList.remove("flex");
-      }
+      function showProjectModal() { projectModal.style.display = "flex"; setModalTab("zip"); }
+      function hideProjectModal() { projectModal.style.display = "none"; }
 
+      // ── ZIP upload ─────────────────────────────────────────────────────
       async function uploadZipProject(event) {
         event.preventDefault();
         const fileInput = document.getElementById("zip-file");
-
-        if (!fileInput.files.length) {
-          showFeedback("Selecciona un archivo ZIP para crear el proyecto.", "error");
-          return;
-        }
+        if (!fileInput.files.length) { showFeedback("Selecciona un archivo ZIP.", "error"); return; }
 
         const formData = new FormData();
         formData.append("file", fileInput.files[0]);
         formData.append("name", document.getElementById("zip-name").value);
         formData.append("technology", document.getElementById("zip-technology").value);
 
-        const button = uploadProjectForm.querySelector("button");
-        const originalText = button.textContent;
-        button.disabled = true;
-        button.textContent = "Cargando...";
+        const btn = uploadProjectForm.querySelector("button");
+        const orig = btn.textContent;
+        btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Cargando…`;
 
         try {
-          const response = await fetch("/api/projects/upload-zip", {
-            method: "POST",
-            body: formData,
-          });
+          const response = await fetch("/api/projects/upload-zip", { method: "POST", body: formData });
           const result = await response.json().catch(() => ({}));
-
-          if (!response.ok) {
-            throw new Error(formatApiError(result.detail, "No se pudo cargar el ZIP."));
-          }
-
-          hideProjectModal();
-          uploadProjectForm.reset();
+          if (!response.ok) throw new Error(formatApiError(result.detail, "No se pudo cargar el ZIP."));
+          hideProjectModal(); uploadProjectForm.reset();
           selectedProject = result.project;
           showFeedback("Proyecto ZIP creado y escaneado.", "success");
-          await loadProjects(false);
-          await loadFindings();
+          await loadProjects(false); await loadFindings();
         } catch (error) {
-          console.error("Error uploading ZIP project:", error);
           showFeedback(`No se pudo crear el proyecto: ${error.message}`, "error");
         } finally {
-          button.disabled = false;
-          button.textContent = originalText;
+          btn.disabled = false; btn.textContent = orig;
         }
       }
 
+      // ── Repo clone ─────────────────────────────────────────────────────
       async function cloneRepoProject(event) {
         event.preventDefault();
         const payload = {
@@ -1079,83 +1116,72 @@
           repo_url: document.getElementById("repo-url").value,
           technology: document.getElementById("repo-technology").value,
         };
-
         if (!payload.name.trim() || !payload.repo_url.trim()) {
-          showFeedback("Nombre y URL del repositorio son obligatorios.", "error");
-          return;
+          showFeedback("Nombre y URL del repositorio son obligatorios.", "error"); return;
         }
-
-        const button = cloneProjectForm.querySelector("button");
-        const originalText = button.textContent;
-        button.disabled = true;
-        button.textContent = "Clonando...";
+        const btn = cloneProjectForm.querySelector("button");
+        const orig = btn.textContent;
+        btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Clonando…`;
 
         try {
           const response = await fetch("/api/projects/clone-repo", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
           });
           const result = await response.json().catch(() => ({}));
-
-          if (!response.ok) {
-            throw new Error(formatApiError(result.detail, "No se pudo clonar el repositorio."));
-          }
-
-          hideProjectModal();
-          cloneProjectForm.reset();
+          if (!response.ok) throw new Error(formatApiError(result.detail, "No se pudo clonar el repositorio."));
+          hideProjectModal(); cloneProjectForm.reset();
           selectedProject = result.project;
           showFeedback("Repositorio clonado y escaneado.", "success");
-          await loadProjects(false);
-          await loadFindings();
+          await loadProjects(false); await loadFindings();
         } catch (error) {
-          console.error("Error cloning project:", error);
           showFeedback(`No se pudo crear el proyecto: ${error.message}`, "error");
         } finally {
-          button.disabled = false;
-          button.textContent = originalText;
+          btn.disabled = false; btn.textContent = orig;
         }
       }
 
+      // ── Event listeners ────────────────────────────────────────────────
       runScanButton.addEventListener("click", runScan);
       newProjectButton.addEventListener("click", showProjectModal);
       refreshButton.addEventListener("click", loadFindings);
       createPrButton.addEventListener("click", createPullRequest);
       closeRemediationButton.addEventListener("click", hideRemediationModal);
       closeProjectModalButton.addEventListener("click", hideProjectModal);
+      tabZip.addEventListener("click", () => setModalTab("zip"));
+      tabClone.addEventListener("click", () => setModalTab("clone"));
       uploadProjectForm.addEventListener("submit", uploadZipProject);
       cloneProjectForm.addEventListener("submit", cloneRepoProject);
-      remediationModal.addEventListener("click", (event) => {
-        if (event.target === remediationModal) hideRemediationModal();
-      });
-      projectModal.addEventListener("click", (event) => {
-        if (event.target === projectModal) hideProjectModal();
-      });
 
-      // Reason modal
+      remediationModal.addEventListener("click", (e) => { if (e.target === remediationModal) hideRemediationModal(); });
+      projectModal.addEventListener("click", (e) => { if (e.target === projectModal) hideProjectModal(); });
+
       closeReasonModalBtn.addEventListener("click", closeReasonModal);
-      reasonModal.addEventListener("click", (event) => {
-        if (event.target === reasonModal) closeReasonModal();
-      });
+      reasonModal.addEventListener("click", (e) => { if (e.target === reasonModal) closeReasonModal(); });
       confirmReasonBtn.addEventListener("click", async () => {
         const reason = reasonInput.value.trim();
-        if (!reason) {
-          reasonInput.classList.add("border-red-400");
-          reasonInput.focus();
-          return;
-        }
-        reasonInput.classList.remove("border-red-400");
-        const cb = reasonModalCallback;
-        closeReasonModal();
+        if (!reason) { reasonInput.style.borderColor = "var(--crit)"; reasonInput.focus(); return; }
+        reasonInput.style.borderColor = "";
+        const cb = reasonModalCallback; closeReasonModal();
         if (cb) await cb(reason);
       });
 
-      // Audit modal
       closeAuditModalBtn.addEventListener("click", closeAuditModal);
-      auditModal.addEventListener("click", (event) => {
-        if (event.target === auditModal) closeAuditModal();
+      auditModal.addEventListener("click", (e) => { if (e.target === auditModal) closeAuditModal(); });
+
+      langToggle.addEventListener("click", () => {
+        currentLang = currentLang === "es" ? "en" : "es";
+        localStorage.setItem("lang", currentLang);
+        langToggle.textContent = currentLang === "es" ? "ES | EN" : "EN | ES";
+        langToggle.style.fontWeight = "700";
+        applyI18n();
+        if (currentFindings.length > 0) renderRows(currentFindings);
+        if (selectedProject) { tableStatus.textContent = `${currentFindings.length} ${t("findings-loaded")} · ${selectedProject.technology} · ${selectedProject.source_type}`; }
+        projectStatus.textContent = `${projects.length} ${t("registered-projects")}`;
       });
 
+      // ── Boot ───────────────────────────────────────────────────────────
+      langToggle.textContent = currentLang === "es" ? "ES | EN" : "EN | ES";
+      applyI18n();
       renderAiStatusBadge();
       loadAiStatus();
       loadProjects();
