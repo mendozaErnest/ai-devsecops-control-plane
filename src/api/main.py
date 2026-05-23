@@ -1,14 +1,17 @@
 from pathlib import Path
 import asyncio
+import hashlib
+import hmac
 import ipaddress
 import os
 import shutil
 import subprocess
+import tempfile
 import uuid
 import zipfile
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
@@ -23,8 +26,10 @@ from src.ai_engine.remediator import (
 )
 from src.integrations.github_client import (
     GitHubClientError,
+    create_check_run,
     create_security_pr,
     delete_security_branch,
+    update_check_run,
 )
 from src.scanners.escaneo import run_scan
 
@@ -659,6 +664,126 @@ async def get_project_report(project_id: uuid.UUID):
             "overdue_findings": overdue,
             "overdue_count": len(overdue),
         }
+
+
+def _verify_github_signature(body: bytes, signature_header: str | None, secret: str) -> bool:
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+    expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature_header)
+
+
+def _detect_technology_from_files(changed_files: list[str]) -> str:
+    for f in changed_files:
+        if f.endswith((".ts", ".html", ".component.ts")):
+            return "angular"
+        if f.endswith(".java"):
+            return "java"
+    return "python"
+
+
+@app.post("/api/webhooks/github")
+async def github_webhook(request: Request):
+    body = await request.body()
+    event_type = request.headers.get("X-GitHub-Event", "")
+    signature = request.headers.get("X-Hub-Signature-256")
+
+    webhook_secret = os.getenv("GITHUB_WEBHOOK_SECRET", "")
+    if webhook_secret:
+        if not _verify_github_signature(body, signature, webhook_secret):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    if event_type == "ping":
+        return {"status": "pong"}
+
+    if event_type != "pull_request":
+        return {"status": "ignored", "event": event_type}
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    action = payload.get("action", "")
+    if action not in {"opened", "synchronize", "reopened"}:
+        return {"status": "ignored", "action": action}
+
+    pr = payload.get("pull_request", {})
+    head = pr.get("head", {})
+    head_sha = head.get("sha", "")
+    clone_url = head.get("repo", {}).get("clone_url", "")
+    head_ref = head.get("ref", "")
+    repo_full = payload.get("repository", {}).get("full_name", "")
+
+    if not head_sha or not clone_url or not repo_full:
+        raise HTTPException(status_code=422, detail="Missing required PR fields")
+
+    # Start check run asynchronously
+    asyncio.create_task(_run_pr_scan(repo_full, head_sha, clone_url, head_ref, pr))
+    return {"status": "accepted", "head_sha": head_sha}
+
+
+async def _run_pr_scan(repo: str, head_sha: str, clone_url: str, head_ref: str, pr: dict) -> None:
+    check_run_id: int | None = None
+    try:
+        check_run = await create_check_run(repo, head_sha)
+        check_run_id = check_run.get("id")
+    except Exception:
+        pass  # proceed even if check run creation fails
+
+    try:
+        with tempfile.TemporaryDirectory() as clone_dir:
+            clone_result = await asyncio.to_thread(
+                subprocess.run,
+                ["git", "clone", "--depth=1", "--branch", head_ref, clone_url, clone_dir],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            if clone_result.returncode != 0:
+                raise RuntimeError(f"git clone failed: {clone_result.stderr[:200]}")
+
+            # Detect technology from PR changed files list if available
+            changed_files = [f.get("filename", "") for f in pr.get("changed_files_detail", [])]
+            if not changed_files:
+                py_files = list(Path(clone_dir).rglob("*.py"))
+                java_files = list(Path(clone_dir).rglob("*.java"))
+                ts_files = list(Path(clone_dir).rglob("*.ts"))
+                changed_files = (
+                    [str(f) for f in py_files[:3]]
+                    + [str(f) for f in java_files[:3]]
+                    + [str(f) for f in ts_files[:3]]
+                )
+
+            technology = _detect_technology_from_files(changed_files)
+            result = await run_scan(clone_dir, technology)
+
+        saved = result.get("saved_findings", 0)
+
+        # Count criticals from db
+        with Session(engine) as session:
+            all_findings = session.exec(select(Finding).where(Finding.status == "open")).all()
+            criticals = sum(1 for f in all_findings if str(f.severity or "").upper() == "CRITICAL")
+
+        has_criticals = criticals > 0
+        conclusion = "failure" if has_criticals else "success"
+        summary = (
+            f"Found **{saved}** new findings ({criticals} CRITICAL). "
+            "Merge blocked until critical findings are resolved."
+            if has_criticals
+            else f"Found **{saved}** findings. No critical issues — safe to merge."
+        )
+
+        if check_run_id:
+            await update_check_run(repo, check_run_id, conclusion, summary)
+
+    except Exception as exc:
+        if check_run_id:
+            try:
+                await update_check_run(repo, check_run_id, "failure", f"Scan error: {exc}")
+            except Exception:
+                pass
 
 
 def validate_ipv4(ip: str) -> str:
