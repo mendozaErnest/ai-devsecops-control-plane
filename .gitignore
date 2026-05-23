@@ -9,3 +9,12 @@ dev_database.db
 dev_database.db-shm
 dev_database.db-wal
 code/.git/
+
+# Workspace uploads temporales
+workspace/uploads/
+workspace/tmp/
+workspace/**/*.zip
+workspace/**/*.java
+workspace/**/*.ts
+workspace/**/*.py
+workspace/**/*.js
