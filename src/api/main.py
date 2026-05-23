@@ -610,6 +610,57 @@ async def get_finding_audit(finding_id: uuid.UUID):
         }
 
 
+@app.get("/api/reports/project/{project_id}")
+async def get_project_report(project_id: uuid.UUID):
+    with Session(engine) as session:
+        project = session.get(Project, project_id)
+
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        findings = get_project_findings(session, project.id)
+
+        by_severity: dict[str, int] = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
+        by_status: dict[str, int] = {}
+        by_rule: dict[str, int] = {}
+        overdue: list[dict] = []
+        from datetime import datetime, timezone
+
+        now_utc = datetime.now(timezone.utc)
+
+        for f in findings:
+            sev = str(f.severity or "UNKNOWN").upper()
+            by_severity[sev] = by_severity.get(sev, 0) + 1
+            by_status[f.status] = by_status.get(f.status, 0) + 1
+            by_rule[f.rule_id] = by_rule.get(f.rule_id, 0) + 1
+
+            if f.sla_deadline and f.status not in {"fixed", "accepted_risk", "false_positive"}:
+                deadline_utc = f.sla_deadline.replace(tzinfo=timezone.utc) if f.sla_deadline.tzinfo is None else f.sla_deadline
+                if deadline_utc < now_utc:
+                    overdue.append({
+                        "id": str(f.id),
+                        "rule_id": f.rule_id,
+                        "severity": f.severity,
+                        "file_path": f.file_path,
+                        "sla_deadline": f.sla_deadline.isoformat(),
+                        "days_overdue": (now_utc - deadline_utc).days,
+                    })
+
+        top_rules = sorted(by_rule.items(), key=lambda x: x[1], reverse=True)[:10]
+
+        return {
+            "project_id": str(project_id),
+            "project_name": project.name,
+            "technology": project.technology,
+            "total_findings": len(findings),
+            "by_severity": by_severity,
+            "by_status": by_status,
+            "top_rules": [{"rule_id": r, "count": c} for r, c in top_rules],
+            "overdue_findings": overdue,
+            "overdue_count": len(overdue),
+        }
+
+
 def validate_ipv4(ip: str) -> str:
     try:
         return str(ipaddress.IPv4Address(ip))

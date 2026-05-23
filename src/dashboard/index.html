@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AI DevSecOps Control Plane</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
       :root {
         --bg-base:    #0d1117;
@@ -190,13 +191,21 @@
               <h2 id="current-project-title" style="color:var(--text);font-size:1rem;font-weight:700;" data-i18n="select-project">Selecciona un proyecto</h2>
               <p id="table-status" style="color:var(--muted);font-size:.78rem;margin-top:4px;" data-i18n="findings-appear">Los hallazgos aparecerán aquí.</p>
             </div>
-            <button type="button" id="refresh-findings"
-              style="padding:6px 16px;border-radius:6px;font-size:.8rem;font-weight:600;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);cursor:pointer;transition:background .15s;"
-              data-i18n="refresh">Actualizar</button>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <div style="display:flex;gap:2px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:3px;">
+                <button type="button" id="view-findings-btn"
+                  style="padding:4px 12px;border-radius:4px;font-size:.78rem;font-weight:600;cursor:pointer;border:none;background:var(--accent);color:#fff;transition:background .15s;">Hallazgos</button>
+                <button type="button" id="view-report-btn"
+                  style="padding:4px 12px;border-radius:4px;font-size:.78rem;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--muted);transition:background .15s;">Reporte</button>
+              </div>
+              <button type="button" id="refresh-findings"
+                style="padding:6px 16px;border-radius:6px;font-size:.8rem;font-weight:600;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);cursor:pointer;transition:background .15s;"
+                data-i18n="refresh">Actualizar</button>
+            </div>
           </div>
 
-          <!-- Table -->
-          <div style="overflow-x:auto;">
+          <!-- Table view -->
+          <div id="findings-table-view" style="overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;">
               <thead style="background:var(--bg-card);">
                 <tr>
@@ -212,6 +221,41 @@
               </thead>
               <tbody id="findings-table-body" style="border-top:1px solid var(--border);"></tbody>
             </table>
+          </div>
+
+          <!-- Report view -->
+          <div id="findings-report-view" style="display:none;padding:24px;min-height:300px;">
+            <div id="report-loading" style="text-align:center;padding:48px;color:var(--muted);font-size:.88rem;">Selecciona un proyecto para ver el reporte.</div>
+            <div id="report-content" style="display:none;">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:16px;">
+                  <p style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">Total Hallazgos</p>
+                  <p id="report-total" style="font-size:1.8rem;font-weight:700;color:var(--text);">—</p>
+                </div>
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:16px;">
+                  <p style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">Crítico / Alto</p>
+                  <p id="report-crit-high" style="font-size:1.8rem;font-weight:700;color:var(--crit);">—</p>
+                </div>
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:16px;">
+                  <p style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">Vencidos SLA</p>
+                  <p id="report-overdue" style="font-size:1.8rem;font-weight:700;color:var(--high);">—</p>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:20px;">
+                  <p style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:16px;">Hallazgos por Severidad</p>
+                  <canvas id="chart-severity" style="max-height:220px;"></canvas>
+                </div>
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:20px;">
+                  <p style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:16px;">Hallazgos por Estado</p>
+                  <canvas id="chart-status" style="max-height:220px;"></canvas>
+                </div>
+              </div>
+              <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:20px;">
+                <p style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:16px;">Top Reglas</p>
+                <canvas id="chart-rules" style="max-height:200px;"></canvas>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -1047,6 +1091,7 @@
         selectedProject = project;
         renderProjects();
         await loadFindings();
+        if (activeView === "report") loadReport(project.id);
       }
 
       // ── Load AI status ─────────────────────────────────────────────────
@@ -1198,6 +1243,113 @@
 
       closeAuditModalBtn.addEventListener("click", closeAuditModal);
       auditModal.addEventListener("click", (e) => { if (e.target === auditModal) closeAuditModal(); });
+
+      // ── Report view ────────────────────────────────────────────────────
+      const viewFindingsBtn    = document.getElementById("view-findings-btn");
+      const viewReportBtn      = document.getElementById("view-report-btn");
+      const findingsTableView  = document.getElementById("findings-table-view");
+      const findingsReportView = document.getElementById("findings-report-view");
+      const reportLoading      = document.getElementById("report-loading");
+      const reportContent      = document.getElementById("report-content");
+      let activeView = "findings";
+      let chartSeverity = null, chartStatus = null, chartRules = null;
+
+      function setView(view) {
+        activeView = view;
+        if (view === "findings") {
+          findingsTableView.style.display = "";
+          findingsReportView.style.display = "none";
+          viewFindingsBtn.style.background = "var(--accent)";
+          viewFindingsBtn.style.color = "#fff";
+          viewReportBtn.style.background = "transparent";
+          viewReportBtn.style.color = "var(--muted)";
+        } else {
+          findingsTableView.style.display = "none";
+          findingsReportView.style.display = "";
+          viewFindingsBtn.style.background = "transparent";
+          viewFindingsBtn.style.color = "var(--muted)";
+          viewReportBtn.style.background = "var(--accent)";
+          viewReportBtn.style.color = "#fff";
+          if (selectedProject) loadReport(selectedProject.id);
+        }
+      }
+
+      async function loadReport(projectId) {
+        reportLoading.style.display = "";
+        reportContent.style.display = "none";
+        reportLoading.textContent = "Cargando reporte…";
+        try {
+          const res = await fetch(`/api/reports/project/${projectId}`);
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          renderReport(data);
+        } catch (e) {
+          reportLoading.textContent = `Error cargando reporte: ${e.message}`;
+        }
+      }
+
+      function renderReport(data) {
+        reportLoading.style.display = "none";
+        reportContent.style.display = "";
+        document.getElementById("report-total").textContent = data.total_findings;
+        document.getElementById("report-crit-high").textContent =
+          (data.by_severity["CRITICAL"] || 0) + (data.by_severity["HIGH"] || 0);
+        document.getElementById("report-overdue").textContent = data.overdue_count || 0;
+
+        const chartDefaults = {
+          responsive: true,
+          plugins: { legend: { labels: { color: "#8b949e", font: { size: 11 } } } },
+          scales: {
+            x: { ticks: { color: "#8b949e" }, grid: { color: "#30363d" } },
+            y: { ticks: { color: "#8b949e" }, grid: { color: "#30363d" } },
+          },
+        };
+
+        if (chartSeverity) chartSeverity.destroy();
+        chartSeverity = new Chart(document.getElementById("chart-severity"), {
+          type: "bar",
+          data: {
+            labels: ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+            datasets: [{
+              data: ["CRITICAL","HIGH","MEDIUM","LOW"].map(s => data.by_severity[s] || 0),
+              backgroundColor: ["#f85149","#e3693e","#d29922","#58a6ff"],
+              borderRadius: 4,
+            }],
+          },
+          options: { ...chartDefaults, plugins: { ...chartDefaults.plugins, legend: { display: false } } },
+        });
+
+        const statusLabels = Object.keys(data.by_status);
+        const statusColors = statusLabels.map(s => ({
+          open:"#2f81f7", fixed:"#3fb950", regression:"#f85149",
+          accepted_risk:"#8b949e", false_positive:"#8b949e",
+        }[s] || "#58a6ff"));
+        if (chartStatus) chartStatus.destroy();
+        chartStatus = new Chart(document.getElementById("chart-status"), {
+          type: "doughnut",
+          data: {
+            labels: statusLabels,
+            datasets: [{ data: statusLabels.map(s => data.by_status[s]), backgroundColor: statusColors, borderWidth: 0 }],
+          },
+          options: { responsive: true, plugins: { legend: { labels: { color: "#8b949e", font: { size: 11 } } } } },
+        });
+
+        if (chartRules) chartRules.destroy();
+        chartRules = new Chart(document.getElementById("chart-rules"), {
+          type: "bar",
+          data: {
+            labels: data.top_rules.map(r => r.rule_id),
+            datasets: [{ data: data.top_rules.map(r => r.count), backgroundColor: "#2f81f7", borderRadius: 4 }],
+          },
+          options: {
+            indexAxis: "y", ...chartDefaults,
+            plugins: { ...chartDefaults.plugins, legend: { display: false } },
+          },
+        });
+      }
+
+      viewFindingsBtn.addEventListener("click", () => setView("findings"));
+      viewReportBtn.addEventListener("click", () => setView("report"));
 
       langToggle.addEventListener("click", () => {
         currentLang = currentLang === "es" ? "en" : "es";
