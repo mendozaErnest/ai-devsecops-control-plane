@@ -1,0 +1,46 @@
+# AI DevSecOps Control Plane — Roadmap
+
+## Completo ✅
+
+### Phase 1 — Core Platform
+- [x] FastAPI backend + SQLModel + SQLite
+- [x] Bandit adapter (Python SAST)
+- [x] Semgrep adapter (Python / Angular / Java SAST)
+- [x] pip-audit adapter (Python SCA)
+- [x] OWASP Dependency Check adapter (Java SCA)
+- [x] ZIP upload + Git clone project onboarding
+- [x] ScanProfile config layer (sast_tools, dast_enabled, quality_enabled)
+- [x] ScanOrchestrator with ThreadPoolExecutor
+- [x] 2-step project wizard in dashboard
+- [x] Finding lifecycle: open / fixed / regression / accepted_risk / false_positive
+- [x] Audit trail (FindingAuditEvent)
+- [x] SLA deadlines: CRITICAL=3d, HIGH=7d, MEDIUM=30d, LOW=90d
+- [x] Remediation via Ollama (local LLM)
+- [x] GitHub App integration: JWT RS256, branch, PR creation
+- [x] Semantic patching guardrails: Python AST, Angular/Java brace-counting
+- [x] GitHub Actions CI workflow (SAST + SCA on PR and push)
+- [x] GitHub Webhook: PR event → Check Run
+- [x] Dashboard: Chart.js report (by_severity, by_status, top_rules)
+
+### Phase 2 — PR Reliability + UX
+- [x] `normalize_file_path_for_github()`: strips workspace/UUID/repo prefix → prevents PR 404
+- [x] Remediation modal: GitHub-style diff view (red removed, green added)
+- [x] Modal header: rule_id badge + short relative path
+- [x] Strip backtick fences before rendering proposed code
+- [x] `tests/test_github_path.py` (4 tests — 46 total)
+
+---
+
+## Pendiente
+
+### Bug crítico
+- [ ] `orchestrator._run_sast`: instanciar adapters directamente sin `os.environ["SCANNER_ENGINE"]`
+- [ ] `CombinedScannerAdapter.tool_name`: concatenar nombres de todos los hijos
+
+### Phase 3 — Quality + DAST
+- [ ] DAST adapter real (OWASP ZAP)
+- [ ] Quality adapter (SonarQube Community / Pylint / ESLint)
+- [ ] Post-patch validation: `tsc --noEmit` (Angular), `javac`/Maven (Java)
+- [ ] Diff view with LCS for line-level precision (currently shows all-old then all-new)
+- [ ] Multi-finding PR (batch remediation in one branch)
+- [ ] Webhook: block merge on open critical findings

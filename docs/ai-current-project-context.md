@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-23 (Phase 2 parcial — bug critico pendiente)
+Ultima actualizacion: 2026-05-23 (Phase 2 — PR 404 fix + UX diff view)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -283,7 +283,17 @@ No usar os.environ para pasar sast_tools al adapter.
 
 ## Guardrails De Parches (github_client.py)
 
-Python:
+### normalize_file_path_for_github(file_path) ✅
+
+Convierte rutas absolutas del workspace local en rutas relativas para la GitHub API.
+- `/…/UUID/repo/src/api/main.py`   → `src/api/main.py`   (proyectos clonados)
+- `/…/UUID/source/src/api/main.py` → `src/api/main.py`   (proyectos ZIP)
+- `/…/workspace/uploads/UUID/X/…`  → parte relativa via split en 3 segmentos
+- `src/api/main.py` ya relativo    → sin cambio, sin warning
+- `/etc/passwd` sin patron         → devuelve original + WARNING en log
+Llamada en `create_security_pr()` justo al extraer `file_path` de `finding_details`.
+
+### Python:
 - extract_python_code_block(): extrae bloque python fenced y valida con ast.parse.
 - should_replace_full_file(): bloquea reemplazo completo si original > 100 lineas y patch < 30.
 - find_enclosing_function_range(): AST para encontrar funcion que contiene la linea vulnerable.
@@ -322,6 +332,9 @@ src/dashboard/index.html capacidades actuales:
 - Panel Custom con checkboxes DAST/Quality (disabled, badge Proximamente).
 - Tabla de hallazgos con columna STATUS.
 - Auto-Fix → modal de remediacion → PR button.
+  - Header con badge rule_id + path relativo corto (shortPath()).
+  - Vista diff estilo GitHub: lineas − en rojo (#3d1a1a), lineas + en verde (#1a3d1a), con numeros de linea.
+  - Codigo propuesto se limpia de backtick fences antes de mostrar (cleanCodeFences()).
 - Tab Reportes con graficas Chart.js (by_severity, by_status, overdue).
 - Indicador AI Engine Online/Offline.
 
@@ -332,12 +345,13 @@ src/dashboard/index.html capacidades actuales:
 ```text
 tests/test_angular_prompt.py      (4 tests)
 tests/test_finding_upsert.py      (6 tests)
+tests/test_github_path.py         (4 tests)  ← nuevo
 tests/test_odc_adapter.py         (5 tests)
 tests/test_pip_audit_adapter.py   (5 tests)
 tests/test_scan_profile.py        (7 tests)
 tests/test_semantic_patching.py   (11 tests)
 tests/test_semgrep_adapter.py     (4 tests)
-Total: 42 passed
+Total: 46 passed
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -370,26 +384,25 @@ Reglas permanentes:
 3. DAST y Quality runners son placeholders — retornan [].
 4. workspace/ puede contener uploads temporales; no versionar.
 5. ensure_sqlite_schema() es SQLite-only; desactivar para PostgreSQL.
+6. La vista diff usa una aproximacion simple (todas las lineas old − luego new +) en vez de LCS; es honesto visualmente pero no es un diff line-by-line exacto.
 
 ---
 
 ## Proximos Pasos Recomendados
 
-Inmediato (esta sesion):
+Inmediato (proxima sesion):
 1. FIX BUG: orchestrator._run_sast instancia adapters directamente sin os.environ.
 2. FIX: CombinedScannerAdapter.tool_name concatena nombres de todos los hijos.
 
-Phase 2 pendiente (ver ROADMAP.md):
-3. Finding lifecycle: estado regression, accepted_risk con audit trail, historial.
-4. SLA tracking por severidad con badge en dashboard.
-5. Reportes por equipo/proyecto con Chart.js.
-6. Webhook PR + Check Run + block merge.
-7. GitHub Actions workflow reutilizable.
+Phase 2 ya implementado ✅:
+- normalize_file_path_for_github(): rutas absolutas workspace→relativas para GitHub API.
+- Modal de remediacion: badge rule_id + path relativo, diff view rojo/verde, limpieza de backticks.
 
 Phase 3:
-8. DAST adapter real (OWASP ZAP).
-9. Quality adapter (SonarQube Community o Pylint/ESLint).
-10. Validacion post-patch: tsc --noEmit (Angular), javac/Maven (Java).
+3. DAST adapter real (OWASP ZAP).
+4. Quality adapter (SonarQube Community o Pylint/ESLint).
+5. Validacion post-patch: tsc --noEmit (Angular), javac/Maven (Java).
+6. Diff view con LCS real para mostrar lineas cambiadas (no solo old vs new completo).
 
 ---
 

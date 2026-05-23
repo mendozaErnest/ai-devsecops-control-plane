@@ -1,6 +1,7 @@
 import ast
 import base64
 import binascii
+import logging
 import os
 import re
 import textwrap
@@ -15,6 +16,8 @@ import jwt
 GITHUB_API_URL = "https://api.github.com"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GITHUB_TIMEOUT_SECONDS = 45
+
+_log = logging.getLogger(__name__)
 
 
 class GitHubClientError(RuntimeError):
@@ -879,6 +882,31 @@ def encode_content(content: str) -> str:
     return base64.b64encode(content.encode("utf-8")).decode("utf-8")
 
 
+def normalize_file_path_for_github(file_path: str) -> str:
+    # Pattern 1: cloned repos — everything after /repo/
+    if "/repo/" in file_path:
+        return file_path.split("/repo/", 1)[1]
+
+    # Pattern 2: ZIP uploads — everything after /source/
+    if "/source/" in file_path:
+        return file_path.split("/source/", 1)[1]
+
+    # Pattern 3: workspace/uploads/ without a recognised type segment
+    if "workspace/uploads/" in file_path:
+        after_uploads = file_path.split("workspace/uploads/", 1)[1]
+        segments = after_uploads.split("/", 2)
+        if len(segments) >= 3:
+            return segments[2]
+
+    # Already relative — return unchanged without a warning
+    if not file_path.startswith("/"):
+        return file_path
+
+    # Absolute path we couldn't normalise — warn and return unchanged
+    _log.warning("normalize_file_path_for_github: could not extract relative path from %r", file_path)
+    return file_path
+
+
 def line_count(content: str) -> int:
     return len(content.splitlines())
 
@@ -1272,7 +1300,7 @@ async def create_security_pr(finding_details: dict, remediation_text: str) -> di
     finding_id = str(finding_details.get("id", "unknown"))
     branch_name = f"security-fix-{finding_id}"
     rule_id = finding_details.get("rule_id", "UNKNOWN")
-    file_path = finding_details.get("file_path", "")
+    file_path = normalize_file_path_for_github(finding_details.get("file_path", ""))
     technology = normalize_patch_technology(finding_details.get("technology"))
     patch_content = (
         extract_python_code_block(remediation_text)
