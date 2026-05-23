@@ -1,16 +1,31 @@
 from pathlib import Path
+import asyncio
 import ipaddress
+import os
+import shutil
 import subprocess
 import uuid
+import zipfile
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from .database import create_db_and_tables, engine
-from .models import Finding, Remediation
-from src.ai_engine.remediator import OLLAMA_MODEL, build_prompt, generate_patch
-from src.integrations.github_client import GitHubClientError, create_security_pr
+from .models import Finding, Project, Remediation, Scan
+from src.ai_engine.remediator import (
+    OLLAMA_MODEL,
+    build_prompt,
+    check_ollama_status,
+    generate_patch,
+)
+from src.integrations.github_client import (
+    GitHubClientError,
+    create_security_pr,
+    delete_security_branch,
+)
 from src.scanners.escaneo import run_scan
 
 
@@ -18,11 +33,24 @@ app = FastAPI()
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DASHBOARD_INDEX = PROJECT_ROOT / "src" / "dashboard" / "index.html"
+WORKSPACE_ROOT = PROJECT_ROOT / "workspace" / "uploads"
+
+
+class ScanRequest(BaseModel):
+    target_path: str
+    technology: str
+
+
+class CloneRepoRequest(BaseModel):
+    name: str
+    repo_url: str
+    technology: str
 
 
 @app.on_event("startup")
 def on_startup():
     create_db_and_tables()
+    WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 @app.get("/")
@@ -49,31 +77,397 @@ async def get_findings():
         ]
 
 
+def get_allowed_scan_roots() -> list[Path]:
+    raw_roots = os.getenv("SCAN_ALLOWED_ROOTS")
+
+    if not raw_roots:
+        return [PROJECT_ROOT.resolve(), WORKSPACE_ROOT.resolve()]
+
+    roots = [
+        Path(raw_root).expanduser().resolve()
+        for raw_root in raw_roots.split(os.pathsep)
+        if raw_root.strip()
+    ]
+    workspace = WORKSPACE_ROOT.resolve()
+
+    if workspace not in roots:
+        roots.append(workspace)
+
+    return roots
+
+
+def validate_scan_target(target_path: str) -> str:
+    if not target_path.strip():
+        raise HTTPException(status_code=400, detail="target_path is required")
+
+    expanded_path = Path(target_path).expanduser()
+
+    if not os.path.exists(expanded_path):
+        raise HTTPException(status_code=404, detail="target_path does not exist")
+
+    resolved_path = expanded_path.resolve()
+    allowed_roots = get_allowed_scan_roots()
+
+    if not any(resolved_path == root or resolved_path.is_relative_to(root) for root in allowed_roots):
+        raise HTTPException(
+            status_code=403,
+            detail="target_path is outside the allowed scan roots",
+        )
+
+    return str(resolved_path)
+
+
+def normalize_technology(technology: str) -> str:
+    normalized = technology.strip().lower()
+
+    if normalized not in {"python", "angular", "typescript", "java"}:
+        raise HTTPException(status_code=400, detail="Unsupported technology value")
+
+    return normalized
+
+
+def project_to_response(project: Project, findings: list[Finding] | None = None) -> dict:
+    findings = findings or []
+    critical_total = sum(
+        1
+        for finding in findings
+        if str(finding.severity or "").upper() in {"CRITICAL", "HIGH"}
+    )
+
+    return {
+        **project.model_dump(mode="json"),
+        "critical_findings": critical_total,
+        "finding_count": len(findings),
+    }
+
+
+def get_project_findings(session: Session, project_id: uuid.UUID) -> list[Finding]:
+    return session.exec(
+        select(Finding)
+        .join(Scan)
+        .where(Scan.project_id == project_id)
+    ).all()
+
+
+def get_finding_technology(session: Session, finding: Finding) -> str:
+    scan = session.get(Scan, finding.scan_id)
+
+    if not scan or not scan.project_id:
+        return "python"
+
+    project = session.get(Project, scan.project_id)
+
+    if not project:
+        return "python"
+
+    technology = project.technology.strip().lower()
+    return "angular" if technology == "typescript" else technology
+
+
+def build_finding_details(session: Session, finding: Finding) -> dict:
+    return {
+        "id": str(finding.id),
+        "rule_id": finding.rule_id,
+        "title": finding.title,
+        "description": finding.description,
+        "severity": finding.severity,
+        "confidence": finding.confidence,
+        "file_path": finding.file_path,
+        "line_start": finding.line_start,
+        "line_end": finding.line_end,
+        "code_snippet": finding.code_snippet,
+        "technology": get_finding_technology(session, finding),
+    }
+
+
+def safe_project_name(name: str | None, fallback: str) -> str:
+    raw_name = (name or fallback).strip() or fallback
+    safe_chars = [
+        character if character.isalnum() or character in ("-", "_", ".") else "-"
+        for character in raw_name
+    ]
+    return "".join(safe_chars).strip("-")[:80] or fallback
+
+
+def ensure_workspace_project_dir(project_id: uuid.UUID) -> Path:
+    project_dir = WORKSPACE_ROOT / str(project_id)
+    project_dir.mkdir(parents=True, exist_ok=False)
+    return project_dir
+
+
+def extract_zip_safely(zip_path: Path, destination: Path) -> None:
+    destination = destination.resolve()
+
+    with zipfile.ZipFile(zip_path) as archive:
+        for member in archive.infolist():
+            member_path = Path(member.filename)
+
+            if member_path.is_absolute() or ".." in member_path.parts:
+                raise HTTPException(status_code=400, detail="Unsafe path detected inside ZIP archive")
+
+            target_path = (destination / member.filename).resolve()
+
+            if not (target_path == destination or target_path.is_relative_to(destination)):
+                raise HTTPException(status_code=400, detail="Unsafe path detected inside ZIP archive")
+
+            if member.is_dir():
+                target_path.mkdir(parents=True, exist_ok=True)
+                continue
+
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with archive.open(member) as source, target_path.open("wb") as target:
+                shutil.copyfileobj(source, target)
+
+
+def create_project_record(
+    name: str,
+    source_type: str,
+    target_path: Path,
+    technology: str,
+    project_id: uuid.UUID | None = None,
+) -> Project:
+    with Session(engine) as session:
+        project = Project(
+            id=project_id or uuid.uuid4(),
+            name=name,
+            source_type=source_type,
+            target_path=str(target_path.resolve()),
+            technology=technology,
+        )
+        session.add(project)
+        session.commit()
+        session.refresh(project)
+        return project
+
+
+async def scan_project(project: Project) -> dict:
+    return await run_scan(
+        project.target_path,
+        project.technology,
+        project.id,
+    )
+
+
+@app.get("/api/projects")
+async def list_projects():
+    with Session(engine) as session:
+        projects = session.exec(select(Project).order_by(Project.created_at.desc())).all()
+
+        return [
+            project_to_response(project, get_project_findings(session, project.id))
+            for project in projects
+        ]
+
+
+@app.get("/api/projects/{project_id}")
+async def get_project(project_id: uuid.UUID):
+    with Session(engine) as session:
+        project = session.get(Project, project_id)
+
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        return project_to_response(project, get_project_findings(session, project.id))
+
+
+@app.get("/api/projects/{project_id}/findings")
+async def get_project_findings_endpoint(project_id: uuid.UUID):
+    with Session(engine) as session:
+        project = session.get(Project, project_id)
+
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        findings = get_project_findings(session, project.id)
+        remediations = session.exec(select(Remediation)).all()
+        remediated_finding_ids = {remediation.finding_id for remediation in remediations}
+
+        return [
+            {
+                **finding.model_dump(mode="json"),
+                "has_remediation": finding.id in remediated_finding_ids,
+                "remediation_status": "Parche listo"
+                if finding.id in remediated_finding_ids
+                else "Sin parche",
+                "project_source_type": project.source_type,
+            }
+            for finding in findings
+        ]
+
+
+@app.post("/api/projects/{project_id}/scan")
+async def scan_project_endpoint(project_id: uuid.UUID):
+    with Session(engine) as session:
+        project = session.get(Project, project_id)
+
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        target_path = validate_scan_target(project.target_path)
+        project.target_path = target_path
+        session.add(project)
+        session.commit()
+        session.refresh(project)
+
+    return await scan_project(project)
+
+
+@app.post("/api/projects/upload-zip")
+async def upload_zip_project(
+    file: UploadFile = File(...),
+    technology: str = Form("python"),
+    name: str | None = Form(None),
+):
+    technology = normalize_technology(technology)
+    filename = file.filename or "uploaded-project.zip"
+
+    if not filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Only .zip uploads are supported")
+
+    project_id = uuid.uuid4()
+    project_dir = ensure_workspace_project_dir(project_id)
+    archive_path = project_dir / "source.zip"
+    extract_dir = project_dir / "source"
+
+    try:
+        with archive_path.open("wb") as target:
+            shutil.copyfileobj(file.file, target)
+
+        extract_dir.mkdir(parents=True, exist_ok=False)
+        await asyncio.to_thread(extract_zip_safely, archive_path, extract_dir)
+
+        project = create_project_record(
+            safe_project_name(name, Path(filename).stem),
+            "zip",
+            extract_dir,
+            technology,
+            project_id,
+        )
+        scan_result = await scan_project(project)
+    except zipfile.BadZipFile as exc:
+        shutil.rmtree(project_dir, ignore_errors=True)
+        raise HTTPException(status_code=400, detail="Uploaded ZIP archive is corrupt") from exc
+    except OSError as exc:
+        shutil.rmtree(project_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=f"Could not process uploaded ZIP: {exc}") from exc
+    except HTTPException:
+        shutil.rmtree(project_dir, ignore_errors=True)
+        raise
+    except Exception:
+        shutil.rmtree(project_dir, ignore_errors=True)
+        raise
+    finally:
+        await file.close()
+
+    return {
+        "project": project_to_response(project),
+        "scan": scan_result,
+    }
+
+
+def clone_repository(repo_url: str, destination: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", "clone", "--depth", "1", repo_url, str(destination)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=180,
+    )
+
+
+def validate_repo_url(repo_url: str) -> str:
+    value = repo_url.strip()
+
+    if value.startswith("git@"):
+        return value
+
+    parsed = urlparse(value)
+
+    if parsed.scheme in {"https", "http", "ssh", "git"} and parsed.netloc:
+        return value
+
+    raise HTTPException(status_code=400, detail="repo_url must be an HTTP(S), SSH, or git repository URL")
+
+
+@app.post("/api/projects/clone-repo")
+async def clone_repo_project(request: CloneRepoRequest):
+    technology = normalize_technology(request.technology)
+    repo_url = validate_repo_url(request.repo_url)
+    project_id = uuid.uuid4()
+    project_dir = ensure_workspace_project_dir(project_id)
+    clone_dir = project_dir / "repo"
+
+    try:
+        result = await asyncio.to_thread(clone_repository, repo_url, clone_dir)
+
+        if result.returncode != 0:
+            raise HTTPException(
+                status_code=502,
+                detail=result.stderr.strip() or "git clone failed",
+            )
+
+        project = create_project_record(
+            safe_project_name(request.name, "cloned-repository"),
+            "repo",
+            clone_dir,
+            technology,
+            project_id,
+        )
+        scan_result = await scan_project(project)
+    except Exception:
+        shutil.rmtree(project_dir, ignore_errors=True)
+        raise
+
+    return {
+        "project": project_to_response(project),
+        "scan": scan_result,
+    }
+
+
 @app.post("/api/scan")
-async def scan_code():
-    return await run_scan()
+async def scan_code(request: ScanRequest | None = None):
+    if request is None:
+        request = ScanRequest(
+            target_path=str(PROJECT_ROOT / "src"),
+            technology="python",
+        )
+
+    technology = request.technology.strip().lower()
+
+    if technology not in {"python", "angular", "typescript", "java"}:
+        raise HTTPException(status_code=400, detail="Unsupported technology value")
+
+    target_path = validate_scan_target(request.target_path)
+    return await run_scan(target_path, technology)
+
+
+@app.get("/api/ai-status")
+async def ai_status():
+    return await check_ollama_status()
 
 
 @app.post("/api/remediate/{finding_id}")
 async def remediate_finding(finding_id: uuid.UUID):
+    status = await check_ollama_status()
+
+    if not status.get("available"):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "local_ai_unavailable",
+                "message": "AI Engine is offline. Local remediation is disabled until Ollama is available.",
+                "reason": status.get("reason", "Ollama service offline"),
+            },
+        )
+
     with Session(engine) as session:
         finding = session.get(Finding, finding_id)
 
         if not finding:
             raise HTTPException(status_code=404, detail="Finding not found")
 
-        finding_details = {
-            "id": str(finding.id),
-            "rule_id": finding.rule_id,
-            "title": finding.title,
-            "description": finding.description,
-            "severity": finding.severity,
-            "confidence": finding.confidence,
-            "file_path": finding.file_path,
-            "line_start": finding.line_start,
-            "line_end": finding.line_end,
-            "code_snippet": finding.code_snippet,
-        }
+        finding_details = build_finding_details(session, finding)
 
     patch = await generate_patch(finding_details)
 
@@ -115,24 +509,13 @@ async def create_remediation_pr(finding_id: uuid.UUID):
             raise HTTPException(status_code=404, detail="No remediation found for this finding")
 
         remediation = remediations[-1]
-        finding_details = {
-            "id": str(finding.id),
-            "rule_id": finding.rule_id,
-            "title": finding.title,
-            "description": finding.description,
-            "severity": finding.severity,
-            "confidence": finding.confidence,
-            "file_path": finding.file_path,
-            "line_start": finding.line_start,
-            "line_end": finding.line_end,
-            "code_snippet": finding.code_snippet,
-        }
+        finding_details = build_finding_details(session, finding)
         remediation_text = remediation.patch_diff
 
     try:
         pr = await create_security_pr(finding_details, remediation_text)
     except GitHubClientError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=exc.to_dict()) from exc
 
     return {
         "finding_id": finding_id,
@@ -140,6 +523,28 @@ async def create_remediation_pr(finding_id: uuid.UUID):
         "pr_url": pr["url"],
         "branch": pr["branch"],
         "number": pr.get("number"),
+    }
+
+
+@app.delete("/api/remediate/{finding_id}/pr")
+async def delete_remediation_pr_branch(finding_id: uuid.UUID):
+    with Session(engine) as session:
+        finding = session.get(Finding, finding_id)
+
+        if not finding:
+            raise HTTPException(status_code=404, detail="Finding not found")
+
+    branch_name = f"security-fix-{finding_id}"
+
+    try:
+        result = await delete_security_branch(branch_name)
+    except GitHubClientError as exc:
+        raise HTTPException(status_code=502, detail=exc.to_dict()) from exc
+
+    return {
+        "finding_id": finding_id,
+        "branch": result["branch"],
+        "deleted": result["deleted"],
     }
 
 

@@ -1,7 +1,11 @@
 .env
+.env*
+*.pem
 __pycache__/
 *.py[cod]
 .venv/
 venv/
 dev_database.db
+dev_database.db-shm
+dev_database.db-wal
 code/.git/

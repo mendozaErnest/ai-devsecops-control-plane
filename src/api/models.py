@@ -19,11 +19,25 @@ class Target(SQLModel, table=True):
     metrics_snapshots: List["MetricsSnapshot"] = Relationship(back_populates="target")
 
 
+class Project(SQLModel, table=True):
+    __tablename__ = "projects"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    name: str
+    source_type: str
+    target_path: str
+    technology: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    scans: List["Scan"] = Relationship(back_populates="project")
+
+
 class Scan(SQLModel, table=True):
     __tablename__ = "scans"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    target_id: uuid.UUID = Field(foreign_key="targets.id")
+    target_id: uuid.UUID | None = Field(default=None, foreign_key="targets.id")
+    project_id: uuid.UUID | None = Field(default=None, foreign_key="projects.id")
     tool: str
     surface: str
     triggered_by: str
@@ -33,7 +47,8 @@ class Scan(SQLModel, table=True):
     raw_output: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     summary: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
-    target: Target = Relationship(back_populates="scans")
+    target: Target | None = Relationship(back_populates="scans")
+    project: Project | None = Relationship(back_populates="scans")
     findings: List["Finding"] = Relationship(back_populates="scan")
 
 

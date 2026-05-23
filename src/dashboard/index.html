@@ -14,13 +14,30 @@
             <p class="text-sm font-medium uppercase tracking-wide text-slate-500">AI DevSecOps</p>
             <h1 class="mt-1 text-3xl font-semibold tracking-normal text-slate-950">Control Plane</h1>
           </div>
-          <button
-            type="button"
-            id="run-scan"
-            class="inline-flex min-h-11 items-center justify-center rounded-lg bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            Ejecutar Nuevo Escaneo
-          </button>
+          <div class="flex flex-col gap-2 sm:items-end">
+            <span
+              id="ai-status-badge"
+              class="inline-flex min-h-8 items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200"
+            >
+              ● AI Engine: Checking...
+            </span>
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                id="new-project"
+                class="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              >
+                Nuevo Proyecto
+              </button>
+              <button
+                type="button"
+                id="run-scan"
+                class="inline-flex min-h-11 items-center justify-center rounded-lg bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                Escanear Proyecto
+              </button>
+            </div>
+          </div>
         </header>
 
         <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -48,11 +65,20 @@
           aria-live="polite"
         ></section>
 
-        <section class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+        <section class="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <aside class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+            <div class="border-b border-slate-200 px-5 py-4">
+              <h2 class="text-lg font-semibold text-slate-950">Proyectos</h2>
+              <p id="project-status" class="mt-1 text-sm text-slate-500">Cargando proyectos...</p>
+            </div>
+            <div id="projects-list" class="max-h-[640px] divide-y divide-slate-100 overflow-auto"></div>
+          </aside>
+
+          <section class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
           <div class="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 class="text-lg font-semibold text-slate-950">Hallazgos de seguridad</h2>
-              <p id="table-status" class="mt-1 text-sm text-slate-500">Cargando hallazgos...</p>
+              <h2 id="current-project-title" class="text-lg font-semibold text-slate-950">Selecciona un proyecto</h2>
+              <p id="table-status" class="mt-1 text-sm text-slate-500">Los hallazgos aparecerán aquí.</p>
             </div>
             <button
               type="button"
@@ -79,9 +105,59 @@
               <tbody id="findings-table-body" class="divide-y divide-slate-100 bg-white"></tbody>
             </table>
           </div>
+          </section>
         </section>
       </div>
     </main>
+
+    <div
+      id="project-modal"
+      class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/50 px-4 py-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="project-modal-title"
+    >
+      <section class="w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-xl ring-1 ring-slate-200">
+        <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <h2 id="project-modal-title" class="text-lg font-semibold text-slate-950">Nuevo Proyecto</h2>
+            <p class="mt-1 text-sm text-slate-500">Carga un ZIP o clona un repositorio para escanearlo en un espacio aislado.</p>
+          </div>
+          <button
+            type="button"
+            id="close-project-modal"
+            class="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg font-semibold text-slate-600 hover:bg-slate-50"
+            aria-label="Cerrar modal"
+          >
+            x
+          </button>
+        </div>
+        <div class="grid gap-5 p-5 md:grid-cols-2">
+          <form id="upload-project-form" class="space-y-3">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Subir ZIP</h3>
+            <input id="zip-name" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Nombre del proyecto">
+            <select id="zip-technology" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+              <option value="python">Python</option>
+              <option value="angular">Angular</option>
+              <option value="java">Java</option>
+            </select>
+            <input id="zip-file" type="file" accept=".zip" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <button class="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700" type="submit">Crear desde ZIP</button>
+          </form>
+          <form id="clone-project-form" class="space-y-3">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Clonar Repo</h3>
+            <input id="repo-name" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Nombre del proyecto">
+            <input id="repo-url" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="https://github.com/org/repo.git">
+            <select id="repo-technology" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+              <option value="python">Python</option>
+              <option value="angular">Angular</option>
+              <option value="java">Java</option>
+            </select>
+            <button class="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800" type="submit">Clonar y Escanear</button>
+          </form>
+        </div>
+      </section>
+    </div>
 
     <div
       id="remediation-modal"
@@ -105,15 +181,22 @@
             x
           </button>
         </div>
-        <div class="max-h-[70vh] overflow-auto bg-slate-950 p-5">
-          <pre id="remediation-content" class="whitespace-pre-wrap text-sm leading-6 text-slate-100"></pre>
+        <div class="grid max-h-[70vh] overflow-auto bg-slate-950 md:grid-cols-2">
+          <section class="border-b border-slate-800 p-5 md:border-b-0 md:border-r">
+            <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Código vulnerable</h3>
+            <pre id="vulnerable-code" class="whitespace-pre-wrap text-sm leading-6 text-slate-100"></pre>
+          </section>
+          <section class="p-5">
+            <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Código seguro propuesto</h3>
+            <pre id="remediation-content" class="whitespace-pre-wrap text-sm leading-6 text-slate-100"></pre>
+          </section>
         </div>
         <div class="flex flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p class="text-sm text-slate-500">Convierte esta remediación en una propuesta de revisión en GitHub.</p>
           <div id="pr-action-container">
             <button
               type="button"
-              id="create-pr"
+              id="btn-pr"
               class="inline-flex min-h-10 items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
               🚀 Convertir a Pull Request
@@ -125,7 +208,11 @@
 
     <script>
       const runScanButton = document.getElementById("run-scan");
+      const newProjectButton = document.getElementById("new-project");
       const refreshButton = document.getElementById("refresh-findings");
+      const projectsList = document.getElementById("projects-list");
+      const projectStatus = document.getElementById("project-status");
+      const currentProjectTitle = document.getElementById("current-project-title");
       const tableBody = document.getElementById("findings-table-body");
       const tableStatus = document.getElementById("table-status");
       const scanStatus = document.getElementById("scan-status");
@@ -133,13 +220,24 @@
       const highCount = document.getElementById("high-count");
       const mediumCount = document.getElementById("medium-count");
       const totalCount = document.getElementById("total-count");
+      const aiStatusBadge = document.getElementById("ai-status-badge");
       const remediationModal = document.getElementById("remediation-modal");
       const remediationSubtitle = document.getElementById("remediation-subtitle");
+      const vulnerableCode = document.getElementById("vulnerable-code");
       const remediationContent = document.getElementById("remediation-content");
       const closeRemediationButton = document.getElementById("close-remediation");
-      const createPrButton = document.getElementById("create-pr");
+      const createPrButton = document.getElementById("btn-pr");
       const prActionContainer = document.getElementById("pr-action-container");
+      const projectModal = document.getElementById("project-modal");
+      const closeProjectModalButton = document.getElementById("close-project-modal");
+      const uploadProjectForm = document.getElementById("upload-project-form");
+      const cloneProjectForm = document.getElementById("clone-project-form");
       let currentRemediationFindingId;
+      let currentPrBranch;
+      let selectedProject;
+      let projects = [];
+      let aiStatus = { available: false, reason: "Checking AI engine" };
+      let currentFindings = [];
       let feedbackTimeout;
 
       function showFeedback(message, tone = "info") {
@@ -183,6 +281,152 @@
         return "bg-slate-100 text-slate-700 ring-slate-200";
       }
 
+      function technologyClasses(technology) {
+        const value = String(technology || "").toLowerCase();
+
+        if (value === "python") {
+          return "bg-blue-50 text-blue-700 ring-blue-200";
+        }
+
+        if (value === "angular" || value === "typescript") {
+          return "bg-red-50 text-red-700 ring-red-200";
+        }
+
+        if (value === "java") {
+          return "bg-amber-50 text-amber-700 ring-amber-200";
+        }
+
+        return "bg-slate-100 text-slate-700 ring-slate-200";
+      }
+
+      function escapeHtml(value) {
+        const element = document.createElement("span");
+        element.textContent = value == null ? "" : String(value);
+        return element.innerHTML;
+      }
+
+      function renderProjects() {
+        projectsList.innerHTML = "";
+        projectStatus.textContent = `${projects.length} proyectos registrados`;
+
+        if (projects.length === 0) {
+          const empty = document.createElement("p");
+          empty.className = "px-5 py-8 text-sm text-slate-500";
+          empty.textContent = "Aún no hay proyectos. Carga un ZIP o clona un repositorio.";
+          projectsList.appendChild(empty);
+          return;
+        }
+
+        projects.forEach((project) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = `block w-full px-5 py-4 text-left transition hover:bg-slate-50 ${
+            selectedProject && selectedProject.id === project.id ? "bg-indigo-50" : "bg-white"
+          }`;
+
+          const createdAt = project.created_at ? new Date(project.created_at).toLocaleString() : "Sin fecha";
+          const projectName = escapeHtml(project.name);
+          const targetPath = escapeHtml(project.target_path);
+          const technology = escapeHtml(project.technology);
+          const sourceType = escapeHtml(String(project.source_type || "").toUpperCase());
+          button.innerHTML = `
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="truncate text-sm font-semibold text-slate-950">${projectName}</p>
+                <p class="mt-1 truncate text-xs text-slate-500">${targetPath}</p>
+              </div>
+              <span class="rounded-full bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-200">${project.critical_findings || 0}</span>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <span class="rounded-full px-2 py-1 text-xs font-semibold ring-1 ${technologyClasses(project.technology)}">${technology}</span>
+              <span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">${sourceType}</span>
+            </div>
+            <p class="mt-2 text-xs text-slate-400">${escapeHtml(createdAt)}</p>
+          `;
+          button.addEventListener("click", () => selectProject(project));
+          projectsList.appendChild(button);
+        });
+      }
+
+      async function loadProjects(selectFirst = true) {
+        if (!ensureServerContext()) {
+          return;
+        }
+
+        try {
+          const response = await fetch("/api/projects");
+
+          if (!response.ok) {
+            throw new Error(`Request failed with status ${response.status}`);
+          }
+
+          projects = await response.json();
+
+          if (selectedProject) {
+            selectedProject = projects.find((project) => project.id === selectedProject.id);
+          }
+
+          if (!selectedProject && selectFirst && projects.length > 0) {
+            selectedProject = projects[0];
+          }
+
+          renderProjects();
+
+          if (selectedProject) {
+            await loadFindings();
+          } else {
+            updateCounters([]);
+            renderMessage("Selecciona o crea un proyecto para ver hallazgos.");
+          }
+        } catch (error) {
+          console.error("Error loading projects:", error);
+          projectStatus.textContent = "Error al cargar proyectos";
+          showFeedback(`No se pudieron cargar los proyectos: ${error.message}`, "error");
+        }
+      }
+
+      async function selectProject(project) {
+        selectedProject = project;
+        renderProjects();
+        await loadFindings();
+      }
+
+      function renderAiStatusBadge() {
+        if (aiStatus.available) {
+          aiStatusBadge.className = "inline-flex min-h-8 items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200";
+          aiStatusBadge.textContent = `● AI Engine: Online (${aiStatus.model || "local model"})`;
+          return;
+        }
+
+        aiStatusBadge.className = "inline-flex min-h-8 items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-300";
+        aiStatusBadge.textContent = "● AI Engine: Offline (Local Remediation Disabled)";
+      }
+
+      async function loadAiStatus() {
+        if (!ensureServerContext()) {
+          return;
+        }
+
+        try {
+          const response = await fetch("/api/ai-status");
+
+          if (!response.ok) {
+            throw new Error(`Request failed with status ${response.status}`);
+          }
+
+          aiStatus = await response.json();
+        } catch (error) {
+          console.error("Error loading AI status:", error);
+          aiStatus = { available: false, reason: "Ollama service offline" };
+        }
+
+        renderAiStatusBadge();
+
+        if (currentFindings.length > 0) {
+          renderRows(currentFindings);
+        }
+      }
+
       function renderMessage(message) {
         tableBody.innerHTML = "";
 
@@ -216,7 +460,7 @@
         updateCounters(records);
 
         if (records.length === 0) {
-          renderMessage("No hay hallazgos registrados.");
+          renderMessage("No hay hallazgos registrados para este proyecto.");
           return;
         }
 
@@ -265,9 +509,14 @@
 
           const remediateButton = document.createElement("button");
           remediateButton.type = "button";
-          remediateButton.title = "Generar Parche";
-          remediateButton.className = "inline-flex min-h-9 items-center justify-center rounded-lg bg-transparent px-3 py-2 text-xs font-semibold text-slate-400 transition-colors duration-150 hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:bg-transparent disabled:text-slate-300";
+          remediateButton.title = aiStatus.available
+            ? "Generar Parche"
+            : "Ollama no está disponible. Inicia el servicio local para habilitar Auto-Fix.";
+          remediateButton.className = aiStatus.available
+            ? "inline-flex min-h-9 items-center justify-center rounded-lg bg-transparent px-3 py-2 text-xs font-semibold text-slate-400 transition-colors duration-150 hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:bg-transparent disabled:text-slate-300"
+            : "inline-flex min-h-9 items-center justify-center rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-400 ring-1 ring-slate-200 disabled:cursor-not-allowed";
           remediateButton.textContent = "✨ Auto-Fix";
+          remediateButton.disabled = !aiStatus.available;
           remediateButton.addEventListener("click", () => remediateFinding(record, remediateButton));
           actionCell.appendChild(remediateButton);
 
@@ -278,21 +527,43 @@
 
       function showRemediationModal(record, patch) {
         currentRemediationFindingId = record.id;
+        currentPrBranch = undefined;
         remediationSubtitle.textContent = `${record.rule_id || "UNKNOWN"} - ${record.file_path || "Archivo desconocido"}`;
+        vulnerableCode.textContent = record.code_snippet || "No vulnerable code snippet was captured by the scanner.";
         remediationContent.textContent = patch;
-        prActionContainer.innerHTML = "";
-        prActionContainer.appendChild(createPrButton);
-        createPrButton.disabled = false;
-        createPrButton.textContent = "🚀 Convertir a Pull Request";
+        resetPullRequestAction(record.has_remediation && selectedProject && selectedProject.source_type === "repo");
         remediationModal.classList.remove("hidden");
         remediationModal.classList.add("flex");
+      }
+
+      function resetPullRequestAction(hasRemediation = true) {
+        prActionContainer.innerHTML = "";
+        prActionContainer.appendChild(createPrButton);
+        createPrButton.style.display = hasRemediation ? "" : "none";
+        createPrButton.disabled = false;
+        createPrButton.textContent = "🚀 Convertir a Pull Request";
+        createPrButton.classList.remove("opacity-50", "cursor-not-allowed");
       }
 
       function hideRemediationModal() {
         remediationModal.classList.add("hidden");
         remediationModal.classList.remove("flex");
+        vulnerableCode.textContent = "";
         remediationContent.textContent = "";
         currentRemediationFindingId = undefined;
+        currentPrBranch = undefined;
+      }
+
+      function formatApiError(detail, fallbackMessage) {
+        if (!detail) {
+          return fallbackMessage;
+        }
+
+        if (typeof detail === "string") {
+          return detail;
+        }
+
+        return detail.message || detail.technical_detail || fallbackMessage;
       }
 
       async function createPullRequest() {
@@ -302,37 +573,101 @@
         }
 
         createPrButton.disabled = true;
-        createPrButton.textContent = "Creando PR...";
-        showFeedback("Creando rama y Pull Request en GitHub.", "info");
+        createPrButton.textContent = "⏳ Creando PR…";
+        createPrButton.classList.add("opacity-50", "cursor-not-allowed");
 
         try {
           const response = await fetch(`/api/remediate/${currentRemediationFindingId}/pr`, { method: "POST" });
+          const result = await response.json().catch(() => ({}));
 
           if (!response.ok) {
-            const errorBody = await response.json().catch(() => ({}));
-            throw new Error(errorBody.detail || `Request failed with status ${response.status}`);
+            throw new Error(formatApiError(result.detail, "Error al crear el PR. Intenta de nuevo."));
           }
 
-          const result = await response.json();
-          const link = document.createElement("a");
-          link.href = result.pr_url;
-          link.target = "_blank";
-          link.rel = "noopener noreferrer";
-          link.className = "inline-flex min-h-10 items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700";
-          link.textContent = `Abrir PR #${result.number || ""}`.trim();
-
-          prActionContainer.innerHTML = "";
-          prActionContainer.appendChild(link);
+          currentPrBranch = result.branch;
+          renderPullRequestSuccess(result.pr_url);
           showFeedback("Pull Request creado correctamente.", "success");
         } catch (error) {
           console.error("Error creating PR:", error);
-          showFeedback(`No se pudo crear el PR: ${error.message}`, "error");
           createPrButton.disabled = false;
           createPrButton.textContent = "🚀 Convertir a Pull Request";
+          createPrButton.classList.remove("opacity-50", "cursor-not-allowed");
+
+          const existingError = prActionContainer.querySelector("p");
+          if (existingError) {
+            existingError.remove();
+          }
+
+          const errorMessage = document.createElement("p");
+          errorMessage.className = "text-red-400 text-sm mt-1";
+          errorMessage.textContent = error.message || "Error al crear el PR. Intenta de nuevo.";
+          prActionContainer.appendChild(errorMessage);
+        }
+      }
+
+      function renderPullRequestSuccess(prUrl) {
+        prActionContainer.innerHTML = "";
+
+        const actions = document.createElement("div");
+        actions.className = "flex flex-col gap-2 sm:flex-row sm:items-center";
+
+        const link = document.createElement("a");
+        link.href = prUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.className = "text-blue-400 underline hover:text-blue-300";
+        link.textContent = "🔗 Ver Pull Request en GitHub";
+
+        const deleteBranchButton = document.createElement("button");
+        deleteBranchButton.type = "button";
+        deleteBranchButton.className = "inline-flex min-h-10 items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50";
+        deleteBranchButton.textContent = "🗑️ Eliminar Rama";
+        deleteBranchButton.addEventListener("click", () => deletePullRequestBranch(deleteBranchButton));
+
+        actions.append(link, deleteBranchButton);
+        prActionContainer.appendChild(actions);
+      }
+
+      async function deletePullRequestBranch(button) {
+        if (!currentRemediationFindingId) {
+          showFeedback("No hay rama asociada al hallazgo actual.", "error");
+          return;
+        }
+
+        const confirmed = window.confirm(`¿Eliminar la rama ${currentPrBranch || ""} en GitHub?`);
+
+        if (!confirmed) {
+          return;
+        }
+
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = "⏳ Eliminando…";
+
+        try {
+          const response = await fetch(`/api/remediate/${currentRemediationFindingId}/pr`, { method: "DELETE" });
+          const result = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(formatApiError(result.detail, "Error al eliminar la rama. Intenta de nuevo."));
+          }
+
+          button.style.display = "none";
+          showFeedback("Rama eliminada de GitHub con éxito", "success");
+        } catch (error) {
+          console.error("Error deleting branch:", error);
+          button.disabled = false;
+          button.textContent = originalText;
+          showFeedback(`No se pudo eliminar la rama: ${error.message}`, "error");
         }
       }
 
       async function remediateFinding(record, button) {
+        if (!aiStatus.available) {
+          showFeedback("AI Engine offline: inicia Ollama para generar remediaciones locales.", "error");
+          return;
+        }
+
         const originalText = button.textContent;
         button.disabled = true;
         button.textContent = "Pensando...";
@@ -340,12 +675,12 @@
 
         try {
           const response = await fetch(`/api/remediate/${record.id}`, { method: "POST" });
+          const result = await response.json().catch(() => ({}));
 
           if (!response.ok) {
-            throw new Error(`Request failed with status ${response.status}`);
+            throw new Error(formatApiError(result.detail, `Request failed with status ${response.status}`));
           }
 
-          const result = await response.json();
           record.has_remediation = true;
           showRemediationModal(record, result.patch || "No patch was returned.");
           showFeedback("Remediación generada y guardada correctamente.", "success");
@@ -364,21 +699,32 @@
           return;
         }
 
+        if (!selectedProject) {
+          currentProjectTitle.textContent = "Selecciona un proyecto";
+          tableStatus.textContent = "Los hallazgos aparecerán aquí.";
+          updateCounters([]);
+          renderMessage("Selecciona o crea un proyecto para ver hallazgos.");
+          return;
+        }
+
         refreshButton.disabled = true;
+        currentProjectTitle.textContent = selectedProject.name;
         tableStatus.textContent = "Cargando hallazgos...";
 
         try {
-          const response = await fetch("/api/findings");
+          const response = await fetch(`/api/projects/${selectedProject.id}/findings`);
 
           if (!response.ok) {
             throw new Error(`Request failed with status ${response.status}`);
           }
 
           const records = await response.json();
+          currentFindings = records;
           renderRows(records);
-          tableStatus.textContent = `${records.length} hallazgos cargados · ${new Date().toLocaleTimeString()}`;
+          tableStatus.textContent = `${records.length} hallazgos cargados · ${selectedProject.technology} · ${selectedProject.source_type}`;
         } catch (error) {
           console.error("Error loading findings:", error);
+          currentFindings = [];
           updateCounters([]);
           renderMessage("No se pudieron cargar los hallazgos.");
           tableStatus.textContent = "Error al cargar hallazgos";
@@ -392,6 +738,11 @@
           return;
         }
 
+        if (!selectedProject) {
+          showFeedback("Selecciona un proyecto antes de escanear.", "error");
+          return;
+        }
+
         runScanButton.disabled = true;
         refreshButton.disabled = true;
         runScanButton.textContent = "Escaneando código...";
@@ -400,7 +751,7 @@
         showFeedback("Escaneo en curso. Bandit está analizando el backend y guardando resultados.", "info");
 
         try {
-          const response = await fetch("/api/scan", { method: "POST" });
+          const response = await fetch(`/api/projects/${selectedProject.id}/scan`, { method: "POST" });
 
           if (!response.ok) {
             throw new Error(`Request failed with status ${response.status}`);
@@ -414,6 +765,7 @@
           const finishedAt = new Date().toLocaleTimeString();
           scanStatus.textContent = `${result.saved_findings} guardados`;
           showFeedback(`Escaneo completado a las ${finishedAt}. ${result.saved_findings} hallazgos guardados o actualizados.`, "success");
+          await loadProjects(false);
           await loadFindings();
         } catch (error) {
           console.error("Error running scan:", error);
@@ -423,20 +775,131 @@
         } finally {
           runScanButton.disabled = false;
           refreshButton.disabled = false;
-          runScanButton.textContent = "Ejecutar Nuevo Escaneo";
+          runScanButton.textContent = "Escanear Proyecto";
+        }
+      }
+
+      function showProjectModal() {
+        projectModal.classList.remove("hidden");
+        projectModal.classList.add("flex");
+      }
+
+      function hideProjectModal() {
+        projectModal.classList.add("hidden");
+        projectModal.classList.remove("flex");
+      }
+
+      async function uploadZipProject(event) {
+        event.preventDefault();
+        const fileInput = document.getElementById("zip-file");
+
+        if (!fileInput.files.length) {
+          showFeedback("Selecciona un archivo ZIP para crear el proyecto.", "error");
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", fileInput.files[0]);
+        formData.append("name", document.getElementById("zip-name").value);
+        formData.append("technology", document.getElementById("zip-technology").value);
+
+        const button = uploadProjectForm.querySelector("button");
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = "Cargando...";
+
+        try {
+          const response = await fetch("/api/projects/upload-zip", {
+            method: "POST",
+            body: formData,
+          });
+          const result = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(formatApiError(result.detail, "No se pudo cargar el ZIP."));
+          }
+
+          hideProjectModal();
+          uploadProjectForm.reset();
+          selectedProject = result.project;
+          showFeedback("Proyecto ZIP creado y escaneado.", "success");
+          await loadProjects(false);
+          await loadFindings();
+        } catch (error) {
+          console.error("Error uploading ZIP project:", error);
+          showFeedback(`No se pudo crear el proyecto: ${error.message}`, "error");
+        } finally {
+          button.disabled = false;
+          button.textContent = originalText;
+        }
+      }
+
+      async function cloneRepoProject(event) {
+        event.preventDefault();
+        const payload = {
+          name: document.getElementById("repo-name").value,
+          repo_url: document.getElementById("repo-url").value,
+          technology: document.getElementById("repo-technology").value,
+        };
+
+        if (!payload.name.trim() || !payload.repo_url.trim()) {
+          showFeedback("Nombre y URL del repositorio son obligatorios.", "error");
+          return;
+        }
+
+        const button = cloneProjectForm.querySelector("button");
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = "Clonando...";
+
+        try {
+          const response = await fetch("/api/projects/clone-repo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const result = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(formatApiError(result.detail, "No se pudo clonar el repositorio."));
+          }
+
+          hideProjectModal();
+          cloneProjectForm.reset();
+          selectedProject = result.project;
+          showFeedback("Repositorio clonado y escaneado.", "success");
+          await loadProjects(false);
+          await loadFindings();
+        } catch (error) {
+          console.error("Error cloning project:", error);
+          showFeedback(`No se pudo crear el proyecto: ${error.message}`, "error");
+        } finally {
+          button.disabled = false;
+          button.textContent = originalText;
         }
       }
 
       runScanButton.addEventListener("click", runScan);
+      newProjectButton.addEventListener("click", showProjectModal);
       refreshButton.addEventListener("click", loadFindings);
       createPrButton.addEventListener("click", createPullRequest);
       closeRemediationButton.addEventListener("click", hideRemediationModal);
+      closeProjectModalButton.addEventListener("click", hideProjectModal);
+      uploadProjectForm.addEventListener("submit", uploadZipProject);
+      cloneProjectForm.addEventListener("submit", cloneRepoProject);
       remediationModal.addEventListener("click", (event) => {
         if (event.target === remediationModal) {
           hideRemediationModal();
         }
       });
-      loadFindings();
+      projectModal.addEventListener("click", (event) => {
+        if (event.target === projectModal) {
+          hideProjectModal();
+        }
+      });
+      renderAiStatusBadge();
+      loadAiStatus();
+      loadProjects();
     </script>
   </body>
 </html>
