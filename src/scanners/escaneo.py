@@ -20,6 +20,7 @@ from src.scanners.angular_adapter import AngularAdapter
 from src.scanners.base import BaseScannerAdapter
 from src.scanners.bandit_adapter import BanditAdapter
 from src.scanners.java_adapter import JavaAdapter
+from src.scanners.pip_audit_adapter import PipAuditAdapter
 from src.scanners.semgrep_adapter import SemgrepAdapter
 
 
@@ -128,7 +129,7 @@ def get_default_scanner_adapter(technology: str) -> BaseScannerAdapter | None:
     normalized_technology = technology.strip().lower()
 
     if normalized_technology == "python":
-        return BanditAdapter()
+        return CombinedScannerAdapter([BanditAdapter(), PipAuditAdapter()])
 
     if normalized_technology in {"angular", "typescript"}:
         return AngularAdapter()
@@ -145,7 +146,10 @@ def get_scanner_adapter(technology: str) -> BaseScannerAdapter | None:
     default_adapter = get_default_scanner_adapter(normalized_technology)
 
     if scanner_engine == "semgrep":
-        if normalized_technology in {"python", "angular", "typescript", "java"}:
+        if normalized_technology == "python":
+            return CombinedScannerAdapter([SemgrepAdapter("python"), PipAuditAdapter()])
+
+        if normalized_technology in {"angular", "typescript", "java"}:
             return SemgrepAdapter(normalized_technology)
 
         return None
@@ -160,6 +164,7 @@ def get_scanner_adapter(technology: str) -> BaseScannerAdapter | None:
         return default_adapter
 
     if scanner_engine == "bandit" and normalized_technology == "python":
+        # SAST-only mode: skip SCA
         return BanditAdapter()
 
     return default_adapter
