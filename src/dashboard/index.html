@@ -392,15 +392,11 @@
             aria-label="Cerrar">✕</button>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;overflow:auto;max-height:60vh;flex:1;background:#0d1117;">
-          <section style="padding:18px;border-right:1px solid var(--border);">
-            <h3 style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px;" data-i18n="vulnerable-code">Código vulnerable</h3>
-            <pre id="vulnerable-code" style="white-space:pre-wrap;font-size:.8rem;line-height:1.6;color:#e6edf3;font-family:'Fira Code',Consolas,monospace;"></pre>
-          </section>
-          <section style="padding:18px;">
-            <h3 style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px;" data-i18n="proposed-code">Código seguro propuesto</h3>
-            <pre id="remediation-content" style="white-space:pre-wrap;font-size:.8rem;line-height:1.6;color:#56d364;font-family:'Fira Code',Consolas,monospace;"></pre>
-          </section>
+        <div style="overflow:auto;max-height:60vh;flex:1;background:#0d1117;padding:18px;">
+          <div id="diff-view" style="font-family:'Courier New',monospace;font-size:.8rem;line-height:1.7;overflow-x:auto;border-radius:4px;"></div>
+          <!-- kept hidden for JS state tracking -->
+          <pre id="vulnerable-code" style="display:none;"></pre>
+          <pre id="remediation-content" style="display:none;"></pre>
         </div>
 
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 20px;border-top:1px solid var(--border);background:var(--bg-card);flex-shrink:0;">
@@ -534,6 +530,7 @@
       const remediationSubtitle = document.getElementById("remediation-subtitle");
       const vulnerableCode      = document.getElementById("vulnerable-code");
       const remediationContent  = document.getElementById("remediation-content");
+      const diffView            = document.getElementById("diff-view");
       const closeRemediationButton = document.getElementById("close-remediation");
       const createPrButton      = document.getElementById("btn-pr");
       const prActionContainer   = document.getElementById("pr-action-container");
@@ -961,13 +958,90 @@
         });
       }
 
+      // ── Remediation modal helpers ──────────────────────────────────────
+      function shortPath(fullPath) {
+        if (!fullPath) return "";
+        return fullPath.replace(/.*\/repo\//, "").replace(/.*\/source\//, "");
+      }
+
+      function cleanCodeFences(text) {
+        if (!text) return "";
+        return text.replace(/^```[\w]*\n?/, "").replace(/\n?```$/, "").trim();
+      }
+
+      function renderDiffView(originalCode, proposedCode) {
+        diffView.innerHTML = "";
+        const origLines = (originalCode || "").split("\n");
+        const propLines = (proposedCode || "").split("\n");
+        const frag = document.createDocumentFragment();
+
+        let n = 1;
+        origLines.forEach((line) => {
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;background:#3d1a1a;";
+          const num = document.createElement("span");
+          num.style.cssText = "min-width:40px;padding:0 8px;color:#6e3333;font-size:.72rem;user-select:none;flex-shrink:0;text-align:right;line-height:1.7;";
+          num.textContent = n++;
+          const prefix = document.createElement("span");
+          prefix.style.cssText = "min-width:18px;padding:0 4px;color:#f85149;font-weight:700;flex-shrink:0;";
+          prefix.textContent = "−";
+          const code = document.createElement("span");
+          code.style.cssText = "color:#ff7b72;padding:0 8px;white-space:pre;";
+          code.textContent = line;
+          row.append(num, prefix, code);
+          frag.appendChild(row);
+        });
+
+        const sep = document.createElement("div");
+        sep.style.cssText = "padding:2px 8px;color:var(--muted);font-style:italic;font-size:.76rem;";
+        sep.textContent = "···";
+        frag.appendChild(sep);
+
+        n = 1;
+        propLines.forEach((line) => {
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;background:#1a3d1a;";
+          const num = document.createElement("span");
+          num.style.cssText = "min-width:40px;padding:0 8px;color:#1e4d1e;font-size:.72rem;user-select:none;flex-shrink:0;text-align:right;line-height:1.7;";
+          num.textContent = n++;
+          const prefix = document.createElement("span");
+          prefix.style.cssText = "min-width:18px;padding:0 4px;color:#3fb950;font-weight:700;flex-shrink:0;";
+          prefix.textContent = "+";
+          const code = document.createElement("span");
+          code.style.cssText = "color:#56d364;padding:0 8px;white-space:pre;";
+          code.textContent = line;
+          row.append(num, prefix, code);
+          frag.appendChild(row);
+        });
+
+        diffView.appendChild(frag);
+      }
+
       // ── Remediation modal ──────────────────────────────────────────────
       function showRemediationModal(record, patch) {
         currentRemediationFindingId = record.id;
         currentPrBranch = undefined;
-        remediationSubtitle.textContent = `${record.rule_id || "UNKNOWN"} — ${record.file_path || "Archivo desconocido"}`;
-        vulnerableCode.textContent = record.code_snippet || "No vulnerable code snippet was captured by the scanner.";
-        remediationContent.textContent = patch;
+
+        // 3a: rule_id badge + short relative path in header
+        const ruleId  = escapeHtml(record.rule_id || "UNKNOWN");
+        const relPath = escapeHtml(shortPath(record.file_path || ""));
+        remediationSubtitle.innerHTML =
+          `<span style="display:inline-flex;align-items:center;gap:8px;">` +
+          `<span style="padding:1px 7px;border-radius:4px;font-size:.7rem;font-weight:700;` +
+          `background:rgba(47,129,247,.2);color:#6cb6ff;border:1px solid rgba(47,129,247,.4);">${ruleId}</span>` +
+          `<span style="color:var(--muted);font-family:monospace;font-size:.78rem;">${relPath}</span>` +
+          `</span>`;
+
+        // 2: strip backtick fences before displaying
+        const cleanPatch = cleanCodeFences(patch || "No patch was returned.");
+
+        // keep hidden elements in sync (used by hideRemediationModal)
+        vulnerableCode.textContent = record.code_snippet || "";
+        remediationContent.textContent = cleanPatch;
+
+        // 3b: GitHub-style diff view
+        renderDiffView(record.code_snippet || "", cleanPatch);
+
         resetPullRequestAction(record.has_remediation && selectedProject && selectedProject.source_type === "repo");
         remediationModal.style.display = "flex";
       }
@@ -984,6 +1058,7 @@
 
       function hideRemediationModal() {
         remediationModal.style.display = "none";
+        diffView.innerHTML = "";
         vulnerableCode.textContent = "";
         remediationContent.textContent = "";
         currentRemediationFindingId = undefined;
