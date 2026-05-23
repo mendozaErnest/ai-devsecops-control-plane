@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from src.api.models import Finding, Scan, Target
+from src.api.models import Finding, FindingAuditEvent, Scan, Target
 from src.scanners.escaneo import (
     ACCEPTED_RISK_STATUS,
     FALSE_POSITIVE_STATUS,
@@ -154,3 +154,66 @@ def test_upsert_finding_ignores_accepted_risk_and_false_positive():
             assert ignored.status == ignored_status
             assert ignored.description == "leave this alone"
             assert ignored.last_seen_at == first_seen
+
+
+def test_upsert_finding_regression_increments_count():
+    with make_session() as session:
+        scan = create_scan(session)
+        result = bandit_result()
+        fingerprint = build_fingerprint(result)
+        finding = Finding(
+            scan_id=scan.id,
+            rule_id="B602",
+            title="fixed issue",
+            description="was fixed",
+            severity="LOW",
+            confidence="LOW",
+            file_path="src/example.py",
+            line_start=10,
+            status=FIXED_STATUS,
+            regression_count=0,
+            fingerprint=fingerprint,
+        )
+        session.add(finding)
+        session.commit()
+
+        action, updated = upsert_finding(session, scan.id, result, datetime.utcnow())
+        session.commit()
+
+        assert action == "regression"
+        assert updated.regression_count == 1
+
+
+def test_upsert_finding_regression_creates_audit_event():
+    with make_session() as session:
+        scan = create_scan(session)
+        result = bandit_result()
+        fingerprint = build_fingerprint(result)
+        finding = Finding(
+            scan_id=scan.id,
+            rule_id="B602",
+            title="fixed issue",
+            description="was fixed",
+            severity="LOW",
+            confidence="LOW",
+            file_path="src/example.py",
+            line_start=10,
+            status=FIXED_STATUS,
+            regression_count=0,
+            fingerprint=fingerprint,
+        )
+        session.add(finding)
+        session.commit()
+        finding_id = finding.id
+
+        upsert_finding(session, scan.id, result, datetime.utcnow())
+        session.commit()
+
+        events = session.exec(
+            select(FindingAuditEvent).where(FindingAuditEvent.finding_id == finding_id)
+        ).all()
+
+        assert len(events) == 1
+        assert events[0].event_type == "regression"
+        assert events[0].from_status == FIXED_STATUS
+        assert events[0].to_status == REGRESSION_STATUS

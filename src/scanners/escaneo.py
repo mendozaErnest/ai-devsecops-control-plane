@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.api.database import create_db_and_tables, engine
-from src.api.models import Finding, Project, Scan, Target
+from src.api.models import Finding, FindingAuditEvent, Project, Scan, Target
 from src.scanners.angular_adapter import AngularAdapter
 from src.scanners.base import BaseScannerAdapter
 from src.scanners.bandit_adapter import BanditAdapter
@@ -213,9 +213,14 @@ def persist_scan(
             ).first()
 
             if finding:
+                if finding.status in IGNORED_FINDING_STATUSES:
+                    continue
+
+                prev_status = finding.status
+                is_regression = prev_status == FIXED_STATUS
                 finding.scan_id = scan.id
                 finding.last_seen_at = now
-                finding.status = "open"
+                finding.status = REGRESSION_STATUS if is_regression else OPEN_STATUS
                 finding.severity = normalized_finding.severity
                 finding.confidence = normalized_finding.confidence
                 finding.description = normalized_finding.description
@@ -223,6 +228,15 @@ def persist_scan(
                 finding.line_start = normalized_finding.line_start
                 finding.line_end = normalized_finding.line_end
                 finding.code_snippet = normalized_finding.code_snippet
+
+                if is_regression:
+                    finding.regression_count += 1
+                    session.add(FindingAuditEvent(
+                        finding_id=finding.id,
+                        event_type="regression",
+                        from_status=prev_status,
+                        to_status=REGRESSION_STATUS,
+                    ))
             else:
                 finding = Finding(
                     scan_id=scan.id,
@@ -270,7 +284,8 @@ def upsert_finding(
     line_end = line_range[-1] if line_range else line_start
 
     if existing_finding:
-        action = "regression" if existing_finding.status == FIXED_STATUS else "seen_again"
+        prev_status = existing_finding.status
+        action = "regression" if prev_status == FIXED_STATUS else "seen_again"
         existing_finding.scan_id = scan_id
         existing_finding.last_seen_at = now
         existing_finding.status = REGRESSION_STATUS if action == "regression" else OPEN_STATUS
@@ -283,6 +298,16 @@ def upsert_finding(
         existing_finding.line_start = line_start
         existing_finding.line_end = line_end
         existing_finding.code_snippet = result.get("code")
+
+        if action == "regression":
+            existing_finding.regression_count += 1
+            session.add(FindingAuditEvent(
+                finding_id=existing_finding.id,
+                event_type="regression",
+                from_status=prev_status,
+                to_status=REGRESSION_STATUS,
+            ))
+
         return action, existing_finding
 
     finding = Finding(
