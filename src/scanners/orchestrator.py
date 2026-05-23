@@ -1,13 +1,38 @@
 import logging
-import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from src.api.models import Finding, ScanProfile
-from src.scanners.escaneo import build_fingerprint, get_scanner_adapter
+from src.scanners.escaneo import build_fingerprint
 
 logger = logging.getLogger(__name__)
+
+
+def get_scanner_adapter(technology: str, sast_tools: str = ""):
+    from src.scanners.bandit_adapter import BanditAdapter
+    from src.scanners.semgrep_adapter import SemgrepAdapter
+    from src.scanners.escaneo import get_default_scanner_adapter, CombinedScannerAdapter
+
+    norm_tech = technology.strip().lower()
+    engine = sast_tools.strip().lower()
+
+    if engine == "semgrep":
+        if norm_tech in {"python", "angular", "typescript", "java"}:
+            return SemgrepAdapter(norm_tech)
+        return get_default_scanner_adapter(norm_tech)
+
+    if engine == "bandit":
+        return BanditAdapter()
+
+    if engine == "both":
+        if norm_tech == "python":
+            return CombinedScannerAdapter([BanditAdapter(), SemgrepAdapter("python")])
+        if norm_tech in {"angular", "typescript", "java"}:
+            return SemgrepAdapter(norm_tech)
+        return get_default_scanner_adapter(norm_tech)
+
+    return get_default_scanner_adapter(norm_tech)
 
 
 @dataclass
@@ -75,20 +100,11 @@ class ScanOrchestrator:
         target_path: str,
         technology: str,
     ) -> list[Finding]:
-        # Honour profile.sast_tools by temporarily overriding SCANNER_ENGINE
-        original = os.environ.get("SCANNER_ENGINE")
-        os.environ["SCANNER_ENGINE"] = profile.sast_tools
-        try:
-            adapter = get_scanner_adapter(technology)
-            if adapter is None:
-                logger.warning("No SAST adapter for technology=%s", technology)
-                return []
-            return adapter.execute_scan(target_path)
-        finally:
-            if original is None:
-                os.environ.pop("SCANNER_ENGINE", None)
-            else:
-                os.environ["SCANNER_ENGINE"] = original
+        adapter = get_scanner_adapter(technology, sast_tools=profile.sast_tools or "")
+        if adapter is None:
+            logger.warning("No SAST adapter for technology=%s sast_tools=%s", technology, profile.sast_tools)
+            return []
+        return adapter.execute_scan(target_path)
 
     def _run_dast(self, profile: ScanProfile, target_path: str) -> list[Finding]:
         logger.info("DAST runner: tool=%s not yet implemented", profile.dast_tool)
