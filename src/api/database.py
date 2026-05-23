@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 from sqlalchemy import inspect, text
-from sqlmodel import SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -12,12 +12,54 @@ DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
 
+_DEFAULT_PROFILES = [
+    {
+        "name": "Python SAST",
+        "description": "Bandit + Semgrep dual-engine for Python projects",
+        "sast_enabled": True,
+        "sast_tools": "both",
+    },
+    {
+        "name": "Angular SAST",
+        "description": "Semgrep for Angular/TypeScript projects",
+        "sast_enabled": True,
+        "sast_tools": "semgrep",
+    },
+    {
+        "name": "Java SAST",
+        "description": "Semgrep for Java projects",
+        "sast_enabled": True,
+        "sast_tools": "semgrep",
+    },
+    {
+        "name": "Full Scan",
+        "description": "SAST enabled (DAST and Quality available when adapters are installed)",
+        "sast_enabled": True,
+        "sast_tools": "both",
+        "dast_enabled": False,
+        "quality_enabled": False,
+    },
+]
+
 
 def create_db_and_tables() -> None:
     from . import models  # noqa: F401
 
     SQLModel.metadata.create_all(engine)
     ensure_sqlite_schema()
+    seed_default_profiles()
+
+
+def seed_default_profiles() -> None:
+    from .models import ScanProfile
+
+    with Session(engine) as session:
+        existing = session.exec(select(ScanProfile)).first()
+        if existing:
+            return
+        for data in _DEFAULT_PROFILES:
+            session.add(ScanProfile(**data))
+        session.commit()
 
 
 def ensure_sqlite_schema() -> None:
@@ -39,6 +81,12 @@ def ensure_sqlite_schema() -> None:
             # Older development databases created target_id as NOT NULL. New
             # project scans still create a legacy target row for compatibility.
             pass
+
+    if "projects" in inspector.get_table_names():
+        project_columns = {col["name"] for col in inspector.get_columns("projects")}
+        with engine.begin() as connection:
+            if "scan_profile_id" not in project_columns:
+                connection.execute(text("ALTER TABLE projects ADD COLUMN scan_profile_id INTEGER"))
 
     if "findings" in inspector.get_table_names():
         finding_columns = {col["name"] for col in inspector.get_columns("findings")}
