@@ -68,6 +68,7 @@ class Finding(SQLModel, table=True):
     code_snippet: str | None = None
     status: str
     regression_count: int = Field(default=0)
+    sla_deadline: datetime | None = None
     first_seen_at: datetime = Field(default_factory=datetime.utcnow)
     last_seen_at: datetime = Field(default_factory=datetime.utcnow)
     fingerprint: str = Field(sa_column=Column(String, unique=True, nullable=False, index=True))

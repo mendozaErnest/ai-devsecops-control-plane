@@ -206,6 +206,7 @@
                   <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:140px;">Regla</th>
                   <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);">Descripción</th>
                   <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:160px;">Estado</th>
+                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:100px;">SLA</th>
                   <th class="col-action" style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:180px;box-shadow:-2px 0 6px rgba(0,0,0,.3);">Acciones</th>
                 </tr>
               </thead>
@@ -743,12 +744,38 @@
         }
       }
 
+      // ── SLA badge ──────────────────────────────────────────────────────
+      function buildSlaBadge(record) {
+        const span = document.createElement("span");
+        span.style.cssText = "padding:2px 7px;border-radius:4px;font-size:.7rem;font-weight:700;white-space:nowrap;";
+        if (!record.sla_deadline) { span.textContent = "—"; span.style.color = "var(--muted)"; return span; }
+        const deadline = new Date(record.sla_deadline);
+        const daysLeft = Math.ceil((deadline - Date.now()) / 86400000);
+        if (daysLeft < 0) {
+          span.textContent = `+${Math.abs(daysLeft)}d`;
+          span.style.background = "rgba(248,81,73,.2)";
+          span.style.color = "#f85149";
+          span.title = `Overdue ${Math.abs(daysLeft)} days`;
+        } else if (daysLeft <= 2) {
+          span.textContent = `${daysLeft}d`;
+          span.style.background = "rgba(227,105,62,.2)";
+          span.style.color = "#e3693e";
+          span.title = `${daysLeft} days remaining`;
+        } else {
+          span.textContent = `${daysLeft}d`;
+          span.style.background = "var(--bg-hover)";
+          span.style.color = "var(--muted)";
+          span.title = `${daysLeft} days remaining`;
+        }
+        return span;
+      }
+
       // ── Table rendering ────────────────────────────────────────────────
       function renderMessage(message) {
         tableBody.innerHTML = "";
         const row = document.createElement("tr");
         const cell = document.createElement("td");
-        cell.colSpan = 7;
+        cell.colSpan = 8;
         cell.style.cssText = "padding:60px 20px;text-align:center;";
         cell.innerHTML = `
           <svg style="margin:0 auto 16px;display:block;opacity:.25;" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -815,12 +842,16 @@
           statusCell.style.cssText = "padding:12px 16px;";
           statusCell.appendChild(buildLifecycleBadge(record));
 
+          const slaCell = document.createElement("td");
+          slaCell.style.cssText = "padding:12px 16px;";
+          slaCell.appendChild(buildSlaBadge(record));
+
           const actionCell = document.createElement("td");
           actionCell.className = "col-action";
           actionCell.style.cssText = "padding:10px 14px;box-shadow:-2px 0 6px rgba(0,0,0,.25);";
           actionCell.appendChild(buildActionButtons(record));
 
-          row.append(idCell, sevCell, fileCell, ruleCell, descCell, statusCell, actionCell);
+          row.append(idCell, sevCell, fileCell, ruleCell, descCell, statusCell, slaCell, actionCell);
           tableBody.appendChild(row);
         });
       }
