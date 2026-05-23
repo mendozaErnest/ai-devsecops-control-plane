@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from .database import create_db_and_tables, engine
-from .models import Finding, FindingAuditEvent, Project, Remediation, Scan
+from .models import Finding, FindingAuditEvent, Project, Remediation, Scan, ScanProfile
 from src.ai_engine.remediator import (
     OLLAMA_MODEL,
     build_prompt,
@@ -31,7 +31,8 @@ from src.integrations.github_client import (
     delete_security_branch,
     update_check_run,
 )
-from src.scanners.escaneo import run_scan
+from src.scanners.escaneo import persist_scan, run_scan
+from src.scanners.orchestrator import ScanOrchestrator
 
 
 app = FastAPI()
@@ -50,10 +51,35 @@ class CloneRepoRequest(BaseModel):
     name: str
     repo_url: str
     technology: str
+    scan_profile_id: int | None = None
 
 
 class FindingLifecycleRequest(BaseModel):
     reason: str
+
+
+class ScanProfileCreate(BaseModel):
+    name: str
+    description: str | None = None
+    sast_enabled: bool = True
+    sast_tools: str = "semgrep"
+    sast_rulesets: str | None = None
+    dast_enabled: bool = False
+    dast_tool: str | None = None
+    quality_enabled: bool = False
+    quality_tool: str | None = None
+
+
+class ScanProfileUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    sast_enabled: bool | None = None
+    sast_tools: str | None = None
+    sast_rulesets: str | None = None
+    dast_enabled: bool | None = None
+    dast_tool: str | None = None
+    quality_enabled: bool | None = None
+    quality_tool: str | None = None
 
 
 @app.on_event("startup")
@@ -65,6 +91,46 @@ def on_startup():
 @app.get("/")
 async def index():
     return FileResponse(DASHBOARD_INDEX)
+
+
+@app.get("/api/profiles")
+async def list_profiles():
+    with Session(engine) as session:
+        profiles = session.exec(select(ScanProfile).order_by(ScanProfile.id)).all()
+        return [p.model_dump(mode="json") for p in profiles]
+
+
+@app.post("/api/profiles", status_code=201)
+async def create_profile(body: ScanProfileCreate):
+    with Session(engine) as session:
+        profile = ScanProfile(**body.model_dump())
+        session.add(profile)
+        session.commit()
+        session.refresh(profile)
+        return profile.model_dump(mode="json")
+
+
+@app.get("/api/profiles/{profile_id}")
+async def get_profile(profile_id: int):
+    with Session(engine) as session:
+        profile = session.get(ScanProfile, profile_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="ScanProfile not found")
+        return profile.model_dump(mode="json")
+
+
+@app.put("/api/profiles/{profile_id}")
+async def update_profile(profile_id: int, body: ScanProfileUpdate):
+    with Session(engine) as session:
+        profile = session.get(ScanProfile, profile_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="ScanProfile not found")
+        for field, value in body.model_dump(exclude_unset=True).items():
+            setattr(profile, field, value)
+        session.add(profile)
+        session.commit()
+        session.refresh(profile)
+        return profile.model_dump(mode="json")
 
 
 @app.get("/api/findings")
@@ -229,20 +295,41 @@ def extract_zip_safely(zip_path: Path, destination: Path) -> None:
                 shutil.copyfileobj(source, target)
 
 
+_DEFAULT_PROFILE_BY_TECH: dict[str, str] = {
+    "python": "Python SAST",
+    "angular": "Angular SAST",
+    "typescript": "Angular SAST",
+    "java": "Java SAST",
+}
+
+
+def resolve_scan_profile_id(session: Session, technology: str, requested_id: int | None) -> int | None:
+    if requested_id is not None:
+        return requested_id
+    default_name = _DEFAULT_PROFILE_BY_TECH.get(technology.lower())
+    if not default_name:
+        return None
+    profile = session.exec(select(ScanProfile).where(ScanProfile.name == default_name)).first()
+    return profile.id if profile else None
+
+
 def create_project_record(
     name: str,
     source_type: str,
     target_path: Path,
     technology: str,
     project_id: uuid.UUID | None = None,
+    scan_profile_id: int | None = None,
 ) -> Project:
     with Session(engine) as session:
+        resolved_profile_id = resolve_scan_profile_id(session, technology, scan_profile_id)
         project = Project(
             id=project_id or uuid.uuid4(),
             name=name,
             source_type=source_type,
             target_path=str(target_path.resolve()),
             technology=technology,
+            scan_profile_id=resolved_profile_id,
         )
         session.add(project)
         session.commit()
@@ -251,11 +338,56 @@ def create_project_record(
 
 
 async def scan_project(project: Project) -> dict:
-    return await run_scan(
+    if project.scan_profile_id is not None:
+        with Session(engine) as session:
+            profile = session.get(ScanProfile, project.scan_profile_id)
+        if profile is not None:
+            return await _scan_with_profile(project, profile)
+
+    return await run_scan(project.target_path, project.technology, project.id)
+
+
+async def _scan_with_profile(project: Project, profile: ScanProfile) -> dict:
+    orchestrator = ScanOrchestrator()
+    result = await asyncio.to_thread(
+        orchestrator.run,
+        profile,
         project.target_path,
         project.technology,
         project.id,
     )
+
+    from src.scanners.escaneo import get_scanner_adapter
+
+    adapter = get_scanner_adapter(project.technology)
+    saved = await asyncio.to_thread(
+        persist_scan,
+        project.target_path,
+        project.technology,
+        adapter or _NullAdapter(profile.sast_tools),
+        result.findings,
+        project.id,
+    )
+
+    return {
+        "success": True,
+        "saved_findings": saved,
+        "tools_run": result.tools_run,
+        "errors": result.errors,
+        "technology": project.technology,
+        "target_path": project.target_path,
+        "project_id": str(project.id),
+        "profile": profile.name,
+    }
+
+
+class _NullAdapter:
+    """Minimal adapter stub used when the orchestrator already ran the scan."""
+    def __init__(self, tool_name: str = "orchestrated") -> None:
+        self.tool_name = tool_name
+        self.raw_output: dict = {}
+        self.returncode: int = 1
+        self.error: str | None = None
 
 
 @app.get("/api/projects")
@@ -327,6 +459,7 @@ async def upload_zip_project(
     file: UploadFile = File(...),
     technology: str = Form("python"),
     name: str | None = Form(None),
+    scan_profile_id: int | None = Form(None),
 ):
     technology = normalize_technology(technology)
     filename = file.filename or "uploaded-project.zip"
@@ -352,6 +485,7 @@ async def upload_zip_project(
             extract_dir,
             technology,
             project_id,
+            scan_profile_id,
         )
         scan_result = await scan_project(project)
     except zipfile.BadZipFile as exc:
@@ -422,6 +556,7 @@ async def clone_repo_project(request: CloneRepoRequest):
             clone_dir,
             technology,
             project_id,
+            request.scan_profile_id,
         )
         scan_result = await scan_project(project)
     except Exception:

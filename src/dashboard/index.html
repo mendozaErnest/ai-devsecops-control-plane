@@ -262,55 +262,116 @@
       </div>
     </main>
 
-    <!-- ══════════════ PROJECT MODAL (tabs) ══════════════ -->
+    <!-- ══════════════ PROJECT MODAL — 2-step wizard ══════════════ -->
     <div id="project-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);padding:24px;"
       role="dialog" aria-modal="true" aria-labelledby="project-modal-title">
-      <section style="width:100%;max-width:520px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+      <section style="width:100%;max-width:540px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
 
         <!-- Header -->
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 20px;border-bottom:1px solid var(--border);">
-          <h2 id="project-modal-title" style="color:var(--text);font-size:1rem;font-weight:700;" data-i18n="new-project">Nuevo Proyecto</h2>
+          <div>
+            <h2 id="project-modal-title" style="color:var(--text);font-size:1rem;font-weight:700;" data-i18n="new-project">Nuevo Proyecto</h2>
+            <!-- Breadcrumb -->
+            <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+              <span id="bc-step1" style="font-size:.7rem;font-weight:700;color:var(--accent);">Paso 1: Configurar</span>
+              <span style="font-size:.7rem;color:var(--muted);">›</span>
+              <span id="bc-step2" style="font-size:.7rem;font-weight:600;color:var(--muted);">Paso 2: Agregar proyecto</span>
+            </div>
+          </div>
           <button type="button" id="close-project-modal"
             style="width:32px;height:32px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;"
             aria-label="Cerrar">✕</button>
         </div>
 
-        <!-- Tabs -->
-        <div style="display:flex;gap:8px;padding:16px 20px 0;">
-          <button type="button" id="tab-zip" class="tab-btn tab-active">📦 <span data-i18n="upload-zip">Subir ZIP</span></button>
-          <button type="button" id="tab-clone" class="tab-btn tab-inactive">🔗 <span data-i18n="clone-repo">Clonar Repo</span></button>
+        <!-- ─── STEP 1: Scan Profile selection ─── -->
+        <div id="wizard-step-1" style="padding:20px;">
+          <p style="font-size:.78rem;color:var(--muted);margin-bottom:14px;">Elige el perfil de análisis para este proyecto.</p>
+          <div id="profile-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+            <!-- injected by JS -->
+          </div>
+
+          <!-- Custom profile panel -->
+          <div id="custom-profile-panel" style="display:none;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:14px;">
+            <p style="font-size:.73rem;font-weight:700;color:var(--text);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em;">Opciones SAST</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--text);cursor:pointer;">
+                <input type="radio" name="custom-sast-tools" value="bandit" style="accent-color:var(--accent);">Bandit
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--text);cursor:pointer;">
+                <input type="radio" name="custom-sast-tools" value="semgrep" checked style="accent-color:var(--accent);">Semgrep
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--text);cursor:pointer;">
+                <input type="radio" name="custom-sast-tools" value="both" style="accent-color:var(--accent);">Ambos
+              </label>
+            </div>
+            <p style="font-size:.73rem;font-weight:700;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;">Otras herramientas</p>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;cursor:not-allowed;opacity:.5;">
+                <input type="checkbox" disabled style="accent-color:var(--accent);">
+                DAST — OWASP ZAP
+                <span style="padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:700;background:rgba(47,129,247,.2);color:var(--accent);margin-left:auto;">Próximamente</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;cursor:not-allowed;opacity:.5;">
+                <input type="checkbox" disabled style="accent-color:var(--accent);">
+                Code Quality — SonarQube
+                <span style="padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:700;background:rgba(47,129,247,.2);color:var(--accent);margin-left:auto;">Próximamente</span>
+              </label>
+            </div>
+          </div>
+
+          <button type="button" id="wizard-next-btn"
+            style="width:100%;padding:9px;border-radius:6px;background:var(--accent);color:#fff;font-size:.83rem;font-weight:700;border:none;cursor:pointer;transition:background .15s;">
+            Siguiente →
+          </button>
         </div>
 
-        <!-- Panel ZIP -->
-        <div id="panel-zip" class="form-panel visible-panel" style="padding:16px 20px 20px;">
-          <form id="upload-project-form" class="space-y-3">
-            <input id="zip-name" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="Nombre del proyecto" data-i18n-placeholder="project-name">
-            <select id="zip-technology" style="width:100%;padding:8px 12px;font-size:.83rem;">
-              <option value="python">Python</option>
-              <option value="angular">Angular</option>
-              <option value="java">Java</option>
-            </select>
-            <input id="zip-file" type="file" accept=".zip" style="width:100%;padding:8px 12px;font-size:.83rem;">
-            <button type="submit"
-              style="width:100%;padding:9px;border-radius:6px;background:var(--accent);color:#fff;font-size:.83rem;font-weight:700;border:none;cursor:pointer;transition:background .15s;"
-              data-i18n="create-from-zip">Crear desde ZIP</button>
-          </form>
-        </div>
+        <!-- ─── STEP 2: Add project (ZIP / Clone) ─── -->
+        <div id="wizard-step-2" style="display:none;">
+          <!-- Tabs -->
+          <div style="display:flex;gap:8px;padding:16px 20px 0;">
+            <button type="button" id="tab-zip" class="tab-btn tab-active">📦 <span data-i18n="upload-zip">Subir ZIP</span></button>
+            <button type="button" id="tab-clone" class="tab-btn tab-inactive">🔗 <span data-i18n="clone-repo">Clonar Repo</span></button>
+          </div>
 
-        <!-- Panel Clone -->
-        <div id="panel-clone" class="form-panel hidden-panel" style="padding:16px 20px 20px;">
-          <form id="clone-project-form" class="space-y-3">
-            <input id="repo-name" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="Nombre del proyecto" data-i18n-placeholder="project-name">
-            <input id="repo-url" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="https://github.com/org/repo.git">
-            <select id="repo-technology" style="width:100%;padding:8px 12px;font-size:.83rem;">
-              <option value="python">Python</option>
-              <option value="angular">Angular</option>
-              <option value="java">Java</option>
-            </select>
-            <button type="submit"
-              style="width:100%;padding:9px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);font-size:.83rem;font-weight:700;cursor:pointer;transition:background .15s;"
-              data-i18n="clone-scan">Clonar y Escanear</button>
-          </form>
+          <!-- Panel ZIP -->
+          <div id="panel-zip" class="form-panel visible-panel" style="padding:16px 20px 20px;">
+            <form id="upload-project-form" class="space-y-3">
+              <input id="zip-name" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="Nombre del proyecto" data-i18n-placeholder="project-name">
+              <select id="zip-technology" style="width:100%;padding:8px 12px;font-size:.83rem;">
+                <option value="python">Python</option>
+                <option value="angular">Angular</option>
+                <option value="java">Java</option>
+              </select>
+              <input id="zip-file" type="file" accept=".zip" style="width:100%;padding:8px 12px;font-size:.83rem;">
+              <div style="display:flex;gap:8px;">
+                <button type="button" id="wizard-back-zip"
+                  style="padding:9px 16px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);font-size:.83rem;font-weight:600;cursor:pointer;">← Atrás</button>
+                <button type="submit"
+                  style="flex:1;padding:9px;border-radius:6px;background:var(--accent);color:#fff;font-size:.83rem;font-weight:700;border:none;cursor:pointer;transition:background .15s;"
+                  data-i18n="create-from-zip">Crear desde ZIP</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Panel Clone -->
+          <div id="panel-clone" class="form-panel hidden-panel" style="padding:16px 20px 20px;">
+            <form id="clone-project-form" class="space-y-3">
+              <input id="repo-name" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="Nombre del proyecto" data-i18n-placeholder="project-name">
+              <input id="repo-url" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="https://github.com/org/repo.git">
+              <select id="repo-technology" style="width:100%;padding:8px 12px;font-size:.83rem;">
+                <option value="python">Python</option>
+                <option value="angular">Angular</option>
+                <option value="java">Java</option>
+              </select>
+              <div style="display:flex;gap:8px;">
+                <button type="button" id="wizard-back-clone"
+                  style="padding:9px 16px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);font-size:.83rem;font-weight:600;cursor:pointer;">← Atrás</button>
+                <button type="submit"
+                  style="flex:1;padding:9px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);font-size:.83rem;font-weight:700;cursor:pointer;transition:background .15s;"
+                  data-i18n="clone-scan">Clonar y Escanear</button>
+              </div>
+            </form>
+          </div>
         </div>
 
       </section>
@@ -1142,7 +1203,69 @@
         }
       }
 
-      // ── Project modal ──────────────────────────────────────────────────
+      // ── Project modal wizard ───────────────────────────────────────────
+      let wizardProfiles = [];
+      let wizardSelectedProfileId = null;
+      const wizardStep1   = document.getElementById("wizard-step-1");
+      const wizardStep2   = document.getElementById("wizard-step-2");
+      const profileCards  = document.getElementById("profile-cards");
+      const customPanel   = document.getElementById("custom-profile-panel");
+      const wizardNextBtn = document.getElementById("wizard-next-btn");
+      const bcStep1       = document.getElementById("bc-step1");
+      const bcStep2       = document.getElementById("bc-step2");
+
+      async function loadWizardProfiles() {
+        try {
+          const res = await fetch("/api/profiles");
+          wizardProfiles = await res.json();
+        } catch { wizardProfiles = []; }
+        renderProfileCards();
+      }
+
+      function renderProfileCards() {
+        profileCards.innerHTML = "";
+        const descriptions = {
+          "Python SAST":  "Bandit + Semgrep",
+          "Angular SAST": "Semgrep",
+          "Java SAST":    "Semgrep",
+          "Full Scan":    "SAST + SCA",
+        };
+        const profileList = wizardProfiles.length
+          ? wizardProfiles
+          : [{ id: null, name: "Python SAST" }, { id: null, name: "Angular SAST" },
+             { id: null, name: "Java SAST" },   { id: null, name: "Full Scan" }];
+
+        profileList.forEach((p) => {
+          const card = document.createElement("button");
+          card.type = "button";
+          card.dataset.profileId = p.id ?? "";
+          const isSelected = wizardSelectedProfileId === p.id;
+          card.style.cssText = `text-align:left;padding:12px 14px;border-radius:6px;border:2px solid ${isSelected ? "var(--accent)" : "var(--border)"};background:${isSelected ? "rgba(47,129,247,.12)" : "var(--bg-surface)"};cursor:pointer;transition:border .15s,background .15s;`;
+          card.innerHTML = `
+            <p style="font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:3px;">${escapeHtml(p.name)}</p>
+            <p style="font-size:.72rem;color:var(--muted);">${escapeHtml(p.description || descriptions[p.name] || p.sast_tools || "SAST")}</p>`;
+          card.addEventListener("click", () => {
+            wizardSelectedProfileId = p.id;
+            customPanel.style.display = "none";
+            renderProfileCards();
+          });
+          profileCards.appendChild(card);
+        });
+
+        // Custom card
+        const customCard = document.createElement("button");
+        customCard.type = "button";
+        const isCustom = wizardSelectedProfileId === "custom";
+        customCard.style.cssText = `text-align:left;padding:12px 14px;border-radius:6px;border:2px solid ${isCustom ? "var(--accent)" : "var(--border)"};background:${isCustom ? "rgba(47,129,247,.12)" : "var(--bg-surface)"};cursor:pointer;transition:border .15s,background .15s;`;
+        customCard.innerHTML = `<p style="font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:3px;">⚙ Personalizado</p><p style="font-size:.72rem;color:var(--muted);">Ver opciones</p>`;
+        customCard.addEventListener("click", () => {
+          wizardSelectedProfileId = "custom";
+          customPanel.style.display = "";
+          renderProfileCards();
+        });
+        profileCards.appendChild(customCard);
+      }
+
       function setModalTab(tab) {
         const isZip = tab === "zip";
         tabZip.className   = "tab-btn " + (isZip ? "tab-active" : "tab-inactive");
@@ -1151,8 +1274,34 @@
         panelClone.className = "form-panel " + (isZip ? "hidden-panel" : "visible-panel");
       }
 
-      function showProjectModal() { projectModal.style.display = "flex"; setModalTab("zip"); }
-      function hideProjectModal() { projectModal.style.display = "none"; }
+      function setWizardStep(step) {
+        const onStep1 = step === 1;
+        wizardStep1.style.display = onStep1 ? "" : "none";
+        wizardStep2.style.display = onStep1 ? "none" : "";
+        bcStep1.style.color = onStep1 ? "var(--accent)" : "var(--muted)";
+        bcStep2.style.color = onStep1 ? "var(--muted)" : "var(--accent)";
+        if (!onStep1) setModalTab("zip");
+      }
+
+      function resolvedProfileId() {
+        if (wizardSelectedProfileId === "custom" || wizardSelectedProfileId === null) return null;
+        return wizardSelectedProfileId;
+      }
+
+      function showProjectModal() {
+        if (wizardProfiles.length === 0) loadWizardProfiles();
+        // auto-select first profile
+        if (wizardSelectedProfileId === null && wizardProfiles.length > 0) {
+          wizardSelectedProfileId = wizardProfiles[0].id;
+          renderProfileCards();
+        }
+        projectModal.style.display = "flex";
+        setWizardStep(1);
+      }
+      function hideProjectModal() {
+        projectModal.style.display = "none";
+        wizardSelectedProfileId = null;
+      }
 
       // ── ZIP upload ─────────────────────────────────────────────────────
       async function uploadZipProject(event) {
@@ -1164,6 +1313,8 @@
         formData.append("file", fileInput.files[0]);
         formData.append("name", document.getElementById("zip-name").value);
         formData.append("technology", document.getElementById("zip-technology").value);
+        const pid = resolvedProfileId();
+        if (pid !== null) formData.append("scan_profile_id", pid);
 
         const btn = uploadProjectForm.querySelector("button");
         const orig = btn.textContent;
@@ -1191,6 +1342,7 @@
           name: document.getElementById("repo-name").value,
           repo_url: document.getElementById("repo-url").value,
           technology: document.getElementById("repo-technology").value,
+          scan_profile_id: resolvedProfileId(),
         };
         if (!payload.name.trim() || !payload.repo_url.trim()) {
           showFeedback("Nombre y URL del repositorio son obligatorios.", "error"); return;
@@ -1227,6 +1379,9 @@
       tabClone.addEventListener("click", () => setModalTab("clone"));
       uploadProjectForm.addEventListener("submit", uploadZipProject);
       cloneProjectForm.addEventListener("submit", cloneRepoProject);
+      wizardNextBtn.addEventListener("click", () => setWizardStep(2));
+      document.getElementById("wizard-back-zip").addEventListener("click", () => setWizardStep(1));
+      document.getElementById("wizard-back-clone").addEventListener("click", () => setWizardStep(1));
 
       remediationModal.addEventListener("click", (e) => { if (e.target === remediationModal) hideRemediationModal(); });
       projectModal.addEventListener("click", (e) => { if (e.target === projectModal) hideProjectModal(); });

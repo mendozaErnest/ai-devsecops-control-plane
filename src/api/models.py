@@ -1,9 +1,29 @@
 import uuid
 from datetime import datetime
-from typing import Any, List
+from typing import Any, List, Optional
 
 from sqlalchemy import Column, JSON, String
 from sqlmodel import Field, Relationship, SQLModel
+
+
+class ScanProfile(SQLModel, table=True):
+    __tablename__ = "scanprofile"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    description: Optional[str] = None
+
+    sast_enabled: bool = True
+    sast_tools: str = "semgrep"       # "bandit" | "semgrep" | "both"
+    sast_rulesets: Optional[str] = None  # JSON array of ruleset names
+
+    dast_enabled: bool = False
+    dast_tool: Optional[str] = None    # "zap" | "agent_loop" | None
+
+    quality_enabled: bool = False
+    quality_tool: Optional[str] = None  # "sonarqube" | "pylint" | "eslint" | None
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class Target(SQLModel, table=True):
@@ -27,6 +47,7 @@ class Project(SQLModel, table=True):
     source_type: str
     target_path: str
     technology: str
+    scan_profile_id: Optional[int] = Field(default=None, foreign_key="scanprofile.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     scans: List["Scan"] = Relationship(back_populates="project")

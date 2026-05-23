@@ -37,22 +37,37 @@ This platform runs the LLM on your own hardware via Ollama. The network boundary
 | Backend | FastAPI + Uvicorn |
 | Database | SQLModel over SQLite (PostgreSQL-ready) |
 | SAST — Python | Bandit + Semgrep (`p/bandit`, `p/python`, `p/owasp-top-ten`) |
+| SCA — Python | pip-audit (CVE + GHSA) |
 | SAST — Angular/TS | Semgrep (`p/javascript`, `p/typescript`, `p/owasp-top-ten`) |
 | SAST — Java | Semgrep (`p/java`, `p/owasp-top-ten`, `p/find-sec-bugs`) |
+| SCA — Java | OWASP Dependency Check |
+| Scan profiles | `ScanProfile` model + `ScanOrchestrator` (ThreadPoolExecutor) |
 | Local LLM | Ollama → `qwen2.5-coder:14b` |
-| GitHub Integration | GitHub App (JWT RS256 + installation token) |
-| Frontend | HTML + Vanilla JS + Tailwind CDN |
+| GitHub Integration | GitHub App (JWT RS256 + installation token) + PR webhook + Check Run |
+| CI/CD | GitHub Actions workflow (Bandit + pip-audit + Semgrep) |
+| Frontend | HTML + Vanilla JS + Tailwind CDN + Chart.js |
 
 ---
 
 ## Scanner Architecture
 
-The platform uses a **dual-engine approach** for maximum coverage:
+The platform uses a **profile-driven, multi-engine approach** for maximum coverage:
 
 - **Bandit** (Python): fast, battle-tested, low false-positive rate for common CWEs.
 - **Semgrep** (Python, Angular, Java): pattern-based semantic analysis, OWASP Top 10 rulesets, closest open-source equivalent to Fortify/Veracode rule quality.
+- **pip-audit** (Python SCA): CVE and GHSA coverage from PyPI advisory database.
+- **OWASP Dependency Check** (Java SCA): NVD-backed CVE coverage for Maven/Gradle dependencies.
 
-When `SCANNER_ENGINE=both`, both engines run in parallel and findings are deduplicated by SHA-256 fingerprint (`rule_id + file_path + line_number`). This mirrors how enterprise platforms like Veracode correlate results from multiple analysis engines.
+**Scan Profiles** let you configure which engines run per project. The `ScanOrchestrator` runs SAST, DAST, and Quality runners in parallel using `ThreadPoolExecutor`, then deduplicates findings by SHA-256 fingerprint (`rule_id + file_path + line_number`). DAST and Quality runners are pluggable placeholders ready for ZAP or SonarQube adapters.
+
+Four built-in profiles ship by default:
+
+| Profile | Engines |
+|---|---|
+| Python SAST | Bandit + Semgrep + pip-audit |
+| Angular SAST | Semgrep |
+| Java SAST | Semgrep + OWASP DC |
+| Full Scan | Bandit + Semgrep + pip-audit (DAST/Quality when adapters ship) |
 
 ---
 
@@ -85,23 +100,29 @@ All remediations are proposed as Pull Requests. Nothing is committed automatical
 AI-DevSecOps-Control-Plane/
 ├── src/
 │   ├── api/
-│   │   ├── main.py              ← FastAPI endpoints
-│   │   ├── database.py          ← SQLModel engine
-│   │   └── models.py            ← Target, Scan, Finding, Remediation
+│   │   ├── main.py              ← FastAPI endpoints (profiles, webhook, reports)
+│   │   ├── database.py          ← SQLModel engine + default profile seed
+│   │   └── models.py            ← ScanProfile, Project, Scan, Finding, Remediation
 │   ├── scanners/
 │   │   ├── base.py              ← BaseScannerAdapter
+│   │   ├── orchestrator.py      ← ScanOrchestrator (ThreadPoolExecutor)
 │   │   ├── bandit_adapter.py    ← Python SAST
-│   │   ├── semgrep_adapter.py   ← Multi-language SAST (Semgrep)
+│   │   ├── semgrep_adapter.py   ← Multi-language SAST
+│   │   ├── pip_audit_adapter.py ← Python SCA (pip-audit)
 │   │   ├── angular_adapter.py   ← Angular/TS scanner
 │   │   ├── java_adapter.py      ← Java scanner
-│   │   └── escaneo.py           ← Orchestrator
+│   │   ├── odc_adapter.py       ← Java SCA (OWASP Dependency Check)
+│   │   └── escaneo.py           ← Adapter selection + finding upsert + SLA
 │   ├── ai_engine/
 │   │   └── remediator.py        ← Ollama + technology-aware prompts
 │   ├── integrations/
-│   │   └── github_client.py     ← GitHub App PR automation
+│   │   └── github_client.py     ← GitHub App PR automation + Check Run API
 │   └── dashboard/
-│       └── index.html           ← SPA: projects, findings, auto-fix, PR
-├── tests/
+│       └── index.html           ← SPA: 2-step wizard, findings, reports, auto-fix
+├── tests/                       ← 42 tests across 7 files
+├── .github/
+│   └── workflows/
+│       └── devsecops-scan.yml   ← CI: Bandit + pip-audit + Semgrep on every PR
 ├── helm/                        ← Kubernetes deployment (roadmap)
 ├── docker-compose.yml
 └── code/requirements.txt
@@ -157,7 +178,7 @@ GITHUB_BASE_BRANCH=main
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full sprint plan with implementation details.
 
-### Phase 1 — Implemented ✅
+### Phase 1 — Core platform ✅
 
 | Surface | Tool |
 |---|---|
@@ -167,20 +188,19 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full sprint plan with implementat
 | AI Remediation | Ollama local LLM — technology-aware prompts |
 | GitHub PR automation | GitHub App — JWT RS256 + semantic patching |
 
-### Phase 2 — Sprint (1-2 weeks) 🔜
+### Phase 2 — Scan profiles + SCA + CI/CD ✅
 
-| Area | Feature | Tool/Approach |
+| Area | Feature | Status |
 |---|---|---|
-| SCA | CVE coverage for Python libs | pip-audit |
-| SCA | CVE coverage for Java libs | OWASP Dependency Check |
-| Finding lifecycle | `fixed → regression` state transition | escaneo.py logic |
-| Finding lifecycle | Accepted risk / false positive with audit trail | FindingAuditEvent model |
-| Finding lifecycle | Reappearance history per finding | Audit events + `regression_count` |
-| Finding lifecycle | SLA tracking by severity (3/7/30/90 days) | `sla_deadline` field + dashboard badge |
-| Finding lifecycle | Reports per project (open/fixed/SLA/trends) | API endpoint + Chart.js dashboard |
-| CI/CD | Automatic scan on every PR (webhook) | GitHub webhook + Check Run API |
-| CI/CD | Block merge on critical findings | Check Run `conclusion: failure` |
-| CI/CD | Reusable GitHub Actions workflow | `.github/workflows/devsecops-scan.yml` |
+| SCA | CVE coverage for Python libs (pip-audit) | ✅ |
+| SCA | CVE coverage for Java libs (OWASP DC) | ✅ |
+| Finding lifecycle | `fixed → regression` state transition + audit trail | ✅ |
+| Finding lifecycle | SLA tracking by severity (3/7/30/90 days) | ✅ |
+| Finding lifecycle | Reports per project (Chart.js dashboard) | ✅ |
+| CI/CD | PR webhook + GitHub Check Run (blocks merge on criticals) | ✅ |
+| CI/CD | GitHub Actions workflow (Bandit + pip-audit + Semgrep) | ✅ |
+| Scan profiles | `ScanProfile` model + `ScanOrchestrator` + 4 default profiles | ✅ |
+| Dashboard | 2-step project wizard (profile select → upload/clone) | ✅ |
 
 ### Phase 3 — Infrastructure security 🔜
 
