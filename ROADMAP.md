@@ -29,12 +29,20 @@
 - [x] Strip backtick fences before rendering proposed code
 - [x] `tests/test_github_path.py` (4 tests — 46 total)
 
+### Phase 2 — Dashboard UX II
+- [x] Diff view split-screen: two-column Antes/Después (mobile → single column via `@media`)
+- [x] ScanProfile cards: SVG icons (Py, Angular A, ☕ Java, shield Full Scan, gear Custom), real tool descriptions, stack badges, hover highlight
+- [x] Project sidebar: severity mini-badges C / H / M / L per project
+- [x] `GET /api/projects`: added `findings_summary: {CRITICAL, HIGH, MEDIUM, LOW, total}` to each project
+- [x] Panel scan button `▶ Escanear` in findings panel header (synced spinner with header button)
+- [x] Clone wizard step 2: GitHub / GitLab sub-selector with logos + dynamic URL placeholder
+
 ---
 
 ## Pendiente
 
 ### Bug crítico
-- [ ] `orchestrator._run_sast`: instanciar adapters directamente sin `os.environ["SCANNER_ENGINE"]`
+- [x] `orchestrator._run_sast`: instanciar adapters directamente sin `os.environ["SCANNER_ENGINE"]`
 - [ ] `CombinedScannerAdapter.tool_name`: concatenar nombres de todos los hijos
 
 ### Phase 3 — Quality + DAST

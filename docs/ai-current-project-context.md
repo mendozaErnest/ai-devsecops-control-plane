@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-23 (Phase 2 — PR 404 fix + UX diff view)
+Ultima actualizacion: 2026-05-23 (Phase 2 — Dashboard UX: diff split-screen, severity badges, scan panel button, profile cards con iconos)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -50,7 +50,7 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - SLA deadlines: CRITICAL=3d, HIGH=7d, MEDIUM=30d, LOW=90d.
 - IA local: Ollama, modelo por defecto qwen2.5-coder:14b.
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (42 tests).
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (46 tests).
 
 Dependencias en code/requirements.txt:
 
@@ -145,98 +145,21 @@ Perfiles por defecto sembrados en startup (idempotente):
 
 ---
 
-## BUG CRITICO PENDIENTE — Semgrep no corre via ScanOrchestrator
+## BUG RESUELTO — Semgrep no corria via ScanOrchestrator ✅
 
-### Sintoma
+### Causa raiz (resuelta 2026-05-23)
 
-POST /api/scan con scan_profile_id=1 (sast_tools=both) retorna:
-  "tool": "bandit+pip-audit", saved_findings: 31
+_run_sast() usaba os.environ["SCANNER_ENGINE"] para comunicar el adapter
+al helper get_scanner_adapter(). Setear env vars en threads de
+ThreadPoolExecutor es unreliable: el valor podia no estar disponible o
+ser sobreescrito por threads concurrentes, causando que "both" cayera al
+default (bandit+pip-audit en lugar de bandit+semgrep).
 
-Esperado:
-  "tool": "bandit+semgrep", saved_findings: ~72
+### Fix aplicado
 
-Bandit encuentra 31. Semgrep encuentra 53. Con SCANNER_ENGINE=both
-directo (sin orquestador) el resultado es 72. Pero via orquestador
-Semgrep no corre.
-
-### Causa raiz
-
-En src/scanners/orchestrator.py, el metodo _run_sast hace:
-
-```python
-os.environ["SCANNER_ENGINE"] = profile.sast_tools  # ← BUG
-```
-
-Setear una variable de entorno en un thread de ThreadPoolExecutor
-es unreliable. El valor puede no estar disponible cuando
-get_scanner_adapter() lo lee, o puede ser sobreescrito por otro thread.
-
-### Fix requerido en src/scanners/orchestrator.py
-
-Reemplazar el enfoque de env var por instanciacion directa de adapters
-en _run_sast, sin tocar os.environ:
-
-```python
-def _run_sast(self, profile, target_path, technology):
-    from src.scanners.bandit_adapter import BanditAdapter
-    from src.scanners.semgrep_adapter import SemgrepAdapter
-    from src.scanners.escaneo import get_default_scanner_adapter, CombinedScannerAdapter
-
-    sast_tools = (profile.sast_tools or "").strip().lower()
-    norm_tech = technology.strip().lower()
-
-    if sast_tools == "semgrep":
-        adapter = (SemgrepAdapter(norm_tech)
-                   if norm_tech in {"python", "angular", "typescript", "java"}
-                   else get_default_scanner_adapter(norm_tech))
-    elif sast_tools == "bandit":
-        adapter = BanditAdapter()
-    elif sast_tools == "both":
-        if norm_tech == "python":
-            adapter = CombinedScannerAdapter([BanditAdapter(), SemgrepAdapter("python")])
-        elif norm_tech in {"angular", "typescript", "java"}:
-            adapter = SemgrepAdapter(norm_tech)
-        else:
-            adapter = get_default_scanner_adapter(norm_tech)
-    else:
-        adapter = get_default_scanner_adapter(norm_tech)
-
-    if adapter is None:
-        return []
-    return adapter.scan(target_path)
-```
-
-Eliminar completamente la linea os.environ["SCANNER_ENGINE"] = ... del metodo.
-
-### Fix secundario — tool name
-
-CombinedScannerAdapter toma el nombre solo del primer hijo en lugar de
-concatenar todos. Corregir para que el nombre refleje todos los adapters:
-  CombinedScannerAdapter([Bandit, Semgrep]).tool_name → "bandit+semgrep"
-
-### Validacion post-fix
-
-```bash
-# Sin servidor
-python3 -c "
-from src.api.models import ScanProfile
-from src.scanners.orchestrator import ScanOrchestrator
-perfil = ScanProfile(name='test', sast_enabled=True, sast_tools='both',
-                     dast_enabled=False, quality_enabled=False)
-result = ScanOrchestrator().run(perfil, 'src/dummy_vulnerable_app.py', 'python', 999)
-print(f'Findings: {len(result.findings)}')  # esperado >= 60
-print(f'Tools: {result.tools_run}')         # esperado incluye semgrep
-"
-
-# Via API
-curl -s -X POST http://127.0.0.1:8000/api/scan \
-  -H "Content-Type: application/json" \
-  -d '{"target_path":"src/dummy_vulnerable_app.py","technology":"python","scan_profile_id":1}' \
-  | python3 -m json.tool
-# Esperado: saved_findings >= 60, tool contiene "semgrep"
-
-python3 -m pytest tests/ -v  # esperado: 42 passed
-```
+_run_sast() ahora instancia adapters directamente segun profile.sast_tools,
+sin pasar por os.environ ni por el helper modular. Tests de mocks actualizados
+para parchear BanditAdapter y CombinedScannerAdapter en su modulo de origen.
 
 ---
 
@@ -276,8 +199,8 @@ get_scanner_adapter(technology) en src/scanners/escaneo.py:
 - java + SCANNER_ENGINE=semgrep    → CombinedScannerAdapter([Semgrep(java), OdcAdapter])
 - java (default)                   → CombinedScannerAdapter([JavaAdapter, OdcAdapter])
 
-ScanOrchestrator._run_sast() DEBE instanciar adapters directamente (ver bug arriba).
-No usar os.environ para pasar sast_tools al adapter.
+ScanOrchestrator._run_sast() instancia adapters directamente segun sast_tools. ✅
+No usa os.environ ni helpers externos — thread-safe por diseno.
 
 ---
 
@@ -327,13 +250,17 @@ Deteccion de secrets en Angular:
 ## Dashboard
 
 src/dashboard/index.html capacidades actuales:
-- Vista de proyectos con contador de findings.
+- Vista de proyectos con contador de findings + mini-badges de severidad C/H/M/L por proyecto.
+  - Backend: GET /api/projects incluye findings_summary: {CRITICAL, HIGH, MEDIUM, LOW, total}.
 - Modal 2 pasos: Paso 1 = seleccion de ScanProfile (cards), Paso 2 = ZIP/clone.
+  - Paso 1: cards con iconos SVG inline (Py azul, Angular rojo, Java ☕, Full Scan escudo, Custom engranaje), descripcion de herramientas y badge de stack. Hover resaltado via CSS .profile-card.
+  - Paso 2: sub-selector GitHub / GitLab con SVG logos; placeholder del input de URL cambia segun seleccion (setCloneSource()).
 - Panel Custom con checkboxes DAST/Quality (disabled, badge Proximamente).
 - Tabla de hallazgos con columna STATUS.
+- Boton "▶ Escanear" duplicado en el header del panel de findings (panel-run-scan), sincronizado con el boton global del header. Se deshabilita durante scan con spinner.
 - Auto-Fix → modal de remediacion → PR button.
   - Header con badge rule_id + path relativo corto (shortPath()).
-  - Vista diff estilo GitHub: lineas − en rojo (#3d1a1a), lineas + en verde (#1a3d1a), con numeros de linea.
+  - Vista diff split-screen dos columnas: izquierda "Antes" (rojo, lineas −), derecha "Despues" (verde, lineas +). En mobile (< 640px) colapsa a columna unica via media query.
   - Codigo propuesto se limpia de backtick fences antes de mostrar (cleanCodeFences()).
 - Tab Reportes con graficas Chart.js (by_severity, by_status, overdue).
 - Indicador AI Engine Online/Offline.
@@ -384,7 +311,7 @@ Reglas permanentes:
 3. DAST y Quality runners son placeholders — retornan [].
 4. workspace/ puede contener uploads temporales; no versionar.
 5. ensure_sqlite_schema() es SQLite-only; desactivar para PostgreSQL.
-6. La vista diff usa una aproximacion simple (todas las lineas old − luego new +) en vez de LCS; es honesto visualmente pero no es un diff line-by-line exacto.
+6. La vista diff split-screen muestra todas las lineas old a la izquierda y todas las new a la derecha (sin LCS real). Sigue siendo una aproximacion — ideal para ver cambios de funcion completa, no para diffs line-level precisos.
 
 ---
 
@@ -397,6 +324,11 @@ Inmediato (proxima sesion):
 Phase 2 ya implementado ✅:
 - normalize_file_path_for_github(): rutas absolutas workspace→relativas para GitHub API.
 - Modal de remediacion: badge rule_id + path relativo, diff view rojo/verde, limpieza de backticks.
+- Diff view split-screen dos columnas (Antes / Despues), responsive en mobile.
+- ScanProfile cards con iconos SVG, descripciones reales de herramientas, tool badges y hover.
+- Mini-badges de severidad C/H/M/L en lista de proyectos; GET /api/projects incluye findings_summary.
+- Boton "▶ Escanear" en panel de findings (ademas del header global), sincronizado con spinner.
+- Sub-selector GitHub / GitLab en Paso 2 del wizard con placeholder dinamico.
 
 Phase 3:
 3. DAST adapter real (OWASP ZAP).
