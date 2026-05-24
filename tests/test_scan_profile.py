@@ -74,10 +74,8 @@ def test_orchestrator_sast_only():
     mock_finding = MagicMock()
     mock_finding.fingerprint = "abc123"
 
-    mock_adapter = MagicMock()
-    mock_adapter.execute_scan.return_value = [mock_finding]
-
-    with patch("src.scanners.orchestrator.get_scanner_adapter", return_value=mock_adapter):
+    with patch("src.scanners.bandit_adapter.BanditAdapter") as MockBandit:
+        MockBandit.return_value.execute_scan.return_value = [mock_finding]
         orchestrator = ScanOrchestrator()
         result = orchestrator.run(profile, "/some/path", "python")
 
@@ -135,10 +133,8 @@ def test_orchestrator_deduplication():
     finding_a = make_finding("Finding from bandit")
     finding_b = make_finding("Finding from semgrep")
 
-    mock_adapter = MagicMock()
-    mock_adapter.execute_scan.return_value = [finding_a, finding_b]
-
-    with patch("src.scanners.orchestrator.get_scanner_adapter", return_value=mock_adapter):
+    with patch("src.scanners.escaneo.CombinedScannerAdapter") as MockCombined:
+        MockCombined.return_value.execute_scan.return_value = [finding_a, finding_b]
         orchestrator = ScanOrchestrator()
         result = orchestrator.run(profile, "/some/path", "python")
 

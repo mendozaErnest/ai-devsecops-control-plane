@@ -98,6 +98,12 @@
       .fb-info    { background:rgba(47,129,247,.12); border:1px solid rgba(47,129,247,.35); color:#6cb6ff; }
       .fb-success { background:rgba(63,185,80,.12);  border:1px solid rgba(63,185,80,.35); color:#56d364; }
       .fb-error   { background:rgba(248,81,73,.12);  border:1px solid rgba(248,81,73,.35); color:#ff7b72; }
+
+      /* Profile card hover (not active) */
+      .profile-card:not(.profile-card-active):hover { border-color:var(--accent) !important; background:rgba(47,129,247,.06) !important; }
+
+      /* Diff split view — stack on narrow screens */
+      @media (max-width:640px) { #diff-view { flex-direction:column !important; } }
     </style>
   </head>
   <body>
@@ -198,6 +204,9 @@
                 <button type="button" id="view-report-btn"
                   style="padding:4px 12px;border-radius:4px;font-size:.78rem;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--muted);transition:background .15s;">Reporte</button>
               </div>
+              <button type="button" id="panel-run-scan"
+                style="padding:6px 16px;border-radius:6px;font-size:.8rem;font-weight:600;background:var(--accent);border:none;color:#fff;cursor:pointer;transition:background .15s;display:inline-flex;align-items:center;gap:6px;">
+                ▶ Escanear</button>
               <button type="button" id="refresh-findings"
                 style="padding:6px 16px;border-radius:6px;font-size:.8rem;font-weight:600;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);cursor:pointer;transition:background .15s;"
                 data-i18n="refresh">Actualizar</button>
@@ -357,7 +366,18 @@
           <div id="panel-clone" class="form-panel hidden-panel" style="padding:16px 20px 20px;">
             <form id="clone-project-form" class="space-y-3">
               <input id="repo-name" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="Nombre del proyecto" data-i18n-placeholder="project-name">
-              <input id="repo-url" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="https://github.com/org/repo.git">
+              <!-- GitHub / GitLab selector -->
+              <div style="display:flex;gap:6px;">
+                <button type="button" id="clone-gh" class="tab-btn tab-active" style="flex:1;padding:5px 8px;font-size:.76rem;display:inline-flex;align-items:center;justify-content:center;gap:5px;">
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                  GitHub
+                </button>
+                <button type="button" id="clone-gl" class="tab-btn tab-inactive" style="flex:1;padding:5px 8px;font-size:.76rem;display:inline-flex;align-items:center;justify-content:center;gap:5px;">
+                  <svg width="13" height="13" viewBox="0 0 380 380" fill="currentColor"><path fill="#e24329" d="M380 228.5L323.9 55.7C321.6 48.5 315.3 43.5 308 43.5c-7.3 0-13.6 5-15.9 12.2L190 354.7 87.9 55.7C85.6 48.5 79.3 43.5 72 43.5c-7.3 0-13.6 5-15.9 12.2L0 228.5l190 126.2L380 228.5z"/></svg>
+                  GitLab
+                </button>
+              </div>
+              <input id="repo-url" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="https://github.com/usuario/repo.git">
               <select id="repo-technology" style="width:100%;padding:8px 12px;font-size:.83rem;">
                 <option value="python">Python</option>
                 <option value="angular">Angular</option>
@@ -392,8 +412,8 @@
             aria-label="Cerrar">✕</button>
         </div>
 
-        <div style="overflow:auto;max-height:60vh;flex:1;background:#0d1117;padding:18px;">
-          <div id="diff-view" style="font-family:'Courier New',monospace;font-size:.8rem;line-height:1.7;overflow-x:auto;border-radius:4px;"></div>
+        <div style="overflow:auto;max-height:60vh;flex:1;background:#0d1117;">
+          <div id="diff-view" style="display:flex;width:100%;font-family:'Courier New',monospace;font-size:.8rem;line-height:1.7;"></div>
           <!-- kept hidden for JS state tracking -->
           <pre id="vulnerable-code" style="display:none;"></pre>
           <pre id="remediation-content" style="display:none;"></pre>
@@ -512,6 +532,7 @@
 
       // ── DOM refs ───────────────────────────────────────────────────────
       const runScanButton       = document.getElementById("run-scan");
+      const panelRunScanButton  = document.getElementById("panel-run-scan");
       const newProjectButton    = document.getElementById("new-project");
       const refreshButton       = document.getElementById("refresh-findings");
       const projectsList        = document.getElementById("projects-list");
@@ -541,6 +562,9 @@
       const langToggle          = document.getElementById("lang-toggle");
       const tabZip              = document.getElementById("tab-zip");
       const tabClone            = document.getElementById("tab-clone");
+      const cloneGhBtn          = document.getElementById("clone-gh");
+      const cloneGlBtn          = document.getElementById("clone-gl");
+      const repoUrlInput        = document.getElementById("repo-url");
       const panelZip            = document.getElementById("panel-zip");
       const panelClone          = document.getElementById("panel-clone");
       const reasonModal         = document.getElementById("reason-modal");
@@ -812,6 +836,17 @@
           const critCount = project.critical_findings || 0;
           const totalF   = project.finding_count || 0;
 
+          // Severity breakdown badges
+          const summary = project.findings_summary || {};
+          const sevParts = [];
+          if ((summary.CRITICAL || 0) > 0) sevParts.push(`<span style="padding:1px 6px;border-radius:4px;font-size:.67rem;font-weight:700;background:rgba(248,81,73,.2);color:#f85149;" title="CRITICAL">C:${summary.CRITICAL}</span>`);
+          if ((summary.HIGH     || 0) > 0) sevParts.push(`<span style="padding:1px 6px;border-radius:4px;font-size:.67rem;font-weight:700;background:rgba(227,105,62,.2);color:#e3693e;" title="HIGH">H:${summary.HIGH}</span>`);
+          if ((summary.MEDIUM   || 0) > 0) sevParts.push(`<span style="padding:1px 6px;border-radius:4px;font-size:.67rem;font-weight:700;background:rgba(210,153,34,.2);color:#d29922;" title="MEDIUM">M:${summary.MEDIUM}</span>`);
+          if ((summary.LOW      || 0) > 0) sevParts.push(`<span style="padding:1px 6px;border-radius:4px;font-size:.67rem;font-weight:700;background:rgba(88,166,255,.15);color:#58a6ff;" title="LOW">L:${summary.LOW}</span>`);
+          const sevRow = project.findings_summary !== undefined
+            ? `<div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;">${sevParts.length ? sevParts.join("") : `<span style="font-size:.67rem;color:var(--muted);">Sin hallazgos</span>`}</div>`
+            : "";
+
           btn.innerHTML = `
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
               <span style="font-size:.85rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">${escapeHtml(project.name)}</span>
@@ -821,7 +856,8 @@
               <span style="padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:600;${techStyle(project.technology)}">${escapeHtml(project.technology)}</span>
               <span style="padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:600;background:var(--bg-hover);color:var(--muted);border:1px solid var(--border);">${escapeHtml(String(project.source_type || "").toUpperCase())}</span>
             </div>
-            <p style="margin-top:6px;font-size:.7rem;color:var(--muted);">${escapeHtml(createdAt)}</p>
+            ${sevRow}
+            <p style="margin-top:5px;font-size:.7rem;color:var(--muted);">${escapeHtml(createdAt)}</p>
           `;
           btn.addEventListener("click", () => selectProject(project));
           projectsList.appendChild(btn);
@@ -971,50 +1007,44 @@
 
       function renderDiffView(originalCode, proposedCode) {
         diffView.innerHTML = "";
+
         const origLines = (originalCode || "").split("\n");
         const propLines = (proposedCode || "").split("\n");
-        const frag = document.createDocumentFragment();
 
-        let n = 1;
-        origLines.forEach((line) => {
-          const row = document.createElement("div");
-          row.style.cssText = "display:flex;background:#3d1a1a;";
-          const num = document.createElement("span");
-          num.style.cssText = "min-width:40px;padding:0 8px;color:#6e3333;font-size:.72rem;user-select:none;flex-shrink:0;text-align:right;line-height:1.7;";
-          num.textContent = n++;
-          const prefix = document.createElement("span");
-          prefix.style.cssText = "min-width:18px;padding:0 4px;color:#f85149;font-weight:700;flex-shrink:0;";
-          prefix.textContent = "−";
-          const code = document.createElement("span");
-          code.style.cssText = "color:#ff7b72;padding:0 8px;white-space:pre;";
-          code.textContent = line;
-          row.append(num, prefix, code);
-          frag.appendChild(row);
-        });
+        function buildColumn(lines, sign, rowBg, numColor, signColor, codeColor, borderColor, headerBg, headerLabel) {
+          const col = document.createElement("div");
+          col.style.cssText = `flex:1;min-width:0;overflow-x:auto;border-right:1px solid ${borderColor};`;
 
-        const sep = document.createElement("div");
-        sep.style.cssText = "padding:2px 8px;color:var(--muted);font-style:italic;font-size:.76rem;";
-        sep.textContent = "···";
-        frag.appendChild(sep);
+          const hdr = document.createElement("div");
+          hdr.style.cssText = `padding:5px 12px;background:${headerBg};color:var(--muted);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid ${borderColor};display:flex;align-items:center;gap:6px;`;
+          hdr.innerHTML = `<span style="color:${signColor};font-size:.9rem;">${sign}</span> ${headerLabel}`;
+          col.appendChild(hdr);
 
-        n = 1;
-        propLines.forEach((line) => {
-          const row = document.createElement("div");
-          row.style.cssText = "display:flex;background:#1a3d1a;";
-          const num = document.createElement("span");
-          num.style.cssText = "min-width:40px;padding:0 8px;color:#1e4d1e;font-size:.72rem;user-select:none;flex-shrink:0;text-align:right;line-height:1.7;";
-          num.textContent = n++;
-          const prefix = document.createElement("span");
-          prefix.style.cssText = "min-width:18px;padding:0 4px;color:#3fb950;font-weight:700;flex-shrink:0;";
-          prefix.textContent = "+";
-          const code = document.createElement("span");
-          code.style.cssText = "color:#56d364;padding:0 8px;white-space:pre;";
-          code.textContent = line;
-          row.append(num, prefix, code);
-          frag.appendChild(row);
-        });
+          let n = 1;
+          lines.forEach((line) => {
+            const row = document.createElement("div");
+            row.style.cssText = `display:flex;background:${rowBg};`;
+            const num = document.createElement("span");
+            num.style.cssText = `min-width:36px;padding:0 6px;color:${numColor};font-size:.7rem;user-select:none;flex-shrink:0;text-align:right;line-height:1.7;`;
+            num.textContent = n++;
+            const pre = document.createElement("span");
+            pre.style.cssText = `min-width:16px;padding:0 4px;color:${signColor};font-weight:700;flex-shrink:0;`;
+            pre.textContent = sign;
+            const code = document.createElement("span");
+            code.style.cssText = `color:${codeColor};padding:0 8px;white-space:pre;`;
+            code.textContent = line;
+            row.append(num, pre, code);
+            col.appendChild(row);
+          });
+          return col;
+        }
 
-        diffView.appendChild(frag);
+        const leftCol  = buildColumn(origLines, "−", "#3d1a1a", "#6e3333", "#f85149", "#ff7b72", "#5a2222", "#1e0e0e", "Antes");
+        const rightCol = buildColumn(propLines, "+", "#1a3d1a", "#1e4d1e", "#3fb950", "#56d364", "#1a3d1a", "#0e1e0e", "Después");
+        rightCol.style.borderRight = "none";
+
+        diffView.appendChild(leftCol);
+        diffView.appendChild(rightCol);
       }
 
       // ── Remediation modal ──────────────────────────────────────────────
@@ -1251,7 +1281,9 @@
 
         runScanButton.disabled = true;
         refreshButton.disabled = true;
+        panelRunScanButton.disabled = true;
         runScanButton.innerHTML = `<span class="spinner"></span> Scanning…`;
+        panelRunScanButton.innerHTML = `<span class="spinner"></span> Escaneando…`;
         scanStatus.textContent = "En progreso";
         tableStatus.textContent = "Ejecutando scanner…";
         showFeedback("Escaneo en curso. El scanner está analizando el código.", "info");
@@ -1273,7 +1305,9 @@
         } finally {
           runScanButton.disabled = false;
           refreshButton.disabled = false;
+          panelRunScanButton.disabled = false;
           runScanButton.innerHTML = `▶ ${t("scan-project").replace("▶ ", "")}`;
+          panelRunScanButton.innerHTML = "▶ Escanear";
           applyI18n();
         }
       }
@@ -1299,26 +1333,57 @@
 
       function renderProfileCards() {
         profileCards.innerHTML = "";
-        const descriptions = {
-          "Python SAST":  "Bandit + Semgrep",
-          "Angular SAST": "Semgrep",
-          "Java SAST":    "Semgrep",
-          "Full Scan":    "SAST + SCA",
+
+        const PROFILE_META = {
+          "Python SAST": {
+            icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#1a3a5c"/><text x="18" y="25" font-family="monospace" font-size="15" font-weight="800" fill="#58a6ff" text-anchor="middle">Py</text></svg>`,
+            desc: "Bandit + Semgrep — detección de inyecciones, secrets y código inseguro",
+            badge: "Bandit + Semgrep", badgeBg: "rgba(88,166,255,.15)", badgeColor: "#58a6ff",
+          },
+          "Angular SAST": {
+            icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#3a1a1a"/><polygon points="18,5 30,10 27,26 18,31 9,26 6,10" fill="#dd0031" opacity="0.85"/><text x="18" y="24" font-family="sans-serif" font-size="13" font-weight="800" fill="white" text-anchor="middle">A</text></svg>`,
+            desc: "Semgrep para XSS, bindings inseguros y secrets en TypeScript",
+            badge: "Semgrep", badgeBg: "rgba(248,81,73,.15)", badgeColor: "#ff7b72",
+          },
+          "Java SAST": {
+            icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#3a2e1a"/><text x="18" y="25" font-family="sans-serif" font-size="19" text-anchor="middle">☕</text></svg>`,
+            desc: "Semgrep — SQL injection, crypto débil y configuración TLS insegura",
+            badge: "Semgrep", badgeBg: "rgba(210,153,34,.15)", badgeColor: "#d29922",
+          },
+          "Full Scan": {
+            icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#1a3a2e"/><path d="M18 5L28 10v10c0 7-5.5 11-10 12-4.5-1-10-5-10-12V10L18 5z" fill="#3fb950" opacity="0.25" stroke="#3fb950" stroke-width="1.5"/><path d="M13 18l3.5 3.5L23 14" stroke="#3fb950" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+            desc: "SAST completo + DAST y Quality cuando los adapters estén instalados",
+            badge: "SAST + SCA", badgeBg: "rgba(63,185,80,.15)", badgeColor: "#3fb950",
+          },
+          "Angular + Quality": {
+            icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#3a1a2e"/><polygon points="18,5 30,10 27,26 18,31 9,26 6,10" fill="#dd0031" opacity="0.7"/><text x="18" y="23" font-family="sans-serif" font-size="11" font-weight="800" fill="white" text-anchor="middle">A★</text></svg>`,
+            desc: "Semgrep + análisis de calidad de código Angular/TypeScript",
+            badge: "Semgrep + Quality", badgeBg: "rgba(248,81,73,.15)", badgeColor: "#ff7b72",
+          },
         };
+
         const profileList = wizardProfiles.length
           ? wizardProfiles
           : [{ id: null, name: "Python SAST" }, { id: null, name: "Angular SAST" },
              { id: null, name: "Java SAST" },   { id: null, name: "Full Scan" }];
 
         profileList.forEach((p) => {
+          const meta = PROFILE_META[p.name] || {
+            icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="var(--bg-hover)"/><text x="18" y="25" font-family="sans-serif" font-size="18" text-anchor="middle" fill="var(--muted)">?</text></svg>`,
+            desc: p.description || p.sast_tools || "SAST",
+            badge: p.sast_tools || "SAST", badgeBg: "var(--bg-hover)", badgeColor: "var(--muted)",
+          };
+          const isSelected = wizardSelectedProfileId === p.id;
           const card = document.createElement("button");
           card.type = "button";
+          card.className = "profile-card" + (isSelected ? " profile-card-active" : "");
           card.dataset.profileId = p.id ?? "";
-          const isSelected = wizardSelectedProfileId === p.id;
-          card.style.cssText = `text-align:left;padding:12px 14px;border-radius:6px;border:2px solid ${isSelected ? "var(--accent)" : "var(--border)"};background:${isSelected ? "rgba(47,129,247,.12)" : "var(--bg-surface)"};cursor:pointer;transition:border .15s,background .15s;`;
+          card.style.cssText = `text-align:left;padding:14px;border-radius:8px;border:2px solid ${isSelected ? "var(--accent)" : "var(--border)"};background:${isSelected ? "rgba(47,129,247,.12)" : "var(--bg-surface)"};cursor:pointer;transition:border .15s,background .15s;min-height:135px;display:flex;flex-direction:column;gap:7px;`;
           card.innerHTML = `
-            <p style="font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:3px;">${escapeHtml(p.name)}</p>
-            <p style="font-size:.72rem;color:var(--muted);">${escapeHtml(p.description || descriptions[p.name] || p.sast_tools || "SAST")}</p>`;
+            ${meta.icon}
+            <p style="font-size:.82rem;font-weight:700;color:var(--text);margin:0;">${escapeHtml(p.name)}</p>
+            <p style="font-size:.72rem;color:var(--muted);line-height:1.4;flex:1;">${escapeHtml(meta.desc)}</p>
+            <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:.67rem;font-weight:700;background:${meta.badgeBg};color:${meta.badgeColor};">${escapeHtml(meta.badge)}</span>`;
           card.addEventListener("click", () => {
             wizardSelectedProfileId = p.id;
             customPanel.style.display = "none";
@@ -1328,11 +1393,16 @@
         });
 
         // Custom card
+        const isCustom = wizardSelectedProfileId === "custom";
         const customCard = document.createElement("button");
         customCard.type = "button";
-        const isCustom = wizardSelectedProfileId === "custom";
-        customCard.style.cssText = `text-align:left;padding:12px 14px;border-radius:6px;border:2px solid ${isCustom ? "var(--accent)" : "var(--border)"};background:${isCustom ? "rgba(47,129,247,.12)" : "var(--bg-surface)"};cursor:pointer;transition:border .15s,background .15s;`;
-        customCard.innerHTML = `<p style="font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:3px;">⚙ Personalizado</p><p style="font-size:.72rem;color:var(--muted);">Ver opciones</p>`;
+        customCard.className = "profile-card" + (isCustom ? " profile-card-active" : "");
+        customCard.style.cssText = `text-align:left;padding:14px;border-radius:8px;border:2px solid ${isCustom ? "var(--accent)" : "var(--border)"};background:${isCustom ? "rgba(47,129,247,.12)" : "var(--bg-surface)"};cursor:pointer;transition:border .15s,background .15s;min-height:135px;display:flex;flex-direction:column;gap:7px;`;
+        customCard.innerHTML = `
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="var(--bg-hover)"/><circle cx="18" cy="18" r="3" fill="var(--muted)"/><path d="M18 8v4M18 24v4M8 18h4M24 18h4M11.5 11.5l2.8 2.8M21.7 21.7l2.8 2.8M11.5 24.5l2.8-2.8M21.7 14.3l2.8-2.8" stroke="var(--muted)" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <p style="font-size:.82rem;font-weight:700;color:var(--text);margin:0;">Personalizado</p>
+          <p style="font-size:.72rem;color:var(--muted);line-height:1.4;flex:1;">Configura herramientas SAST, DAST y Quality manualmente</p>
+          <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:.67rem;font-weight:700;background:var(--bg-hover);color:var(--muted);">Manual</span>`;
         customCard.addEventListener("click", () => {
           wizardSelectedProfileId = "custom";
           customPanel.style.display = "";
@@ -1443,8 +1513,18 @@
         }
       }
 
+      // ── Clone source (GitHub / GitLab) ─────────────────────────────────
+      function setCloneSource(source) {
+        cloneGhBtn.className = "tab-btn " + (source === "gh" ? "tab-active" : "tab-inactive");
+        cloneGlBtn.className = "tab-btn " + (source === "gl" ? "tab-active" : "tab-inactive");
+        repoUrlInput.placeholder = source === "gh"
+          ? "https://github.com/usuario/repo.git"
+          : "https://gitlab.com/usuario/repo.git";
+      }
+
       // ── Event listeners ────────────────────────────────────────────────
       runScanButton.addEventListener("click", runScan);
+      panelRunScanButton.addEventListener("click", runScan);
       newProjectButton.addEventListener("click", showProjectModal);
       refreshButton.addEventListener("click", loadFindings);
       createPrButton.addEventListener("click", createPullRequest);
@@ -1452,6 +1532,8 @@
       closeProjectModalButton.addEventListener("click", hideProjectModal);
       tabZip.addEventListener("click", () => setModalTab("zip"));
       tabClone.addEventListener("click", () => setModalTab("clone"));
+      cloneGhBtn.addEventListener("click", () => setCloneSource("gh"));
+      cloneGlBtn.addEventListener("click", () => setCloneSource("gl"));
       uploadProjectForm.addEventListener("submit", uploadZipProject);
       cloneProjectForm.addEventListener("submit", cloneRepoProject);
       wizardNextBtn.addEventListener("click", () => setWizardStep(2));

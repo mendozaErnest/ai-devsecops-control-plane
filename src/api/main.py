@@ -203,16 +203,17 @@ def normalize_technology(technology: str) -> str:
 
 def project_to_response(project: Project, findings: list[Finding] | None = None) -> dict:
     findings = findings or []
-    critical_total = sum(
-        1
-        for finding in findings
-        if str(finding.severity or "").upper() in {"CRITICAL", "HIGH"}
-    )
+    sev_counts: dict[str, int] = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    for f in findings:
+        sev = str(f.severity or "").upper()
+        if sev in sev_counts:
+            sev_counts[sev] += 1
 
     return {
         **project.model_dump(mode="json"),
-        "critical_findings": critical_total,
+        "critical_findings": sev_counts["CRITICAL"] + sev_counts["HIGH"],
         "finding_count": len(findings),
+        "findings_summary": {**sev_counts, "total": len(findings)},
     }
 
 

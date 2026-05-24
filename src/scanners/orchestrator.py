@@ -100,7 +100,29 @@ class ScanOrchestrator:
         target_path: str,
         technology: str,
     ) -> list[Finding]:
-        adapter = get_scanner_adapter(technology, sast_tools=profile.sast_tools or "")
+        from src.scanners.bandit_adapter import BanditAdapter
+        from src.scanners.semgrep_adapter import SemgrepAdapter
+        from src.scanners.escaneo import get_default_scanner_adapter, CombinedScannerAdapter
+
+        sast_tools = (profile.sast_tools or "").strip().lower()
+        norm_tech = technology.strip().lower()
+
+        if sast_tools == "semgrep":
+            adapter = (SemgrepAdapter(norm_tech)
+                       if norm_tech in {"python", "angular", "typescript", "java"}
+                       else get_default_scanner_adapter(norm_tech))
+        elif sast_tools == "bandit":
+            adapter = BanditAdapter()
+        elif sast_tools == "both":
+            if norm_tech == "python":
+                adapter = CombinedScannerAdapter([BanditAdapter(), SemgrepAdapter("python")])
+            elif norm_tech in {"angular", "typescript", "java"}:
+                adapter = SemgrepAdapter(norm_tech)
+            else:
+                adapter = get_default_scanner_adapter(norm_tech)
+        else:
+            adapter = get_default_scanner_adapter(norm_tech)
+
         if adapter is None:
             logger.warning("No SAST adapter for technology=%s sast_tools=%s", technology, profile.sast_tools)
             return []
