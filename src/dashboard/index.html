@@ -400,7 +400,7 @@
     <!-- ══════════════ REMEDIATION MODAL ══════════════ -->
     <div id="remediation-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);padding:24px;"
       role="dialog" aria-modal="true" aria-labelledby="remediation-title">
-      <section style="width:100%;max-width:900px;max-height:85vh;display:flex;flex-direction:column;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+      <section style="width:100%;max-width:900px;height:85vh;display:flex;flex-direction:column;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
 
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0;">
           <div>
@@ -412,8 +412,8 @@
             aria-label="Cerrar">✕</button>
         </div>
 
-        <div style="flex:1;min-height:0;overflow:auto;background:#0d1117;">
-          <div id="diff-view" style="display:flex;align-items:stretch;width:100%;font-family:'Courier New',monospace;font-size:.8rem;line-height:1.7;"></div>
+        <div style="flex:1;min-height:0;overflow:hidden;background:#0d1117;display:flex;flex-direction:column;">
+          <div id="diff-view" style="display:flex;align-items:stretch;flex:1;min-height:0;width:100%;font-family:'Courier New',monospace;font-size:.8rem;line-height:1.7;"></div>
           <!-- kept hidden for JS state tracking -->
           <pre id="vulnerable-code" style="display:none;"></pre>
           <pre id="remediation-content" style="display:none;"></pre>
@@ -1004,45 +1004,139 @@
         return text.replace(/^```[\w]*\n?/, "").replace(/\n?```$/, "").trim();
       }
 
-      function renderDiffView(originalCode, proposedCode) {
+      function renderDiffView(snippetCode, proposedCode, fileData) {
         diffView.innerHTML = "";
 
-        const origLines = (originalCode || "").split("\n");
-        const propLines = (proposedCode || "").split("\n");
+        // LCS diff entre snippet y proposed (ambos pequeños, nunca el archivo completo)
+        function computeDiff(linesA, linesB) {
+          const m = linesA.length, n = linesB.length;
+          const dp = Array.from({length: m + 1}, () => new Array(n + 1).fill(0));
+          for (let i = 1; i <= m; i++)
+            for (let j = 1; j <= n; j++)
+              dp[i][j] = linesA[i-1] === linesB[j-1]
+                ? dp[i-1][j-1] + 1
+                : Math.max(dp[i-1][j], dp[i][j-1]);
+          const ops = [];
+          let i = m, j = n;
+          while (i > 0 || j > 0) {
+            if (i > 0 && j > 0 && linesA[i-1] === linesB[j-1]) {
+              ops.push({type:"equal", left:linesA[i-1], right:linesB[j-1]}); i--; j--;
+            } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+              ops.push({type:"insert", right:linesB[j-1]}); j--;
+            } else {
+              ops.push({type:"delete", left:linesA[i-1]}); i--;
+            }
+          }
+          return ops.reverse();
+        }
 
-        function buildColumn(lines, sign, rowBg, numColor, signColor, codeColor, borderColor, headerBg, headerLabel) {
+        const snippetLines  = (snippetCode  || "").split("\n");
+        const proposedLines = (proposedCode || "").split("\n");
+        const ops = computeDiff(snippetLines, proposedLines);
+
+        // Filas ALINEADAS: cada op genera una fila en CADA columna.
+        // delete → rojo izquierda + pad derecha
+        // insert → pad izquierda + verde derecha
+        // equal  → fila igual en ambas
+        const leftDiff = [], rightDiff = [];
+        ops.forEach(op => {
+          if (op.type === "equal") {
+            leftDiff.push({line: op.left,  type: "equal"});
+            rightDiff.push({line: op.right, type: "equal"});
+          } else if (op.type === "delete") {
+            leftDiff.push({line: op.left, type: "delete"});
+            rightDiff.push({line: "",     type: "pad"});
+          } else {
+            leftDiff.push({line: "",       type: "pad"});
+            rightDiff.push({line: op.right, type: "insert"});
+          }
+        });
+
+        // Contexto del archivo real
+        const CONTEXT = 20;
+        let allLeftRows, allRightRows, startLine;
+
+        if (fileData && fileData.content) {
+          const fileLines = fileData.content.split("\n");
+          const sStart  = Math.max(0, (fileData.line_number || 1) - 1);
+          const sEnd    = sStart + snippetLines.length;
+          const ctxFrom = Math.max(0, sStart - CONTEXT);
+          const ctxTo   = Math.min(fileLines.length, sEnd + CONTEXT);
+
+          const before = fileLines.slice(ctxFrom, sStart).map(l => ({line: l, type: "equal"}));
+          const after  = fileLines.slice(sEnd, ctxTo).map(l   => ({line: l, type: "equal"}));
+          const gapB   = ctxFrom > 0               ? [{line: "···", type: "gap"}] : [];
+          const gapA   = ctxTo < fileLines.length  ? [{line: "···", type: "gap"}] : [];
+
+          allLeftRows  = [...gapB, ...before, ...leftDiff,  ...after, ...gapA];
+          allRightRows = [...gapB, ...before, ...rightDiff, ...after, ...gapA];
+          startLine    = ctxFrom + 1;
+        } else {
+          allLeftRows  = [{line:"···", type:"gap"}, ...leftDiff,  {line:"···", type:"gap"}];
+          allRightRows = [{line:"···", type:"gap"}, ...rightDiff, {line:"···", type:"gap"}];
+          startLine    = 1;
+        }
+
+        // Paleta de colores
+        const STYLE = {
+          equal:  {rowBg:"transparent", numBg:"#0d1117", codeFg:"#c9d1d9", numFg:"#484f58", signCh:" "},
+          delete: {rowBg:"#2a1212",     numBg:"#2a1212", codeFg:"#ff7b72", numFg:"#5e2828", signCh:"−"},
+          insert: {rowBg:"#122a12",     numBg:"#122a12", codeFg:"#56d364", numFg:"#185018", signCh:"+"},
+          gap:    {rowBg:"#161b22",     numBg:"#161b22", codeFg:"#484f58", numFg:"#30363d", signCh:""},
+          pad:    {rowBg:"#161b22",     numBg:"#161b22", codeFg:"transparent", numFg:"transparent", signCh:""},
+        };
+
+        function buildColumn(rows, startLineNum, headerSign, headerLabel, headerSignColor, borderColor) {
           const col = document.createElement("div");
-          col.style.cssText = `flex:1;min-width:0;overflow-x:auto;overflow-y:auto;max-height:380px;border-right:1px solid ${borderColor};`;
+          col.style.cssText = `flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;border-right:1px solid ${borderColor};overflow:hidden;`;
 
           const hdr = document.createElement("div");
-          hdr.style.cssText = `padding:5px 12px;background:${headerBg};color:var(--muted);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid ${borderColor};display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:2;`;
-          hdr.innerHTML = `<span style="color:${signColor};font-size:.9rem;">${sign}</span> ${headerLabel}`;
+          hdr.style.cssText = `padding:5px 12px;background:#161b22;color:var(--muted);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid ${borderColor};display:flex;align-items:center;gap:6px;flex-shrink:0;`;
+          hdr.innerHTML = `<span style="color:${headerSignColor};font-size:.9rem;">${headerSign}</span> ${headerLabel}`;
           col.appendChild(hdr);
 
-          let n = 1;
-          lines.forEach((line) => {
-            const row = document.createElement("div");
-            row.style.cssText = `display:flex;background:${rowBg};`;
-            const stickyLabel = document.createElement("div");
-            stickyLabel.style.cssText = `display:flex;flex-shrink:0;position:sticky;left:0;background:${rowBg};z-index:1;`;
-            const num = document.createElement("span");
-            num.style.cssText = `min-width:36px;padding:0 6px;color:${numColor};font-size:.7rem;user-select:none;text-align:right;line-height:1.7;`;
-            num.textContent = n++;
-            const pre = document.createElement("span");
-            pre.style.cssText = `min-width:16px;padding:0 4px;color:${signColor};font-weight:700;`;
-            pre.textContent = sign;
-            stickyLabel.append(num, pre);
-            const code = document.createElement("span");
-            code.style.cssText = `color:${codeColor};padding:0 8px;white-space:pre;`;
-            code.textContent = line;
-            row.append(stickyLabel, code);
-            col.appendChild(row);
+          // SCROLL: max-height explícito = altura del modal menos header/footer/colheader
+          const scroll = document.createElement("div");
+          scroll.style.cssText = `overflow-x:auto;overflow-y:auto;max-height:calc(85vh - 200px);background:#0d1117;`;
+
+          const table = document.createElement("table");
+          table.style.cssText = `border-collapse:collapse;min-width:100%;width:max-content;font-family:'Courier New',monospace;font-size:.8rem;line-height:1.7;`;
+
+          let lineNum = startLineNum;
+          rows.forEach(({line, type}) => {
+            const s       = STYLE[type] || STYLE.equal;
+            const isPad   = type === "pad";
+            const isGap   = type === "gap";
+            const showNum = !isPad && !isGap;
+
+            const tr = document.createElement("tr");
+            tr.style.cssText = `background:${s.rowBg};`;
+
+            const tdNum = document.createElement("td");
+            tdNum.style.cssText = `min-width:42px;padding:0 8px;color:${s.numFg};font-size:.7rem;user-select:none;text-align:right;white-space:nowrap;position:sticky;left:0;background:${s.numBg};z-index:1;border-right:1px solid rgba(255,255,255,0.04);`;
+            tdNum.textContent = showNum ? lineNum : "";
+
+            const tdSign = document.createElement("td");
+            tdSign.style.cssText = `min-width:18px;padding:0 4px;color:${type==="delete"?"#f85149":type==="insert"?"#3fb950":"#484f58"};font-weight:700;white-space:nowrap;`;
+            tdSign.textContent = s.signCh;
+
+            const tdCode = document.createElement("td");
+            tdCode.style.cssText = `color:${s.codeFg};padding:0 16px 0 2px;white-space:pre;`;
+            tdCode.textContent = isGap ? "···" : (isPad ? "" : line);
+
+            tr.append(tdNum, tdSign, tdCode);
+            table.appendChild(tr);
+
+            if (showNum) lineNum++;
           });
+
+          scroll.appendChild(table);
+          col.appendChild(scroll);
           return col;
         }
 
-        const leftCol  = buildColumn(origLines, "−", "#2a1212", "#5e2828", "#f85149", "#ff7b72", "#3a1515", "#160808", "Antes");
-        const rightCol = buildColumn(propLines, "+", "#122a12", "#185018", "#3fb950", "#56d364", "#122a12", "#081608", "Después");
+        const leftCol  = buildColumn(allLeftRows,  startLine, "−", "Antes",   "#f85149", "#3a1515");
+        const rightCol = buildColumn(allRightRows, startLine, "+", "Después", "#3fb950", "#122a12");
         rightCol.style.borderRight = "none";
 
         diffView.appendChild(leftCol);
@@ -1071,8 +1165,15 @@
         vulnerableCode.textContent = record.code_snippet || "";
         remediationContent.textContent = cleanPatch;
 
-        // 3b: GitHub-style diff view
-        renderDiffView(record.code_snippet || "", cleanPatch);
+        // 3b: GitHub-style diff view — obtener archivo + line_number para contexto real
+        (async () => {
+          let fileData = null;
+          try {
+            const res = await fetch(`/api/findings/${record.id}/file_content`);
+            if (res.ok) fileData = await res.json(); // { content, file_path, line_number }
+          } catch (_) {}
+          renderDiffView(record.code_snippet || "", cleanPatch, fileData);
+        })();
 
         resetPullRequestAction(record.has_remediation && selectedProject && selectedProject.source_type === "repo");
         remediationModal.style.display = "flex";

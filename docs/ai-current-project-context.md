@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-25 (UX fix — diff scroll clipping, colores, modal size, botón global)
+Ultima actualizacion: 2026-05-25 (Diff Viewer v9 — max-height explícito, CONTEXT=20, pad=#161b22)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -50,7 +50,7 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - SLA deadlines: CRITICAL=3d, HIGH=7d, MEDIUM=30d, LOW=90d.
 - IA local: Ollama, modelo por defecto qwen2.5-coder:14b.
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (46 tests).
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (52 tests).
 
 Dependencias en code/requirements.txt:
 
@@ -183,6 +183,7 @@ para parchear BanditAdapter y CombinedScannerAdapter en su modulo de origen.
 - POST /api/profiles                        → crea ScanProfile
 - GET  /api/profiles/{id}                   → perfil por id
 - PUT  /api/profiles/{id}                   → actualiza perfil
+- GET  /api/findings/{finding_id}/file_content → contenido completo del archivo fuente
 - GET  /api/reports/project/{id}            → reporte by_severity/status/top_rules
 - POST /api/webhooks/github                 → webhook PR con HMAC-SHA256
 
@@ -312,7 +313,7 @@ Reglas permanentes:
 3. DAST y Quality runners son placeholders — retornan [].
 4. workspace/ puede contener uploads temporales; no versionar.
 5. ensure_sqlite_schema() es SQLite-only; desactivar para PostgreSQL.
-6. La vista diff split-screen muestra todas las lineas old a la izquierda y todas las new a la derecha (sin LCS real). Sigue siendo una aproximacion — ideal para ver cambios de funcion completa, no para diffs line-level precisos.
+6. El contexto del archivo usa Finding.line_start; si el scanner reporta una línea incorrecta el contexto puede mostrar código diferente al snippet real.
 
 ---
 
@@ -325,6 +326,7 @@ Phase 2 ya implementado ✅:
 - normalize_file_path_for_github(): rutas absolutas workspace→relativas para GitHub API.
 - Modal de remediacion: badge rule_id + path relativo, diff view rojo/verde, limpieza de backticks.
 - Diff view split-screen dos columnas (Antes / Despues), responsive en mobile.
+- Diff Viewer v9: scroll via `max-height:calc(85vh - 200px)` explícito (elimina manipulación del padre DOM); CONTEXT=20 líneas; pad rows usan `#161b22` (gris visible) en vez de casi-negro, haciendo el espacio de alineamiento distinguible. ✅
 - ScanProfile cards con iconos SVG, descripciones reales de herramientas, tool badges y hover.
 - Mini-badges de severidad C/H/M/L en lista de proyectos; GET /api/projects incluye findings_summary.
 - Boton "▶ Escanear" en panel de findings. Header global sin boton redundante de scan.
@@ -347,8 +349,7 @@ Phase 3:
 1. DAST adapter real (OWASP ZAP).
 2. Quality adapter (SonarQube Community o Pylint/ESLint).
 3. Validacion post-patch: tsc --noEmit (Angular), javac/Maven (Java).
-4. Diff view con LCS real para mostrar lineas cambiadas (no solo old vs new completo).
-5. CombinedScannerAdapter.tool_name: concatenar nombres de todos los hijos.
+4. CombinedScannerAdapter.tool_name: concatenar nombres de todos los hijos.
 
 ---
 

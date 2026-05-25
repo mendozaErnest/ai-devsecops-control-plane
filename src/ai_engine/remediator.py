@@ -14,10 +14,10 @@ from src.api.database import engine
 from src.api.models import Finding, Scan, Project
 
 
-_OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+_OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_URL = f"{_OLLAMA_HOST}/api/generate"
 OLLAMA_TAGS_URL = f"{_OLLAMA_HOST}/api/tags"
-OLLAMA_MODEL = "qwen2.5-coder:14b"
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:14b")
 OLLAMA_HEALTH_TIMEOUT_SECONDS = 2
 SUPPORTED_TECHNOLOGIES = {"python", "angular", "typescript", "java"}
 ANGULAR_SECRET_KEYWORDS = (
