@@ -12,6 +12,7 @@ from sqlmodel import Session
 
 from src.api.database import engine
 from src.api.models import Finding, Scan, Project
+from urllib.parse import urlparse
 
 
 _OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
@@ -84,13 +85,21 @@ def enrich_finding_details(finding_details: dict) -> dict:
     }
 
 
-def _request_ollama_tags() -> dict:
-    request = urllib.request.Request(OLLAMA_TAGS_URL, method="GET")
+def open_url_safely(request):
+    # Parse the URL to validate the scheme
+    parsed_url = urlparse(request)
 
+    # Define permitted schemes
+    permitted_schemes = ('http', 'https')
+
+    # Check if the scheme is permitted
+    if parsed_url.scheme not in permitted_schemes:
+        raise ValueError(f"Unsupported URL scheme: {parsed_url.scheme}")
+
+    # Open the URL safely with a timeout
     with urllib.request.urlopen(request, timeout=OLLAMA_HEALTH_TIMEOUT_SECONDS) as response:
         body = response.read().decode("utf-8")
-
-    return json.loads(body)
+        return body
 
 
 async def check_ollama_status() -> dict:
