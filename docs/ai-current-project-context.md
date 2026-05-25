@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-23 (Phase 2 — Dashboard UX: diff scroll fix, modal 85vh, header scan btn removed, PDF export, last_scan_tool in API)
+Ultima actualizacion: 2026-05-25 (Tarea B — tests Python patching + docker-compose.yml funcional)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -270,15 +270,16 @@ src/dashboard/index.html capacidades actuales:
 ## Tests Actuales
 
 ```text
-tests/test_angular_prompt.py      (4 tests)
-tests/test_finding_upsert.py      (6 tests)
-tests/test_github_path.py         (4 tests)  ← nuevo
-tests/test_odc_adapter.py         (5 tests)
-tests/test_pip_audit_adapter.py   (5 tests)
-tests/test_scan_profile.py        (7 tests)
-tests/test_semantic_patching.py   (11 tests)
-tests/test_semgrep_adapter.py     (4 tests)
-Total: 46 passed
+tests/test_angular_prompt.py          (4 tests)
+tests/test_finding_upsert.py          (6 tests)
+tests/test_github_path.py             (4 tests)
+tests/test_odc_adapter.py             (5 tests)
+tests/test_pip_audit_adapter.py       (5 tests)
+tests/test_safe_patching_python.py    (6 tests)  ← nuevo
+tests/test_scan_profile.py            (7 tests)
+tests/test_semantic_patching.py       (11 tests)
+tests/test_semgrep_adapter.py         (4 tests)
+Total: 52 passed
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -333,6 +334,12 @@ Phase 2 ya implementado ✅:
 - PDF export via jsPDF + html2canvas + chart.toBase64Image() (portada, resumen, graficas, top-50 findings).
 - GET /api/projects + GET /api/projects/{id}: last_scan_tool y last_scan_at via subquery eficiente.
 - orchestrator._run_sast: instancia adapters directamente (sin os.environ). ✅
+
+Tarea B ya implementado ✅:
+- tests/test_safe_patching_python.py: 6 tests cubriendo build_safe_patched_content() y helpers.
+- docker-compose.yml: servicios api, ollama, ollama-init con healthchecks y named volumes.
+- Dockerfile: python:3.12-slim, instala code/requirements.txt, copia src/.
+- .env.example: todas las variables documentadas (GitHub App, OLLAMA_HOST, DATABASE_URL).
 
 Phase 3:
 1. DAST adapter real (OWASP ZAP).

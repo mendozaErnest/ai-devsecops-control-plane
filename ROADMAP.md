@@ -29,6 +29,12 @@
 - [x] Strip backtick fences before rendering proposed code
 - [x] `tests/test_github_path.py` (4 tests — 46 total)
 
+### Tarea B — Tests + Docker
+- [x] `tests/test_safe_patching_python.py` (6 tests — 52 total): build_safe_patched_content short patch, invalid patch, target not found, full-file replace, too-short guard, insert_missing_imports dedup
+- [x] `docker-compose.yml`: services api + ollama + ollama-init, healthchecks, named volumes, no anonymous volumes
+- [x] `Dockerfile`: python:3.12-slim base, installs code/requirements.txt, copies src/
+- [x] `.env.example`: all required vars documented (GitHub App, OLLAMA_HOST, DATABASE_URL)
+
 ### Phase 2 — Dashboard UX II
 - [x] Diff view split-screen: two-column Antes/Después (mobile → single column via `@media`)
 - [x] ScanProfile cards: SVG icons (Py, Angular A, ☕ Java, shield Full Scan, gear Custom), real tool descriptions, stack badges, hover highlight
