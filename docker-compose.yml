@@ -9,6 +9,8 @@ services:
       - .:/app
     env_file:
       - .env
+    environment:
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
     ports:
       - "8000:8000"
     depends_on:
