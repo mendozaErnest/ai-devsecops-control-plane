@@ -1,0 +1,42 @@
+# Design tool source files (binary, tracked in Figma/Sketch/etc.)
+*.fig
+*.sketch
+*.xd
+*.psd
+*.ai
+*.eps
+*.indd
+
+# Exported raster assets (generated on demand, not source-of-truth)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.tiff
+*.tif
+*.ico
+
+# Design bundles / archives
+*.zip
+*.tar.gz
+*.tar.bz2
+*.7z
+
+# Node / tooling (if a design-token build step is ever added)
+node_modules/
+dist/
+.cache/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / temp
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

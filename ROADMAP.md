@@ -51,6 +51,18 @@
 - [x] PDF export: `⬇ Exportar PDF` button in Reporte tab — jsPDF + html2canvas + chart.toBase64Image() — cover page, executive summary, charts, top-50 findings table, footer with page numbers
 - [x] `GET /api/projects` + `GET /api/projects/{id}`: include `last_scan_tool` and `last_scan_at` via efficient subquery (no N+1)
 
+### Phase 2 — Dashboard UX IV (2026-05-25)
+- [x] Table pagination: PAGE_SIZE=20, prev/next + page buttons, "X–Y de N" counter
+- [x] Filter chips (All/Critical/High/Breach) functional — filter + sort + reset to page 1
+- [x] Action button icons: Fix ✨ sparkles, Risk ⚠ triangle, FP ✗ circle, History 🕐 clock
+- [x] PR button: rocket SVG icon
+- [x] HIGH severity color: orange → red (#ef4444) across CSS, chart colors, and meta chip
+- [x] Hero card: reduced padding (9px→6px), gap (7px→4px), figure font (28px→24px)
+- [x] KPI spark charts: reduced height (40px→26px)
+- [x] Severity badge pill inline in table rows (CRIT/HIGH/MED/LOW with color coding)
+- [x] Remediation modal description: ES↔EN toggle button (shows when BANDIT_ES translation exists); BANDIT_ES dictionary covers ~35 common Bandit rules
+- [x] PDF margins: container width uses contentW/2 so canvas=contentW after scale=2; addImage with PDF_MARGIN=22px horizontal offset
+
 ---
 
 ## Pendiente

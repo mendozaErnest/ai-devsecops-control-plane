@@ -1,0 +1,173 @@
+/* ==========================================================================
+   Aegis · "Halo" design tokens
+   Drop into your root stylesheet, or translate into your tokens system.
+   ========================================================================== */
+
+:root {
+  /* ---------- Surfaces ---------- */
+  --bg:         #07090C;
+  --bg-warm:    #0A0D12;
+  --surface:    rgba(255, 255, 255, 0.025);
+  --surface-2:  rgba(255, 255, 255, 0.04);
+  --surface-3:  rgba(255, 255, 255, 0.06);
+  --border:     rgba(255, 255, 255, 0.07);
+  --border-2:   rgba(255, 255, 255, 0.12);
+
+  /* ---------- Text ---------- */
+  --t-hi:       #F5F7FA;   /* Headings, KPI numbers */
+  --t:          #C2C8D2;   /* Body */
+  --t-dim:      #7A818F;   /* Captions, meta */
+  --t-mute:     #4A5160;   /* Tertiary, tool names */
+  --t-faint:    #2A2F3A;   /* Decorative / disabled */
+
+  /* ---------- Accent — single ---------- */
+  --mint:       #9EFFE0;
+  --mint-dim:   #5AD7B5;
+  --mint-glow:  rgba(158, 255, 224, 0.40);
+  --mint-soft:  rgba(158, 255, 224, 0.08);
+
+  /* ---------- Severity ---------- */
+  --crit:       #FF647D;
+  --crit-soft:  rgba(255, 100, 125, 0.10);
+  --high:       #FFA45C;
+  --high-soft:  rgba(255, 164, 92, 0.10);
+  --med:        #FFCF50;
+  --med-soft:   rgba(255, 207, 80, 0.10);
+  --low:        #94A3B8;
+  --low-soft:   rgba(148, 163, 184, 0.10);
+
+  /* ---------- Type ---------- */
+  --f:       "Geist", system-ui, sans-serif;
+  --f-mono:  "Geist Mono", ui-monospace, monospace;
+
+  --fs-hero:    156px;
+  --fs-h1:      36px;
+  --fs-kpi:     44px;
+  --fs-h3:      17px;
+  --fs-body:    14px;
+  --fs-meta:    12.5px;
+  --fs-mono:    11px;
+
+  --lh-tight:   0.95;
+  --lh-h1:      1.1;
+  --lh-body:    1.5;
+
+  --ls-hero:    -0.06em;
+  --ls-h1:      -0.025em;
+  --ls-kpi:     -0.03em;
+
+  /* ---------- Spacing (8px grid) ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 18px;
+  --sp-6: 22px;
+  --sp-7: 24px;
+  --sp-8: 28px;
+  --sp-9: 32px;
+  --sp-10: 36px;
+
+  /* ---------- Radius ---------- */
+  --r-card:   22px;
+  --r-btn:    11px;
+  --r-input:  10px;
+  --r-chip:   999px;
+  --r-pill:   999px;
+  --r-tag:    7px;
+
+  /* ---------- Shadow ---------- */
+  --sh-mint:       0 4px 24px var(--mint-glow), inset 0 1px 0 rgba(255,255,255,0.4);
+  --sh-mint-hover: 0 6px 32px var(--mint-glow), inset 0 1px 0 rgba(255,255,255,0.5);
+  --sh-crit-glow:  0 0 8px var(--crit-soft);
+
+  /* ---------- Motion ---------- */
+  --ease:           cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast:       120ms;
+  --dur-base:       160ms;
+  --dur-slow:       260ms;
+}
+
+/* --------------------------------------------------------------------------
+   Base — apply on html / body
+   -------------------------------------------------------------------------- */
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--t);
+  font-family: var(--f);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "ss03", "tnum";
+}
+
+/* Tabular numerals on any data display */
+.tnum,
+[data-numeric] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   Atmospheric layer — keep this in a fixed wrapper behind app content
+   -------------------------------------------------------------------------- */
+.atmos {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.atmos .bloom-mint {
+  position: absolute;
+  top: -30%; right: -10%;
+  width: 1100px; height: 1100px;
+  background: radial-gradient(circle, var(--mint-glow) 0%, transparent 55%);
+  filter: blur(8px);
+  opacity: 0.50;
+  animation: halo-breathe 14s ease-in-out infinite;
+}
+.atmos .bloom-violet {
+  position: absolute;
+  bottom: -40%; left: -20%;
+  width: 1200px; height: 1200px;
+  background: radial-gradient(circle, rgba(120, 100, 255, 0.18) 0%, transparent 60%);
+  filter: blur(10px);
+  opacity: 0.55;
+  animation: halo-breathe2 18s ease-in-out infinite;
+}
+.atmos .grain {
+  position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,0.018) 1px, transparent 1px);
+  background-size: 3px 3px;
+  mix-blend-mode: overlay;
+}
+@keyframes halo-breathe {
+  0%, 100% { transform: scale(1) translate(0, 0);   opacity: 0.50; }
+  50%      { transform: scale(1.08) translate(-30px, 20px); opacity: 0.65; }
+}
+@keyframes halo-breathe2 {
+  0%, 100% { transform: scale(1) translate(0, 0);   opacity: 0.55; }
+  50%      { transform: scale(1.05) translate(40px, -30px); opacity: 0.40; }
+}
+@keyframes halo-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+@keyframes halo-spin { to { transform: rotate(360deg); } }
+
+/* --------------------------------------------------------------------------
+   Card primitive
+   -------------------------------------------------------------------------- */
+.halo-card {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.025) 0%, rgba(255,255,255,0.01) 100%),
+    rgba(13, 16, 22, 0.55);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  padding: var(--sp-7);
+  position: relative;
+  overflow: hidden;
+}
