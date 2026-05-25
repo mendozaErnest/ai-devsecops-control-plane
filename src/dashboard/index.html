@@ -4,6 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AI DevSecOps Control Plane</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -21,7 +24,7 @@
         --accent-h:   #388bfd;
         --success:    #3fb950;
         --crit:       #f85149;
-        --high:       #e3693e;
+        --high:       #dc2626;
         --med:        #d29922;
         --low:        #58a6ff;
       }
@@ -82,7 +85,7 @@
 
       /* Severity badge overrides (solid, enterprise style) */
       .sev-critical { background:#f85149; color:#fff; }
-      .sev-high     { background:#e3693e; color:#fff; }
+      .sev-high     { background:#dc2626; color:#fff; }
       .sev-medium   { background:#d29922; color:#fff; }
       .sev-low      { background:#58a6ff; color:#fff; }
       .sev-info     { background:#8b949e; color:#fff; }
@@ -106,170 +109,635 @@
 
       /* Diff split view — stack on narrow screens */
       @media (max-width:640px) { #diff-view { flex-direction:column !important; } }
+
+      /* ==========================================================================
+         AI DevSecOps Control Plane · Halo Overview
+         ========================================================================== */
+      :root {
+        --bg: #07090C;
+        --bg-warm: #0A0D12;
+        --surface: rgba(255, 255, 255, 0.025);
+        --surface-2: rgba(255, 255, 255, 0.04);
+        --surface-3: rgba(255, 255, 255, 0.06);
+        --border: rgba(255, 255, 255, 0.07);
+        --border-2: rgba(255, 255, 255, 0.12);
+        --t-hi: #F5F7FA;
+        --t: #C2C8D2;
+        --t-dim: #7A818F;
+        --t-mute: #4A5160;
+        --t-faint: #2A2F3A;
+        --mint: #4ade80;
+        --mint-dim: #22c55e;
+        --mint-glow: rgba(74, 222, 128, 0.18);
+        --mint-soft: rgba(74, 222, 128, 0.08);
+        --crit: #ef4444;
+        --crit-soft: rgba(239, 68, 68, 0.10);
+        --high: #dc2626;
+        --high-soft: rgba(220, 38, 38, 0.10);
+        --med: #eab308;
+        --med-soft: rgba(234, 179, 8, 0.10);
+        --low: #3b82f6;
+        --low-soft: rgba(59, 130, 246, 0.10);
+        --f: "Geist", system-ui, sans-serif;
+        --f-mono: "Geist Mono", ui-monospace, monospace;
+        --bg-base: var(--bg);
+        --bg-surface: rgba(13, 16, 22, 0.55);
+        --bg-card: rgba(13, 16, 22, 0.78);
+        --bg-hover: var(--surface-3);
+        --text: var(--t-hi);
+        --muted: var(--t-dim);
+        --accent: #7A8CA5;
+        --accent-h: #96A6BA;
+        --success: #7A8CA5;
+      }
+
+      html, body {
+        background: var(--bg);
+        color: var(--t);
+        font-family: var(--f);
+        font-size: 14px;
+        line-height: 1.5;
+        font-feature-settings: "ss01", "ss03", "tnum";
+        overflow-x: hidden;
+      }
+      button, input, select, textarea { font-family: inherit; }
+      input, select, textarea {
+        background: var(--surface-2) !important;
+        border: 1px solid var(--border-2) !important;
+        color: var(--t-hi) !important;
+        border-radius: 10px;
+      }
+      input:focus, select:focus, textarea:focus {
+        border-color: rgba(158,255,224,0.32) !important;
+        box-shadow: 0 0 0 3px rgba(158,255,224,0.10);
+      }
+
+      .atmos { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+      .atmos .bloom-mint {
+        position: absolute; top: -30%; right: -10%; width: 1100px; height: 1100px;
+        background: radial-gradient(circle, var(--mint-glow) 0%, transparent 55%);
+        filter: blur(8px); opacity: 0.50; animation: halo-breathe 14s ease-in-out infinite;
+      }
+      .atmos .bloom-violet {
+        position: absolute; bottom: -40%; left: -20%; width: 1200px; height: 1200px;
+        background: radial-gradient(circle, rgba(120, 100, 255, 0.18) 0%, transparent 60%);
+        filter: blur(10px); opacity: 0.55; animation: halo-breathe2 18s ease-in-out infinite;
+      }
+      .atmos .grain {
+        position: absolute; inset: 0;
+        background-image: radial-gradient(rgba(255,255,255,0.018) 1px, transparent 1px);
+        background-size: 3px 3px; mix-blend-mode: overlay;
+      }
+      @keyframes halo-breathe {
+        0%, 100% { transform: scale(1) translate(0, 0); opacity: 0.50; }
+        50% { transform: scale(1.08) translate(-30px, 20px); opacity: 0.65; }
+      }
+      @keyframes halo-breathe2 {
+        0%, 100% { transform: scale(1) translate(0, 0); opacity: 0.55; }
+        50% { transform: scale(1.05) translate(40px, -30px); opacity: 0.40; }
+      }
+      @keyframes halo-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+      @keyframes halo-spin { to { transform: rotate(360deg); } }
+
+      .app {
+        position: relative; z-index: 1; width: 100%; min-height: 100vh;
+        padding: 9px 12px 14px; max-width: 1480px; margin: 0 auto;
+      }
+      .nav {
+        display: flex; align-items: center; gap: 8px; padding: 5px 12px;
+        background: rgba(13, 16, 22, 0.55); border: 1px solid var(--border);
+        border-radius: 10px; backdrop-filter: blur(20px) saturate(140%);
+        -webkit-backdrop-filter: blur(20px) saturate(140%); margin-bottom: 9px;
+      }
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .brand .mk {
+        width: 30px; height: 30px; border-radius: 9px;
+        background: linear-gradient(140deg, var(--mint) 0%, var(--mint-dim) 100%);
+        display: grid; place-items: center; color: #06231C;
+        box-shadow: 0 0 24px var(--mint-glow), inset 0 1px 0 rgba(255,255,255,0.4);
+      }
+      .brand .mk svg { width: 16px; height: 16px; }
+      .brand .nm { font-weight: 600; font-size: 15px; color: var(--t-hi); letter-spacing: -0.01em; white-space: nowrap; }
+      .repo-wrap { display: inline-flex; align-items: center; gap: 10px; }
+      .repo {
+        display: flex; align-items: center; gap: 10px; padding: 6px 14px;
+        background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+        font-size: 13px; color: var(--t);
+      }
+      .repo .sl { color: var(--t-mute); }
+      .repo .nm { color: var(--t-hi); font-weight: 500; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .repo .br {
+        color: var(--t-dim); padding: 2px 7px; background: var(--surface-3); border-radius: 6px;
+        font-family: var(--f-mono); font-size: 11px;
+      }
+      .project-select {
+        appearance: none;
+        min-width: 190px;
+        max-width: 260px;
+        padding: 0 22px 0 0;
+        background: transparent !important;
+        border: 0 !important;
+        color: var(--t-hi) !important;
+        font-size: 13px;
+        font-weight: 500;
+        outline: 0;
+        cursor: pointer;
+      }
+      .project-menu {
+        display: none !important; position: absolute; top: 52px; left: 0; z-index: 80; width: 360px;
+        background: #0A0D12; border: 1px solid var(--border-2);
+        border-radius: 18px; overflow: hidden; backdrop-filter: blur(20px) saturate(140%);
+        -webkit-backdrop-filter: blur(20px) saturate(140%);
+        box-shadow: 0 24px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.02);
+      }
+      .project-menu.open { display: none !important; }
+      .project-menu-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+      .nav .links { display: flex; gap: 4px; margin-left: 8px; }
+      .nav .links a {
+        padding: 7px 14px; border-radius: 9px; font-size: 13px; color: var(--t-dim);
+        text-decoration: none; transition: 160ms;
+      }
+      .nav .links a:hover { color: var(--t); background: var(--surface-2); }
+      .nav .links a.on { color: var(--t-hi); background: var(--surface-3); }
+      .nav .grow { flex: 1; }
+      .nav .status {
+        display: none;
+      }
+      .dot, .nav .status .dot {
+        width: 6px; height: 6px; border-radius: 50%; background: var(--mint);
+        box-shadow: 0 0 8px var(--mint); animation: halo-pulse 2s ease-in-out infinite;
+        display: inline-block; flex: 0 0 auto;
+      }
+      .nav .ic-btn {
+        width: 36px; height: 36px; border-radius: 10px; background: var(--surface-2);
+        border: 1px solid var(--border); display: grid; place-items: center; color: var(--t);
+        cursor: pointer; transition: 160ms;
+      }
+      .nav .ic-btn:hover { background: var(--surface-3); color: var(--t-hi); }
+      .nav .ic-btn svg { width: 16px; height: 16px; }
+      .nav .avatar {
+        width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(140deg, #6B73FF, #C97AFF);
+        display: grid; place-items: center; color: #fff; font-weight: 600; font-size: 12px;
+        box-shadow: 0 2px 16px rgba(120,100,255,0.30);
+      }
+      .head {
+        display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: flex-end; margin-bottom: 7px;
+      }
+      .head .lbl { font-size: 12px; color: var(--t-dim); margin-bottom: 4px; }
+      .scan-meta {
+        display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+        padding: 3px 8px; border-radius: 999px; background: var(--surface-2);
+        border: 1px solid var(--border); color: var(--t-dim); font-size: 11px;
+      }
+      .scan-meta .dot { width: 5px; height: 5px; box-shadow: none; animation: none; opacity: 0.8; }
+      .head h1 {
+        margin: 0; font-size: 14px; font-weight: 600; line-height: 1.12; color: var(--t-hi);
+        letter-spacing: -0.01em;
+      }
+      .head h1 .lt { color: var(--t-dim); font-weight: 400; }
+      .head .actions { display: flex; gap: 10px; }
+      .btn {
+        display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 7px;
+        font-size: 11px; font-weight: 500; cursor: pointer; transition: 160ms;
+        border: 1px solid var(--border-2); background: var(--surface-2); color: var(--t-hi);
+      }
+      .btn:hover { background: var(--surface-3); }
+      .btn.primary {
+        background: #202A38; color: var(--t-hi); border-color: rgba(122,140,165,0.45);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+        font-weight: 600;
+      }
+      .btn.primary:hover {
+        background: #273449; transform: translateY(-1px);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);
+      }
+      .bento { display: grid; grid-template-columns: 1.4fr 1fr 1fr; grid-auto-rows: minmax(0, auto); gap: 7px; }
+      .card {
+        background: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, rgba(255,255,255,0.01) 100%), rgba(13, 16, 22, 0.55);
+        border: 1px solid var(--border); border-radius: 12px; backdrop-filter: blur(20px) saturate(140%);
+        -webkit-backdrop-filter: blur(20px) saturate(140%); padding: 9px; position: relative; overflow: hidden;
+      }
+      .hero { grid-column: span 2; padding: 6px 12px 5px; display: flex; flex-direction: column; gap: 4px; align-self: start; }
+      .hero::before {
+        content: ""; position: absolute; top: -100px; right: -100px; width: 500px; height: 500px;
+        background: radial-gradient(circle, var(--mint-glow), transparent 60%); filter: blur(40px); opacity: 0.6; pointer-events: none;
+      }
+      .hero .l-col, .hero .r-col { position: relative; z-index: 2; }
+      .eyebrow {
+        display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+        background: var(--mint-soft); border: 1px solid rgba(158,255,224,0.18);
+        border-radius: 999px; font-size: 11px; color: var(--mint);
+      }
+      .hero .eyebrow { margin-bottom: 2px; }
+      .hero .figure {
+        font-size: 24px; font-weight: 300; line-height: 1; letter-spacing: -0.04em;
+        color: var(--t-hi); font-variant-numeric: tabular-nums; margin: 0;
+        background: linear-gradient(180deg, #FFFFFF 30%, rgba(255,255,255,0.65) 100%);
+        -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+      }
+      .hero .figure-cap { font-size: 11px; color: var(--t-dim); margin-bottom: 2px; }
+      .hero .figure-cap .strong { color: var(--t-hi); font-weight: 500; }
+      .hero .figure-cap .crit { color: var(--crit); font-weight: 500; }
+      .sev-row { display: flex; flex-direction: column; gap: 5px; }
+      .sev-bar { display: flex; height: 4px; border-radius: 999px; overflow: hidden; background: var(--surface-3); }
+      .sev-bar > i { display: block; height: 100%; min-width: 0; }
+      .sev-bar > i.c { background: var(--crit); }
+      .sev-bar > i.h { background: var(--high); }
+      .sev-bar > i.m { background: var(--med); }
+      .sev-bar > i.l { background: var(--low); }
+      .sev-legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+      .sev-legend .it { display: flex; flex-direction: column; gap: 2px; }
+      .sev-legend .it .l { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--t-dim); }
+      .sev-legend .sw { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+      .sev-legend .it.c .sw { background: var(--crit); }
+      .sev-legend .it.h .sw { background: var(--high); }
+      .sev-legend .it.m .sw { background: var(--med); }
+      .sev-legend .it.l .sw { background: var(--low); }
+      .sev-legend .n { font-size: 13px; font-weight: 500; color: var(--t-hi); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+      .hero .r-col { display: grid; place-items: center; }
+      .radial { width: 210px; height: 210px; position: relative; }
+      .radial svg { width: 100%; height: 100%; display: block; }
+      .radial .lbl { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+      .radial .lbl .l { font-size: 11px; color: var(--t-dim); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.1em; }
+      .radial .lbl .n { font-size: 24px; font-weight: 500; color: var(--t-hi); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+      .radial .lbl .d { margin-top: 6px; font-size: 11.5px; color: var(--mint); }
+      .radial-rotate { animation: halo-spin 60s linear infinite; transform-origin: center; }
+      .kpi { padding: 5px 8px; align-self: start; }
+      .kpi .l { font-size: 9px; color: var(--t-dim); margin-bottom: 2px; }
+      .kpi .v-row { display: flex; align-items: baseline; gap: 4px; }
+      .kpi .n { font-size: 13px; font-weight: 400; color: var(--t-hi); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+      .kpi .n .u { font-size: 14px; color: var(--t-dim); font-weight: 400; margin-left: 2px; }
+      .delta { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 7px; font-size: 10px; font-weight: 500; font-variant-numeric: tabular-nums; }
+      .delta.up { background: rgba(158,255,224,0.10); color: var(--mint); }
+      .delta.dn { background: var(--crit-soft); color: var(--crit); }
+      .delta.warn { background: var(--high-soft); color: var(--high); }
+      .delta.flat { background: var(--surface-3); color: var(--t-dim); }
+      .kpi .foot { margin-top: 2px; font-size: 9px; color: var(--t-dim); }
+      .kpi .spark { position: absolute; bottom: 0; right: 0; left: 0; height: 14px; pointer-events: none; opacity: 0.6; }
+      .kpi .spark svg { width: 100%; height: 100%; display: block; }
+      .ai-card { padding: 9px; display: flex; flex-direction: column; gap: 7px; grid-row: span 2; }
+      .ai-card::before {
+        content: ""; position: absolute; bottom: -80px; right: -80px; width: 280px; height: 280px;
+        background: radial-gradient(circle, var(--mint-glow), transparent 60%); filter: blur(40px); opacity: 0.7; pointer-events: none;
+      }
+      .ai-head { display: flex; align-items: center; gap: 10px; position: relative; z-index: 2; }
+      .ai-head h3 { margin: 0; font-size: 11px; font-weight: 600; color: var(--t-hi); letter-spacing: -0.01em; }
+      .ai-head .badge { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--mint-soft); border: 1px solid rgba(158,255,224,0.18); border-radius: 999px; font-size: 11px; color: var(--mint); }
+      .ai-summary {
+        position: relative; z-index: 2; padding: 14px 16px;
+        background: var(--surface-2); border: 1px solid var(--border);
+        border-radius: 12px;
+      }
+      .ai-summary .label { font-size: 12px; color: var(--t-dim); margin-bottom: 6px; }
+      .ai-summary .value { font-size: 18px; font-weight: 500; color: var(--t-hi); letter-spacing: -0.01em; }
+      .wave { height: 32px; position: relative; z-index: 2; display: flex; align-items: center; gap: 3px; justify-content: center; }
+      .wave i { display: block; width: 3px; background: var(--mint); border-radius: 2px; opacity: 0.6; animation: wave-bar 1.2s ease-in-out infinite; }
+      @keyframes wave-bar { 0%, 100% { height: 6px; } 50% { height: var(--h, 22px); } }
+      .workers { display: flex; flex-direction: column; gap: 10px; position: relative; z-index: 2; }
+      .wrk { padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; gap: 7px; }
+      .wrk .r1 { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
+      .wrk .nm { color: var(--t-hi); font-weight: 500; }
+      .wrk .tg { font-family: var(--f-mono); font-size: 11px; color: var(--t-dim); padding: 2px 7px; background: var(--surface-3); border-radius: 5px; }
+      .wrk .st { margin-left: auto; font-size: 11px; color: var(--mint); }
+      .wrk .st.idle { color: var(--t-mute); }
+      .wrk .bar { height: 3px; background: var(--surface-3); border-radius: 999px; overflow: hidden; }
+      .wrk .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--mint-dim), var(--mint)); border-radius: 999px; }
+      .wrk.idle { opacity: 0.55; }
+      .wrk.idle .bar { display: none; }
+      .ai-card .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding-top: 14px; border-top: 1px solid var(--border); position: relative; z-index: 2; }
+      .ai-card .stats .l { font-size: 12px; color: var(--t-dim); margin-bottom: 4px; }
+      .ai-card .stats .n { font-size: 26px; font-weight: 500; color: var(--t-hi); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+      .ai-card .stats .u { font-size: 13px; color: var(--t-dim); font-weight: 400; }
+      .findings { grid-column: 1 / -1; padding: 0; }
+      .findings .head-bar { padding: 8px 10px 6px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+      .findings .head-bar h3 { margin: 0; font-size: 12px; font-weight: 500; color: var(--t-hi); letter-spacing: -0.01em; }
+      .findings .ct { font-size: 12.5px; color: var(--t-dim); }
+      .findings .filt { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+      .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; font-size: 12px; color: var(--t-dim); cursor: pointer; }
+      .chip.on { background: var(--t-hi); color: var(--bg); border-color: var(--t-hi); }
+      .chip .n { font-size: 11px; padding: 0 5px; border-radius: 5px; background: var(--surface-3); color: var(--t-dim); font-variant-numeric: tabular-nums; }
+      .chip.on .n { background: rgba(7,9,12,0.15); color: var(--bg); }
+      .findings .list { display: flex; flex-direction: column; }
+      .frow { display: grid; grid-template-columns: 20px 1fr auto auto; gap: 8px; align-items: center; padding: 7px 10px; border-bottom: 1px solid var(--border); position: relative; transition: 120ms; }
+      .frow:last-child { border-bottom: none; }
+      .frow:hover { background: var(--surface-2); }
+      .sev-mark { width: 4px; height: 32px; border-radius: 2px; }
+      .sev-mark.c { background: var(--crit); box-shadow: 0 0 8px var(--crit-soft); }
+      .sev-mark.h { background: var(--high); }
+      .sev-mark.m { background: var(--med); }
+      .sev-mark.l { background: var(--low); }
+      .frow .body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+      .frow .top-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .frow .rule { font-size: 14px; font-weight: 500; color: var(--t-hi); letter-spacing: -0.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .frow .id { font-family: var(--f-mono); font-size: 11px; color: var(--t-dim); padding: 2px 7px; background: var(--surface-3); border-radius: 5px; }
+      .frow .bot-row { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--t-dim); min-width: 0; }
+      .frow .path { font-family: var(--f-mono); font-size: 11.5px; color: var(--t-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .frow .path .ln { color: var(--mint); }
+      .frow .tool { color: var(--t-mute); white-space: nowrap; }
+      .frow .dot-sep { color: var(--t-faint); }
+      .sla { font-size: 11px; font-weight: 500; padding: 4px 9px; border-radius: 7px; white-space: nowrap; }
+      .sla.brk { background: var(--crit-soft); color: var(--crit); }
+      .sla.warn { background: var(--high-soft); color: var(--high); }
+      .sla.ok { background: var(--surface-3); color: var(--t-dim); }
+      .act { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 9px; background: var(--surface-2); color: var(--t); font-size: 12px; font-weight: 500; border: 1px solid var(--border-2); cursor: pointer; transition: 160ms; white-space: nowrap; }
+      .act:hover { background: var(--surface-3); color: var(--t-hi); }
+      .act:disabled { opacity: 0.45; cursor: not-allowed; }
+      .act.ai { background: rgba(122,140,165,0.12); color: #D9E2EE; border-color: rgba(122,140,165,0.28); }
+      .act.ai:hover { background: rgba(122,140,165,0.18); box-shadow: none; }
+      .fixing { display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px; font-size: 12px; color: var(--mint); white-space: nowrap; }
+      .fixing .sp { width: 12px; height: 12px; border: 1.5px solid var(--mint); border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+      .halo-hidden { display: none !important; }
+      .fb-info, .fb-success, .fb-error {
+        position: relative; margin: -12px 0 18px; border-radius: 11px; padding: 12px 16px; font-size: 12.5px;
+        backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%);
+      }
+      .fb-info { background: var(--surface-2); border: 1px solid var(--border-2); color: var(--t); }
+      .fb-success { background: var(--mint-soft); border: 1px solid rgba(158,255,224,0.20); color: var(--mint); }
+      .fb-error { background: var(--crit-soft); border: 1px solid rgba(255,100,125,0.20); color: var(--crit); }
+
+      @media (max-width: 1180px) {
+        .bento { grid-template-columns: 1fr 1fr; }
+        .ai-card { grid-column: span 1; }
+        .hero { grid-template-columns: 1fr; }
+        .hero .r-col { display: none; }
+      }
+      @media (max-width: 840px) {
+        .app { padding: 10px 12px 16px; }
+        .nav, .head { align-items: flex-start; }
+        .nav { flex-wrap: wrap; }
+        .nav .links { order: 3; width: 100%; overflow-x: auto; margin-left: 0; }
+        .head { grid-template-columns: 1fr; }
+        .bento { grid-template-columns: 1fr; }
+        .hero, .findings, .ai-card { grid-column: span 1; }
+        .hero .figure { font-size: clamp(32px, 10vw, 40px); }
+        .sev-legend { grid-template-columns: repeat(2, 1fr); }
+        .frow { grid-template-columns: 18px 1fr; gap: 12px; }
+        .frow .sla, .frow .act, .frow .fixing { grid-column: 2; justify-self: start; }
+      }
+
+      /* Tooltip */
+      .ttip { position: relative; }
+      .ttip::after {
+        content: attr(data-tip);
+        position: absolute; bottom: calc(100% + 7px); left: 0;
+        max-width: 420px; min-width: 180px;
+        background: #111820; border: 1px solid rgba(255,255,255,0.14);
+        border-radius: 8px; padding: 8px 12px;
+        font-size: 11.5px; color: var(--t-hi); line-height: 1.55;
+        white-space: normal; word-break: break-word;
+        opacity: 0; pointer-events: none; transition: opacity .15s;
+        z-index: 200; box-shadow: 0 6px 24px rgba(0,0,0,.55);
+        font-weight: 400;
+      }
+      .ttip:hover::after { opacity: 1; }
+
+      /* Report view */
+      .report-kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+      .report-kpi-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+      .report-kpi-label { font-size: 10.5px; color: var(--t-dim); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+      .report-kpi-value { font-size: 26px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1; }
+      .report-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+      .report-chart-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+      .report-chart-label { font-size: 10px; color: var(--t-dim); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; }
+      .view-toggle { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
+      .view-toggle button { padding: 4px 12px; border-radius: 6px; font-size: 11.5px; font-weight: 600; border: none; cursor: pointer; transition: background .12s, color .12s; }
     </style>
   </head>
   <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <symbol id="logo" viewBox="0 0 22 22">
+          <path d="M11 2 L19 5.2 L19 11.8 C19 16 15.5 19.3 11 20.5 C6.5 19.3 3 16 3 11.8 L3 5.2 Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M7.5 11 L10 13.5 L14.5 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+      </defs>
+    </svg>
 
-    <!-- ══════════════ STICKY HEADER ══════════════ -->
-    <header style="background:var(--bg-surface);border-bottom:1px solid var(--border);" class="sticky top-0 z-40 px-6 py-3">
-      <div class="mx-auto max-w-screen-xl flex items-center justify-between gap-4 flex-wrap">
-
-        <div>
-          <p style="color:var(--muted);font-size:.68rem;letter-spacing:.1em;font-weight:600;text-transform:uppercase;">AI DevSecOps</p>
-          <h1 style="color:var(--text);font-size:1.15rem;font-weight:700;line-height:1.2;">Control Plane</h1>
-        </div>
-
-        <div class="flex items-center gap-3 flex-wrap">
-          <!-- AI Engine badge -->
-          <span id="ai-status-badge"
-            style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:9999px;font-size:.75rem;font-weight:600;background:var(--bg-card);border:1px solid var(--border);color:var(--muted);">
-            <span class="pulse-red">●</span>
-            <span id="ai-badge-text">AI Engine: Checking…</span>
-          </span>
-
-          <!-- Lang toggle -->
-          <button id="lang-toggle"
-            style="padding:4px 14px;border-radius:9999px;font-size:.75rem;font-weight:700;background:var(--bg-hover);border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:color .15s;">
-            ES | EN
-          </button>
-
-          <!-- New Project -->
-          <button type="button" id="new-project"
-            style="padding:7px 16px;border-radius:6px;font-size:.82rem;font-weight:600;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);cursor:pointer;transition:background .15s;"
-            data-i18n="new-project">Nuevo Proyecto</button>
-        </div>
-      </div>
-    </header>
-
-    <!-- ══════════════ METRICS STRIP ══════════════ -->
-    <section style="background:var(--bg-surface);border-bottom:1px solid var(--border);" class="px-6 py-3">
-      <div class="mx-auto max-w-screen-xl grid grid-cols-2 sm:grid-cols-4 gap-3">
-
-        <article style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;" class="p-4">
-          <p style="font-size:.7rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;">Critical / High</p>
-          <p id="high-count" style="font-size:2rem;font-weight:700;color:var(--crit);margin-top:6px;">0</p>
-        </article>
-
-        <article style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;" class="p-4">
-          <p style="font-size:.7rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;">Medium / Low</p>
-          <p id="medium-count" style="font-size:2rem;font-weight:700;color:var(--med);margin-top:6px;">0</p>
-        </article>
-
-        <article style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;" class="p-4">
-          <p style="font-size:.7rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;" data-i18n="open-findings">Hallazgos abiertos</p>
-          <p id="total-count" style="font-size:2rem;font-weight:700;color:var(--text);margin-top:6px;">0</p>
-        </article>
-
-        <article style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;" class="p-4">
-          <p style="font-size:.7rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;" data-i18n="last-scan">Último escaneo</p>
-          <p id="scan-status" style="font-size:.9rem;font-weight:600;color:var(--muted);margin-top:6px;" data-i18n="not-executed">Sin ejecutar</p>
-        </article>
-
-      </div>
-    </section>
-
-    <!-- Feedback banner -->
-    <div class="px-6 pt-3 mx-auto max-w-screen-xl">
-      <section id="feedback" class="hidden" aria-live="polite"
-        style="border-radius:6px;padding:12px 18px;font-size:.83rem;font-weight:500;"></section>
+    <div class="atmos">
+      <div class="bloom-mint"></div>
+      <div class="bloom-violet"></div>
+      <div class="grain"></div>
     </div>
 
-    <!-- ══════════════ MAIN LAYOUT ══════════════ -->
-    <main class="mx-auto max-w-screen-xl px-6 py-4">
-      <div class="grid gap-4 lg:grid-cols-[290px_minmax(0,1fr)]">
+    <div class="app">
+      <nav class="nav" aria-label="AI DevSecOps Control Plane">
+        <div class="brand">
+          <div class="mk"><svg><use href="#logo"/></svg></div>
+          <span class="nm">AI DevSecOps Control Plane</span>
+        </div>
 
-        <!-- ── SIDEBAR ── -->
-        <aside style="background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;">
-          <div style="border-bottom:1px solid var(--border);" class="px-5 py-4">
-            <h2 style="color:var(--text);font-size:1rem;font-weight:700;" data-i18n="projects">Proyectos</h2>
-            <p id="project-status" style="color:var(--muted);font-size:.78rem;margin-top:4px;">Cargando proyectos…</p>
+        <div class="repo-wrap">
+          <div class="repo" title="Project">
+            <span class="sl">/</span>
+            <select id="project-select" class="project-select" aria-label="Project">
+              <option>loading-projects</option>
+            </select>
+            <span id="repo-branch-chip" class="br">main</span>
           </div>
-          <div id="projects-list" style="max-height:600px;overflow-y:auto;"></div>
-        </aside>
+          <button type="button" id="new-project" class="btn" data-i18n="new-project">Nuevo Proyecto</button>
+          <div id="projects-popover" class="project-menu">
+            <div class="project-menu-head">
+              <div>
+                <div style="font-size:13px;font-weight:500;color:var(--t-hi);" data-i18n="projects">Proyectos</div>
+                <div id="project-status" style="font-size:12px;color:var(--t-dim);margin-top:2px;">Cargando proyectos…</div>
+              </div>
+            </div>
+            <div id="projects-list" style="max-height:420px;overflow-y:auto;"></div>
+          </div>
+        </div>
 
-        <!-- ── FINDINGS PANEL ── -->
-        <section style="background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;">
-          <div style="border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;" class="px-5 py-4">
+        <div class="links">
+          <a href="#" class="on" data-i18n="nav-overview">Overview</a>
+          <a href="#" data-i18n="nav-findings">Findings</a>
+          <a href="#" data-i18n="nav-pipeline">Pipeline</a>
+          <a href="#" data-i18n="nav-reports">Reports</a>
+          <a href="#" data-i18n="nav-settings">Settings</a>
+        </div>
+        <div class="grow"></div>
+
+        <div id="ai-status-badge" class="status" aria-hidden="true">
+          <span class="dot"></span>
+          <span id="ai-badge-text"></span>
+        </div>
+        <button type="button" id="refresh-findings" class="ic-btn" title="Refresh findings" data-i18n-title="refresh">
+          <svg viewBox="0 0 20 20" fill="none">
+            <circle cx="9" cy="9" r="5.5" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M13 13 L17 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button type="button" id="lang-toggle" class="ic-btn" title="Language">ES</button>
+        <div class="avatar">EM</div>
+      </nav>
+
+      <section id="feedback" class="hidden" aria-live="polite"></section>
+
+      <header class="head">
+        <div>
+          <div class="lbl"><span data-i18n="lbl-overview">Overview</span> · <span data-i18n="lbl-last-scan">Último escaneo</span> <span id="scan-status" data-i18n="not-executed">Sin ejecutar</span></div>
+          <h1>AI DevSecOps Control Plane</h1>
+          <div class="scan-meta"><span class="dot"></span><span id="scan-adapter-status">Scanning · 3 of 4 adapters</span></div>
+        </div>
+        <div class="actions">
+          <button type="button" id="export-pdf-btn" class="btn">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M3 8 L8 3 L13 8 M8 3 V13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span data-i18n="btn-export">Export</span>
+          </button>
+          <button type="button" id="panel-run-scan" class="btn primary">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/>
+            </svg>
+            <span data-i18n="btn-run-scan">Run new scan</span>
+          </button>
+        </div>
+      </header>
+
+      <main class="bento">
+        <section class="card hero">
+          <div class="l-col">
+            <div class="eyebrow"><span class="dot"></span><span data-i18n="live-exposure">Live · Active exposure</span></div>
+            <div id="total-count" class="figure">0</div>
+            <div class="figure-cap">
+              <span data-i18n="findings-across">hallazgos en</span> <span id="module-count" class="strong">0 módulos</span> · <span id="critical-copy" class="crit">0 críticos</span>
+            </div>
+            <div class="sev-row">
+              <div class="sev-bar">
+                <i id="sev-bar-critical" class="c" style="width:0%"></i>
+                <i id="sev-bar-high" class="h" style="width:0%"></i>
+                <i id="sev-bar-medium" class="m" style="width:0%"></i>
+                <i id="sev-bar-low" class="l" style="width:0%"></i>
+              </div>
+              <div class="sev-legend">
+                <div class="it c"><div class="l"><span class="sw"></span><span data-i18n="sev-critical">Critical</span></div><div id="critical-count" class="n">0</div></div>
+                <div class="it h"><div class="l"><span class="sw"></span><span data-i18n="sev-high">High</span></div><div id="high-count" class="n">0</div></div>
+                <div class="it m"><div class="l"><span class="sw"></span><span data-i18n="sev-medium">Medium</span></div><div id="medium-count" class="n">0</div></div>
+                <div class="it l"><div class="l"><span class="sw"></span><span data-i18n="sev-low">Low</span></div><div id="low-count" class="n">0</div></div>
+              </div>
+            </div>
+          </div>
+
+        </section>
+
+        <section class="card ai-card">
+          <div class="ai-head">
+            <h3 data-i18n="ai-remediation">AI remediation</h3>
+            <div class="badge"><span class="dot"></span><span id="ai-model-chip">Live · local model</span></div>
+          </div>
+          <div class="ai-summary">
+            <div class="label" data-i18n="remediation-engine">Remediation engine</div>
+            <div id="ai-engine-summary" class="value">Local model ready</div>
+          </div>
+          <div class="wave">
+            <i style="--h:14px;animation-delay:0s"></i><i style="--h:22px;animation-delay:.1s"></i><i style="--h:18px;animation-delay:.2s"></i><i style="--h:28px;animation-delay:.3s"></i><i style="--h:24px;animation-delay:.4s"></i>
+            <i style="--h:18px;animation-delay:.5s"></i><i style="--h:30px;animation-delay:.6s"></i><i style="--h:20px;animation-delay:.7s"></i><i style="--h:26px;animation-delay:.8s"></i><i style="--h:14px;animation-delay:.9s"></i>
+            <i style="--h:22px;animation-delay:1s"></i><i style="--h:18px;animation-delay:1.1s"></i><i style="--h:24px;animation-delay:1s"></i><i style="--h:18px;animation-delay:.9s"></i><i style="--h:14px;animation-delay:.8s"></i>
+            <i style="--h:22px;animation-delay:.7s"></i><i style="--h:28px;animation-delay:.6s"></i><i style="--h:24px;animation-delay:.5s"></i><i style="--h:18px;animation-delay:.4s"></i><i style="--h:14px;animation-delay:.3s"></i>
+          </div>
+          <div id="ai-workers" class="workers">
+            <div class="wrk">
+              <div class="r1"><span class="nm">worker-01</span><span class="tg">B602</span><span class="st">Generating · 8s</span></div>
+              <div class="bar"><i style="width:42%"></i></div>
+            </div>
+            <div class="wrk">
+              <div class="r1"><span class="nm">worker-02</span><span class="tg">SAST</span><span class="st">Validating</span></div>
+              <div class="bar"><i style="width:88%"></i></div>
+            </div>
+            <div class="wrk idle">
+              <div class="r1"><span class="nm">worker-03</span><span class="st idle">Idle</span></div>
+            </div>
+          </div>
+          <div class="stats">
+            <div class="it"><div class="l" data-i18n="patches-today">Patches today</div><div id="patches-today" class="n">0</div></div>
+            <div class="it"><div class="l" data-i18n="accept-rate">Accept rate</div><div class="n"><span id="accept-rate">0</span><span class="u">%</span></div></div>
+          </div>
+        </section>
+
+        <section class="card kpi">
+          <div class="l" data-i18n="kpi-sla-breaches">SLA breaches</div>
+          <div class="v-row"><div id="sla-breaches" class="n">0</div><span id="sla-delta" class="delta dn"><span data-i18n="kpi-live">↑ live</span></span></div>
+          <div id="sla-foot" class="foot">0 overdue · CVSS ≥ 9.0</div>
+          <div class="spark">
+            <svg viewBox="0 0 200 40" preserveAspectRatio="none">
+              <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF647D" stop-opacity="0.30"/><stop offset="100%" stop-color="#FF647D" stop-opacity="0"/></linearGradient></defs>
+              <path d="M0,32 L25,30 L50,26 L75,22 L100,18 L125,16 L150,12 L175,8 L200,4 L200,40 L0,40 Z" fill="url(#g1)"/>
+              <polyline points="0,32 25,30 50,26 75,22 100,18 125,16 150,12 175,8 200,4" fill="none" stroke="#FF647D" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+        </section>
+
+        <section class="card kpi">
+          <div class="l" data-i18n="kpi-mttr">MTTR · critical</div>
+          <div class="v-row"><div class="n">2.4<span class="u">d</span></div><span class="delta up">↓ 18%</span></div>
+          <div class="foot" data-i18n="kpi-mttr-foot">Target 3.0d · trending fast</div>
+          <div class="spark">
+            <svg viewBox="0 0 200 40" preserveAspectRatio="none">
+              <defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#9EFFE0" stop-opacity="0.30"/><stop offset="100%" stop-color="#9EFFE0" stop-opacity="0"/></linearGradient></defs>
+              <path d="M0,10 L25,12 L50,14 L75,12 L100,18 L125,22 L150,28 L175,32 L200,34 L200,40 L0,40 Z" fill="url(#g2)"/>
+              <polyline points="0,10 25,12 50,14 75,12 100,18 125,22 150,28 175,32 200,34" fill="none" stroke="#9EFFE0" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+        </section>
+
+        <section class="card findings">
+          <div class="head-bar">
             <div>
-              <h2 id="current-project-title" style="color:var(--text);font-size:1rem;font-weight:700;" data-i18n="select-project">Selecciona un proyecto</h2>
-              <p id="table-status" style="color:var(--muted);font-size:.78rem;margin-top:4px;" data-i18n="findings-appear">Los hallazgos aparecerán aquí.</p>
+              <h3 id="current-project-title">Selecciona un proyecto</h3>
+              <span id="table-status" class="ct">Los hallazgos aparecerán aquí.</span>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <div style="display:flex;gap:2px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:3px;">
-                <button type="button" id="view-findings-btn"
-                  style="padding:4px 12px;border-radius:4px;font-size:.78rem;font-weight:600;cursor:pointer;border:none;background:var(--accent);color:#fff;transition:background .15s;">Hallazgos</button>
-                <button type="button" id="view-report-btn"
-                  style="padding:4px 12px;border-radius:4px;font-size:.78rem;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--muted);transition:background .15s;">Reporte</button>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="view-toggle">
+                <button type="button" id="view-findings-btn" style="background:var(--t-hi);color:var(--bg);" data-i18n="view-findings">Findings</button>
+                <button type="button" id="view-report-btn" style="background:transparent;color:var(--t-dim);" data-i18n="view-report">Report</button>
               </div>
-              <button type="button" id="panel-run-scan"
-                style="padding:6px 16px;border-radius:6px;font-size:.8rem;font-weight:600;background:var(--accent);border:none;color:#fff;cursor:pointer;transition:background .15s;display:inline-flex;align-items:center;gap:6px;">
-                ▶ Escanear</button>
-              <button type="button" id="refresh-findings"
-                style="padding:6px 16px;border-radius:6px;font-size:.8rem;font-weight:600;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);cursor:pointer;transition:background .15s;"
-                data-i18n="refresh">Actualizar</button>
-              <button type="button" id="export-pdf-btn"
-                style="display:none;padding:6px 16px;border-radius:6px;font-size:.8rem;font-weight:600;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);cursor:pointer;transition:background .15s;">
-                ⬇ Exportar PDF</button>
+              <div class="filt">
+                <span id="chip-all" class="chip on"><span data-i18n="filter-all">All</span> <span id="filter-all-count" class="n">0</span></span>
+                <span id="chip-critical" class="chip"><span data-i18n="sev-critical">Critical</span> <span id="filter-critical-count" class="n">0</span></span>
+                <span id="chip-high" class="chip"><span data-i18n="sev-high">High</span> <span id="filter-high-count" class="n">0</span></span>
+                <span id="chip-breach" class="chip"><span data-i18n="filter-breach">Breach</span> <span id="filter-breach-count" class="n">0</span></span>
+              </div>
             </div>
           </div>
-
-          <!-- Table view -->
-          <div id="findings-table-view" style="overflow-x:auto;">
-            <table style="width:100%;border-collapse:collapse;">
-              <thead style="background:var(--bg-card);">
-                <tr>
-                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:80px;">ID</th>
-                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:110px;">Severidad</th>
-                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);width:180px;">Archivo</th>
-                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:140px;">Regla</th>
-                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);">Descripción</th>
-                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:160px;">Estado</th>
-                  <th style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:100px;">SLA</th>
-                  <th class="col-action" style="padding:10px 16px;text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap;width:180px;box-shadow:-2px 0 6px rgba(0,0,0,.3);">Acciones</th>
-                </tr>
-              </thead>
-              <tbody id="findings-table-body" style="border-top:1px solid var(--border);"></tbody>
-            </table>
+          <div id="findings-table-view" class="list">
+            <div id="findings-table-body" class="list"></div>
+            <div id="findings-paginator" style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;border-top:1px solid var(--border);font-size:12px;color:var(--t-dim);min-height:38px;gap:8px;"></div>
           </div>
-
-          <!-- Report view -->
-          <div id="findings-report-view" style="display:none;padding:24px;min-height:300px;">
-            <div id="report-loading" style="text-align:center;padding:48px;color:var(--muted);font-size:.88rem;">Selecciona un proyecto para ver el reporte.</div>
+          <div id="findings-report-view" style="display:none;padding:16px 20px;">
+            <div id="report-loading" style="color:var(--t-dim);font-size:13px;padding:40px;text-align:center;">Selecciona un proyecto para ver el reporte.</div>
             <div id="report-content" style="display:none;">
-              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
-                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:16px;">
-                  <p style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">Total Hallazgos</p>
-                  <p id="report-total" style="font-size:1.8rem;font-weight:700;color:var(--text);">—</p>
+              <div class="report-kpi-grid">
+                <div class="report-kpi-card">
+                  <div class="report-kpi-label" data-i18n="report-total-lbl">Total hallazgos</div>
+                  <div id="report-total" class="report-kpi-value" style="color:var(--t-hi);">—</div>
                 </div>
-                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:16px;">
-                  <p style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">Crítico / Alto</p>
-                  <p id="report-crit-high" style="font-size:1.8rem;font-weight:700;color:var(--crit);">—</p>
+                <div class="report-kpi-card">
+                  <div class="report-kpi-label" data-i18n="report-crithigh-lbl">Critical + High</div>
+                  <div id="report-crit-high" class="report-kpi-value" style="color:var(--crit);">—</div>
                 </div>
-                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:16px;">
-                  <p style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px;">Vencidos SLA</p>
-                  <p id="report-overdue" style="font-size:1.8rem;font-weight:700;color:var(--high);">—</p>
-                </div>
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
-                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:20px;">
-                  <p style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:16px;">Hallazgos por Severidad</p>
-                  <canvas id="chart-severity" style="max-height:220px;"></canvas>
-                </div>
-                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:20px;">
-                  <p style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:16px;">Hallazgos por Estado</p>
-                  <canvas id="chart-status" style="max-height:220px;"></canvas>
+                <div class="report-kpi-card">
+                  <div class="report-kpi-label" data-i18n="report-overdue-lbl">SLA vencidos</div>
+                  <div id="report-overdue" class="report-kpi-value" style="color:var(--high);">—</div>
                 </div>
               </div>
-              <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:20px;">
-                <p style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:16px;">Top Reglas</p>
-                <canvas id="chart-rules" style="max-height:200px;"></canvas>
+              <div class="report-charts-grid">
+                <div class="report-chart-card">
+                  <div class="report-chart-label" data-i18n="report-sev-lbl">Por Severidad</div>
+                  <canvas id="chart-severity" style="max-height:140px;"></canvas>
+                </div>
+                <div class="report-chart-card">
+                  <div class="report-chart-label" data-i18n="report-status-lbl">Por Estado</div>
+                  <canvas id="chart-status" style="max-height:140px;"></canvas>
+                </div>
+              </div>
+              <div class="report-chart-card">
+                <div class="report-chart-label" data-i18n="report-rules-lbl">Top Reglas</div>
+                <canvas id="chart-rules" style="max-height:130px;"></canvas>
               </div>
             </div>
           </div>
         </section>
-
-      </div>
-    </main>
+      </main>
+    </div>
 
     <!-- ══════════════ PROJECT MODAL — 2-step wizard ══════════════ -->
     <div id="project-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);padding:24px;"
@@ -412,6 +880,14 @@
             aria-label="Cerrar">✕</button>
         </div>
 
+        <div id="remediation-detail" style="display:none;padding:10px 20px;border-bottom:1px solid var(--border);background:rgba(255,255,255,0.015);flex-shrink:0;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+            <p id="remediation-description" style="font-size:.82rem;color:var(--t);line-height:1.55;flex:1;margin:0;"></p>
+            <button id="desc-lang-toggle" type="button" title="Switch description language" style="flex-shrink:0;padding:2px 9px;border-radius:5px;font-size:.68rem;font-weight:700;background:var(--surface-2);border:1px solid var(--border-2);color:var(--t-dim);cursor:pointer;transition:background .12s,color .12s;white-space:nowrap;font-family:var(--f-mono);">EN</button>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;" id="remediation-meta-chips"></div>
+        </div>
+
         <div style="flex:1;min-height:0;overflow:hidden;background:#0d1117;display:flex;flex-direction:column;">
           <div id="diff-view" style="display:flex;align-items:stretch;flex:1;min-height:0;width:100%;font-family:'Courier New',monospace;font-size:.8rem;line-height:1.7;"></div>
           <!-- kept hidden for JS state tracking -->
@@ -420,11 +896,12 @@
         </div>
 
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 20px;border-top:1px solid var(--border);background:var(--bg-card);flex-shrink:0;">
-          <p style="color:var(--muted);font-size:.8rem;">Convierte esta remediación en una propuesta de revisión en GitHub.</p>
+          <p id="pr-footer-text" style="color:var(--muted);font-size:.8rem;" data-i18n="modal-footer-pr">Convierte esta remediación en una propuesta de revisión en GitHub.</p>
           <div id="pr-action-container">
             <button type="button" id="btn-pr"
-              style="padding:8px 18px;border-radius:6px;background:var(--accent);color:#fff;font-size:.82rem;font-weight:700;border:none;cursor:pointer;transition:background .15s;">
-              🚀 <span data-i18n="convert-pr">Convertir a Pull Request</span>
+              style="display:inline-flex;align-items:center;gap:7px;padding:8px 18px;border-radius:8px;background:#202A38;color:var(--t-hi);font-size:.82rem;font-weight:600;border:1px solid rgba(122,140,165,.45);cursor:pointer;transition:background .15s;">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0Z"/></svg>
+              <span data-i18n="convert-pr">Convertir a Pull Request</span>
             </button>
           </div>
         </div>
@@ -474,6 +951,8 @@
       // ── i18n (< 80 lines) ──────────────────────────────────────────────
       const i18n = {
         es: {
+          // Modal y acciones existentes
+          "findings-across":    "hallazgos en",
           "new-project":        "Nuevo Proyecto",
           "scan-project":       "▶ Escanear Proyecto",
           "projects":           "Proyectos",
@@ -496,6 +975,57 @@
           "select-project":     "Selecciona un proyecto",
           "findings-appear":    "Los hallazgos aparecerán aquí.",
           "no-findings":        "Sin hallazgos detectados para este proyecto.",
+          // Navegación
+          "nav-overview":       "Resumen",
+          "nav-findings":       "Hallazgos",
+          "nav-pipeline":       "Pipeline",
+          "nav-reports":        "Reportes",
+          "nav-settings":       "Configuración",
+          // Header
+          "lbl-overview":       "Resumen",
+          "lbl-last-scan":      "Último escaneo",
+          "btn-export":         "Exportar",
+          "btn-run-scan":       "Ejecutar escaneo",
+          // Hero
+          "live-exposure":      "En vivo · Exposición activa",
+          "sev-critical":       "Crítico",
+          "sev-high":           "Alto",
+          "sev-medium":         "Medio",
+          "sev-low":            "Bajo",
+          // KPI
+          "kpi-sla-breaches":   "Brechas SLA",
+          "kpi-live":           "↑ en vivo",
+          "kpi-mttr":           "MTTR · críticos",
+          "kpi-mttr-foot":      "Objetivo 3.0d · mejorando",
+          // AI card
+          "ai-remediation":     "Remediación IA",
+          "remediation-engine": "Motor de remediación",
+          "local-model-ready":  "Modelo local listo",
+          "ollama-offline":     "Ollama sin conexión",
+          "patches-today":      "Parches hoy",
+          "accept-rate":        "Tasa de aceptación",
+          // Findings table
+          "view-findings":      "Hallazgos",
+          "view-report":        "Reporte",
+          "filter-all":         "Todos",
+          "filter-breach":      "Vencidos",
+          // Action buttons
+          "btn-fix":            "Fix",
+          "btn-risk":           "Riesgo",
+          "btn-fp":             "FP",
+          "btn-history":        "Historial",
+          // Modal remediación
+          "modal-footer-pr":    "Convierte esta remediación en una propuesta de revisión en GitHub.",
+          // Scan modal
+          "scanning-adapters":  "Escaneando · 3 de 4 adaptores",
+          "ai-adapter-offline": "Escaneando · adaptador IA sin conexión",
+          // Report
+          "report-total-lbl":   "Total hallazgos",
+          "report-crithigh-lbl":"Critical + High",
+          "report-overdue-lbl": "SLA vencidos",
+          "report-sev-lbl":     "Por Severidad",
+          "report-status-lbl":  "Por Estado",
+          "report-rules-lbl":   "Top Reglas",
         },
         en: {
           "new-project":        "New Project",
@@ -520,6 +1050,59 @@
           "select-project":     "Select a project",
           "findings-appear":    "Findings will appear here.",
           "no-findings":        "No findings detected for this project.",
+          // Hero
+          "findings-across":    "findings across",
+          // Navigation
+          "nav-overview":       "Overview",
+          "nav-findings":       "Findings",
+          "nav-pipeline":       "Pipeline",
+          "nav-reports":        "Reports",
+          "nav-settings":       "Settings",
+          // Header
+          "lbl-overview":       "Overview",
+          "lbl-last-scan":      "Last scan",
+          "btn-export":         "Export",
+          "btn-run-scan":       "Run new scan",
+          // Hero
+          "live-exposure":      "Live · Active exposure",
+          "sev-critical":       "Critical",
+          "sev-high":           "High",
+          "sev-medium":         "Medium",
+          "sev-low":            "Low",
+          // KPI
+          "kpi-sla-breaches":   "SLA breaches",
+          "kpi-live":           "↑ live",
+          "kpi-mttr":           "MTTR · critical",
+          "kpi-mttr-foot":      "Target 3.0d · trending fast",
+          // AI card
+          "ai-remediation":     "AI remediation",
+          "remediation-engine": "Remediation engine",
+          "local-model-ready":  "Local model ready",
+          "ollama-offline":     "Ollama offline",
+          "patches-today":      "Patches today",
+          "accept-rate":        "Accept rate",
+          // Findings table
+          "view-findings":      "Findings",
+          "view-report":        "Report",
+          "filter-all":         "All",
+          "filter-breach":      "Breach",
+          // Action buttons
+          "btn-fix":            "Fix",
+          "btn-risk":           "Risk",
+          "btn-fp":             "FP",
+          "btn-history":        "History",
+          // Modal
+          "modal-footer-pr":    "Convert this remediation into a GitHub pull request.",
+          // Scan
+          "scanning-adapters":  "Scanning · 3 of 4 adapters",
+          "ai-adapter-offline": "Scanning · AI adapter offline",
+          // Report
+          "report-total-lbl":   "Total findings",
+          "report-crithigh-lbl":"Critical + High",
+          "report-overdue-lbl": "Overdue SLA",
+          "report-sev-lbl":     "By Severity",
+          "report-status-lbl":  "By Status",
+          "report-rules-lbl":   "Top Rules",
         },
       };
       let currentLang = localStorage.getItem("lang") || "es";
@@ -536,6 +1119,7 @@
       const refreshButton       = document.getElementById("refresh-findings");
       const projectsList        = document.getElementById("projects-list");
       const projectStatus       = document.getElementById("project-status");
+      const projectSelect       = document.getElementById("project-select");
       const currentProjectTitle = document.getElementById("current-project-title");
       const tableBody           = document.getElementById("findings-table-body");
       const tableStatus         = document.getElementById("table-status");
@@ -544,8 +1128,20 @@
       const highCount           = document.getElementById("high-count");
       const mediumCount         = document.getElementById("medium-count");
       const totalCount          = document.getElementById("total-count");
+      const criticalCount       = document.getElementById("critical-count");
+      const lowCount            = document.getElementById("low-count");
+      const moduleCount         = document.getElementById("module-count");
+      const criticalCopy        = document.getElementById("critical-copy");
+      const totalRadialCount    = document.getElementById("total-radial-count");
+      const filterAllCount      = document.getElementById("filter-all-count");
+      const filterCriticalCount = document.getElementById("filter-critical-count");
+      const filterHighCount     = document.getElementById("filter-high-count");
+      const filterBreachCount   = document.getElementById("filter-breach-count");
       const aiStatusBadge       = document.getElementById("ai-status-badge");
       const aiBadgeText         = document.getElementById("ai-badge-text");
+      const aiModelChip         = document.getElementById("ai-model-chip");
+      const scanAdapterStatus   = document.getElementById("scan-adapter-status");
+      const aiEngineSummary     = document.getElementById("ai-engine-summary");
       const remediationModal    = document.getElementById("remediation-modal");
       const remediationSubtitle = document.getElementById("remediation-subtitle");
       const vulnerableCode      = document.getElementById("vulnerable-code");
@@ -587,6 +1183,49 @@
       let feedbackTimeout;
       let reasonModalCallback = null;
 
+      // ── Pagination + filter state ──────────────────────────────────────
+      let activeFilter = "all";
+      let currentPage = 1;
+      const PAGE_SIZE = 20;
+      let filteredFindings = [];
+
+      // ── Bandit rule descriptions (ES) ─────────────────────────────────
+      const BANDIT_ES = {
+        B101:"Uso de assert detectado — no usar en producción para validaciones",
+        B102:"Uso de exec() detectado — posible ejecución de código arbitrario",
+        B103:"Configuración de máscara de permisos de archivo insegura",
+        B104:"Binding a todas las interfaces de red (0.0.0.0)",
+        B105:"Posible contraseña en texto plano detectada en el código",
+        B106:"Posible contraseña como argumento de función",
+        B107:"Posible contraseña en argumento de URL",
+        B108:"Ubicación de archivo temporal probablemente insegura",
+        B110:"Try-except-pass detectado — puede ocultar errores silenciosamente",
+        B201:"Aplicación Flask ejecutándose con debug=True en producción",
+        B301:"Uso de pickle — riesgo de deserialización arbitraria",
+        B303:"Uso de hash débil (MD2/MD4/MD5/SHA1) para seguridad",
+        B304:"Uso de cifrado débil (RC2/RC4/DES/Blowfish)",
+        B305:"Modo de cifrado ECB detectado — inseguro, sin IV",
+        B307:"Uso de eval() — posible ejecución de código no confiable",
+        B311:"Generador de números aleatorios estándar — no apto para criptografía",
+        B322:"Uso de input() en Python 2 — puede ejecutar código arbitrario",
+        B323:"Uso de unverified_context — verificación SSL desactivada",
+        B324:"Uso de función hash débil para seguridad (usedforsecurity=False recomendado)",
+        B401:"Importación de telnetlib — protocolo inseguro (sin cifrado)",
+        B403:"Importación de pickle — posible vulnerabilidad de deserialización",
+        B404:"Importación de subprocess — revisar argumentos para evitar inyección",
+        B501:"Llamada a requests sin verificación SSL (verify=False)",
+        B505:"Clave RSA menor a 2048 bits — insuficiente para seguridad moderna",
+        B506:"yaml.load() sin Loader seguro — posible ejecución de código",
+        B601:"Posible inyección de comandos vía formato de cadena en shell",
+        B602:"Llamada a subprocess con shell=True — riesgo de inyección de comandos",
+        B603:"subprocess sin shell=True — verificar que los argumentos sean de confianza",
+        B604:"Función con shell=True detectada — posible inyección de comandos",
+        B607:"Inicio de proceso con ruta parcial — susceptible a ataques PATH",
+        B608:"Posible inyección SQL mediante concatenación de cadenas en consulta",
+        B701:"Uso de Jinja2 con autoescape desactivado — riesgo de XSS",
+        B703:"Uso de mark_safe en Django — posible XSS",
+      };
+
       // ── Helpers ────────────────────────────────────────────────────────
       function showFeedback(message, tone = "info") {
         feedback.className = { info: "fb-info", success: "fb-success", error: "fb-error" }[tone] || "fb-info";
@@ -611,6 +1250,47 @@
         const el = document.createElement("span");
         el.textContent = value == null ? "" : String(value);
         return el.innerHTML;
+      }
+
+      function setText(id, value) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+      }
+
+      function setWidth(id, pct) {
+        const el = document.getElementById(id);
+        if (el) el.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+      }
+
+      function severityKey(severity) {
+        const v = String(severity || "").toUpperCase();
+        if (v === "CRITICAL") return "critical";
+        if (v === "HIGH") return "high";
+        if (v === "MEDIUM") return "medium";
+        if (v === "LOW") return "low";
+        return "low";
+      }
+
+      function severityClass(severity) {
+        return { critical: "c", high: "h", medium: "m", low: "l" }[severityKey(severity)];
+      }
+
+      function fileLine(record) {
+        return record.line_number || record.line || record.line_start || record.line_no || 1;
+      }
+
+      function formatRelativeTime(value) {
+        if (!value) return "discovered recently";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "discovered recently";
+        const diff = Date.now() - date.getTime();
+        const abs = Math.abs(diff);
+        const mins = Math.round(abs / 60000);
+        const hours = Math.round(abs / 3600000);
+        const days = Math.round(abs / 86400000);
+        if (mins < 60) return `discovered ${Math.max(1, mins)}m ago`;
+        if (hours < 48) return `discovered ${hours}h ago`;
+        return `discovered ${days}d ago`;
       }
 
       // ── Severity ───────────────────────────────────────────────────────
@@ -673,57 +1353,70 @@
         return wrap;
       }
 
+      // ── SVG icon helpers ───────────────────────────────────────────────
+      const IC_SPARKLE = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>`;
+      const IC_WARN  = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`;
+      const IC_CROSS = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>`;
+      const IC_CLOCK = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+
       // ── Action buttons ─────────────────────────────────────────────────
       function buildActionButtons(record) {
         const wrap = document.createElement("span");
-        wrap.style.cssText = "display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap;";
+        wrap.style.cssText = "display:inline-flex;align-items:center;gap:6px;flex-wrap:nowrap;";
 
-        const btnBase = "border:none;cursor:pointer;border-radius:4px;padding:4px 8px;font-size:.72rem;font-weight:600;transition:background .12s;";
+        const btnBase = "display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border-2);cursor:pointer;border-radius:8px;padding:5px 9px;font-size:11.5px;font-weight:500;transition:background .12s,color .12s,border-color .12s;background:var(--surface-2);";
         const isIgnored = record.status === "accepted_risk" || record.status === "false_positive";
 
-        // Auto-Fix
+        // Auto-Fix (✨ sparkle icon)
         const fixBtn = document.createElement("button");
         fixBtn.type = "button";
         fixBtn.title = aiStatus.available ? "Generar Parche" : "Ollama no disponible";
         fixBtn.style.cssText = btnBase + (aiStatus.available
-          ? "background:transparent;color:#6cb6ff;"
-          : "background:var(--bg-hover);color:var(--muted);cursor:not-allowed;");
-        fixBtn.textContent = "✨ Fix";
+          ? "color:#D9E2EE;border-color:rgba(122,140,165,.32);"
+          : "color:var(--t-mute);cursor:not-allowed;opacity:.55;");
+        fixBtn.innerHTML = `${IC_SPARKLE} ${t("btn-fix")}`;
         fixBtn.disabled = !aiStatus.available;
         fixBtn.addEventListener("click", () => remediateFinding(record, fixBtn));
         wrap.appendChild(fixBtn);
 
         if (!isIgnored) {
+          // Risk (⚠ warn icon)
           const arBtn = document.createElement("button");
           arBtn.type = "button";
-          arBtn.title = "Riesgo aceptado";
-          arBtn.style.cssText = btnBase + "background:transparent;color:#d29922;";
-          arBtn.textContent = "⚠ Risk";
+          arBtn.title = currentLang === "es" ? "Riesgo aceptado" : "Accept risk";
+          arBtn.style.cssText = btnBase + "color:var(--high);border-color:rgba(239,68,68,.24);";
+          arBtn.innerHTML = `${IC_WARN} ${t("btn-risk")}`;
           arBtn.addEventListener("click", () => openReasonModal(
-            "Aceptar riesgo",
-            `Justifica el riesgo aceptado para el finding ${String(record.id).slice(0, 8)}`,
+            currentLang === "es" ? "Aceptar riesgo" : "Accept risk",
+            currentLang === "es"
+              ? `Justifica el riesgo aceptado para el finding ${String(record.id).slice(0, 8)}`
+              : `Justify accepted risk for finding ${String(record.id).slice(0, 8)}`,
             (reason) => postLifecycle(record.id, "accept-risk", reason)
           ));
           wrap.appendChild(arBtn);
 
+          // FP (✗ cross icon)
           const fpBtn = document.createElement("button");
           fpBtn.type = "button";
-          fpBtn.title = "Falso positivo";
-          fpBtn.style.cssText = btnBase + "background:transparent;color:var(--muted);";
-          fpBtn.textContent = "✗ FP";
+          fpBtn.title = currentLang === "es" ? "Falso positivo" : "False positive";
+          fpBtn.style.cssText = btnBase + "color:var(--t-dim);";
+          fpBtn.innerHTML = `${IC_CROSS} ${t("btn-fp")}`;
           fpBtn.addEventListener("click", () => openReasonModal(
-            "Falso positivo",
-            `Justifica por qué el finding ${String(record.id).slice(0, 8)} es un falso positivo`,
+            currentLang === "es" ? "Falso positivo" : "False positive",
+            currentLang === "es"
+              ? `Justifica por qué el finding ${String(record.id).slice(0, 8)} es un falso positivo`
+              : `Justify why finding ${String(record.id).slice(0, 8)} is a false positive`,
             (reason) => postLifecycle(record.id, "false-positive", reason)
           ));
           wrap.appendChild(fpBtn);
         }
 
+        // History (🕐 clock icon)
         const auditBtn = document.createElement("button");
         auditBtn.type = "button";
-        auditBtn.title = "Ver historial";
-        auditBtn.style.cssText = btnBase + "background:transparent;color:var(--muted);";
-        auditBtn.textContent = "⏱";
+        auditBtn.title = currentLang === "es" ? "Ver historial" : "View history";
+        auditBtn.style.cssText = btnBase + "color:var(--t-dim);";
+        auditBtn.innerHTML = `${IC_CLOCK} ${t("btn-history")}`;
         auditBtn.addEventListener("click", () => openAuditModal(record));
         wrap.appendChild(auditBtn);
 
@@ -818,8 +1511,17 @@
       function renderProjects() {
         projectsList.innerHTML = "";
         projectStatus.textContent = `${projects.length} ${t("registered-projects")}`;
+        setText("repo-branch-chip", selectedProject?.source_type === "repo" ? "main" : selectedProject?.technology || "main");
+        if (projectSelect) {
+          projectSelect.innerHTML = "";
+        }
 
         if (projects.length === 0) {
+          if (projectSelect) {
+            const option = document.createElement("option");
+            option.textContent = "no-project";
+            projectSelect.appendChild(option);
+          }
           const empty = document.createElement("p");
           empty.style.cssText = "padding:32px 20px;font-size:.83rem;color:var(--muted);text-align:center;";
           empty.textContent = "Aún no hay proyectos. Carga un ZIP o clona un repositorio.";
@@ -828,6 +1530,14 @@
         }
 
         projects.forEach((project) => {
+          if (projectSelect) {
+            const option = document.createElement("option");
+            option.value = project.id;
+            option.textContent = project.name;
+            option.selected = Boolean(selectedProject && selectedProject.id === project.id);
+            projectSelect.appendChild(option);
+          }
+
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = "proj-btn" + (selectedProject && selectedProject.id === project.id ? " active" : "");
@@ -865,43 +1575,47 @@
 
       // ── AI status badge ────────────────────────────────────────────────
       function renderAiStatusBadge() {
-        const dot = aiStatusBadge.querySelector(".pulse-green, .pulse-red");
+        const dot = aiStatusBadge.querySelector(".dot");
+        const model = aiStatus.model || "local model";
         if (aiStatus.available) {
-          if (dot) { dot.className = "pulse-green"; }
-          aiStatusBadge.style.background = "rgba(63,185,80,.12)";
-          aiStatusBadge.style.borderColor = "rgba(63,185,80,.35)";
-          aiStatusBadge.style.color = "#56d364";
-          aiBadgeText.textContent = `AI Engine: Online (${aiStatus.model || "local model"})`;
+          if (dot) dot.style.background = "var(--mint)";
+          aiStatusBadge.style.background = "var(--mint-soft)";
+          aiStatusBadge.style.borderColor = "rgba(158,255,224,0.18)";
+          aiStatusBadge.style.color = "var(--mint)";
+          aiBadgeText.textContent = "";
+          if (scanAdapterStatus) scanAdapterStatus.textContent = t("scanning-adapters");
+          if (aiEngineSummary) aiEngineSummary.textContent = t("local-model-ready");
+          if (aiModelChip) aiModelChip.textContent = `Live · ${model}`;
         } else {
-          if (dot) { dot.className = "pulse-red"; }
-          aiStatusBadge.style.background = "var(--bg-card)";
+          if (dot) dot.style.background = "var(--t-mute)";
+          aiStatusBadge.style.background = "var(--surface-2)";
           aiStatusBadge.style.borderColor = "var(--border)";
-          aiStatusBadge.style.color = "var(--muted)";
-          aiBadgeText.textContent = "AI Engine: Offline";
+          aiStatusBadge.style.color = "var(--t-dim)";
+          aiBadgeText.textContent = "";
+          if (scanAdapterStatus) scanAdapterStatus.textContent = t("ai-adapter-offline");
+          if (aiEngineSummary) aiEngineSummary.textContent = t("ollama-offline");
+          if (aiModelChip) aiModelChip.textContent = `Offline · Ollama`;
         }
       }
 
       // ── SLA badge ──────────────────────────────────────────────────────
       function buildSlaBadge(record) {
         const span = document.createElement("span");
-        span.style.cssText = "padding:2px 7px;border-radius:4px;font-size:.7rem;font-weight:700;white-space:nowrap;";
-        if (!record.sla_deadline) { span.textContent = "—"; span.style.color = "var(--muted)"; return span; }
+        span.className = "sla ok";
+        if (!record.sla_deadline) { span.textContent = "SLA open"; return span; }
         const deadline = new Date(record.sla_deadline);
         const daysLeft = Math.ceil((deadline - Date.now()) / 86400000);
         if (daysLeft < 0) {
-          span.textContent = `+${Math.abs(daysLeft)}d`;
-          span.style.background = "rgba(248,81,73,.2)";
-          span.style.color = "#f85149";
+          span.className = "sla brk";
+          span.textContent = `${Math.abs(daysLeft)}d overdue`;
           span.title = `Overdue ${Math.abs(daysLeft)} days`;
         } else if (daysLeft <= 2) {
-          span.textContent = `${daysLeft}d`;
-          span.style.background = "rgba(227,105,62,.2)";
-          span.style.color = "#e3693e";
+          span.className = "sla warn";
+          span.textContent = `${daysLeft}d left`;
           span.title = `${daysLeft} days remaining`;
         } else {
-          span.textContent = `${daysLeft}d`;
-          span.style.background = "var(--bg-hover)";
-          span.style.color = "var(--muted)";
+          span.className = "sla ok";
+          span.textContent = `${daysLeft}d left`;
           span.title = `${daysLeft} days remaining`;
         }
         return span;
@@ -910,87 +1624,196 @@
       // ── Table rendering ────────────────────────────────────────────────
       function renderMessage(message) {
         tableBody.innerHTML = "";
-        const row = document.createElement("tr");
-        const cell = document.createElement("td");
-        cell.colSpan = 8;
-        cell.style.cssText = "padding:60px 20px;text-align:center;";
+        const cell = document.createElement("div");
+        cell.style.cssText = "padding:60px 20px;text-align:center;color:var(--t-dim);";
         cell.innerHTML = `
           <svg style="margin:0 auto 16px;display:block;opacity:.25;" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/>
           </svg>
-          <p style="font-size:.9rem;color:var(--muted);">${escapeHtml(message)}</p>
+          <p style="font-size:.9rem;color:var(--t-dim);">${escapeHtml(message)}</p>
         `;
-        row.appendChild(cell);
-        tableBody.appendChild(row);
+        tableBody.appendChild(cell);
       }
 
       function updateCounters(records) {
-        const highTotal = records.filter((r) => ["CRITICAL","HIGH"].includes(String(r.severity||"").toUpperCase())).length;
-        const medTotal  = records.filter((r) => ["MEDIUM","LOW"].includes(String(r.severity||"").toUpperCase())).length;
-        highCount.textContent   = highTotal;
-        mediumCount.textContent = medTotal;
-        totalCount.textContent  = records.length;
+        const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+        records.forEach((record) => { counts[severityKey(record.severity)] += 1; });
+        const total = records.length;
+        const files = new Set(records.map((r) => shortPath(r.file_path || "")).filter(Boolean));
+        const overdue = records.filter((r) => r.sla_deadline && new Date(r.sla_deadline) < new Date()).length;
+        const pct = (n) => total ? (n / total) * 100 : 0;
+
+        criticalCount.textContent = counts.critical;
+        highCount.textContent = counts.high;
+        mediumCount.textContent = counts.medium;
+        lowCount.textContent = counts.low;
+        totalCount.textContent = total;
+        if (totalRadialCount) totalRadialCount.textContent = total;
+        const modWord = currentLang === "es" ? "módulos" : "modules";
+        const critWord = currentLang === "es" ? "críticos" : "critical";
+        const overdueWord = currentLang === "es" ? "vencidos" : "overdue";
+        if (moduleCount) moduleCount.textContent = `${files.size || (selectedProject ? 1 : 0)} ${modWord}`;
+        if (criticalCopy) criticalCopy.textContent = `${counts.critical} ${critWord}`;
+        if (filterAllCount) filterAllCount.textContent = total;
+        if (filterCriticalCount) filterCriticalCount.textContent = counts.critical;
+        if (filterHighCount) filterHighCount.textContent = counts.high;
+        if (filterBreachCount) filterBreachCount.textContent = overdue;
+        setText("sla-breaches", overdue);
+        setText("sla-foot", `${overdue} ${overdueWord} · CVSS ≥ 9.0`);
+
+        setWidth("sev-bar-critical", pct(counts.critical));
+        setWidth("sev-bar-high", pct(counts.high));
+        setWidth("sev-bar-medium", pct(counts.medium));
+        setWidth("sev-bar-low", pct(counts.low));
+
+        const circumference = 540;
+        let offset = 0;
+        [
+          ["radial-critical", counts.critical],
+          ["radial-high", counts.high],
+          ["radial-medium", counts.medium],
+          ["radial-low", counts.low],
+        ].forEach(([id, count]) => {
+          const circle = document.getElementById(id);
+          if (!circle) return;
+          const length = total ? (count / total) * circumference : 0;
+          circle.setAttribute("stroke-dasharray", `${length} ${circumference}`);
+          circle.setAttribute("stroke-dashoffset", String(-offset));
+          offset += length;
+        });
+      }
+
+      function getFilteredSorted(records, filter) {
+        let result = [...records];
+        if (filter === "critical") result = result.filter(r => String(r.severity||"").toUpperCase() === "CRITICAL");
+        else if (filter === "high") result = result.filter(r => String(r.severity||"").toUpperCase() === "HIGH");
+        else if (filter === "breach") result = result.filter(r => r.sla_deadline && new Date(r.sla_deadline) < new Date());
+        const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+        result.sort((a, b) => (order[String(a.severity||"").toUpperCase()] ?? 4) - (order[String(b.severity||"").toUpperCase()] ?? 4));
+        return result;
       }
 
       function renderRows(records) {
-        tableBody.innerHTML = "";
         updateCounters(records);
+        filteredFindings = getFilteredSorted(records, activeFilter);
+        currentPage = 1;
+        renderPage();
+      }
 
-        if (records.length === 0) {
+      function renderPage() {
+        tableBody.innerHTML = "";
+        const paginatorEl = document.getElementById("findings-paginator");
+        const total = filteredFindings.length;
+        const totalPages = Math.ceil(total / PAGE_SIZE);
+        const start = (currentPage - 1) * PAGE_SIZE;
+        const pageItems = filteredFindings.slice(start, start + PAGE_SIZE);
+
+        if (total === 0) {
           renderMessage(t("no-findings"));
+          if (paginatorEl) paginatorEl.innerHTML = "";
           return;
         }
 
-        records.forEach((record) => {
-          const row = document.createElement("tr");
-          row.className = "findings-row";
-          row.style.cssText = "border-bottom:1px solid var(--border);";
+        const SEV_LABEL = { c:"CRIT", h:"HIGH", m:"MED", l:"LOW" };
+        const SEV_COLOR = {
+          c: "background:rgba(239,68,68,.15);color:#ef4444;",
+          h: "background:rgba(220,38,38,.12);color:#dc2626;",
+          m: "background:rgba(210,153,34,.13);color:#d29922;",
+          l: "background:rgba(59,130,246,.13);color:#3b82f6;",
+        };
 
-          const tdStyle = "padding:12px 16px;font-size:.82rem;white-space:nowrap;";
-          const tdTrunc = "padding:12px 16px;font-size:.82rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        pageItems.forEach((record) => {
+          const row = document.createElement("div");
+          row.className = "frow";
 
-          const idCell = document.createElement("td");
-          idCell.style.cssText = tdStyle + "color:var(--muted);font-family:monospace;font-size:.75rem;";
-          idCell.textContent = String(record.id).slice(0, 8);
+          const line = fileLine(record);
+          const path = shortPath(record.file_path || "unknown");
+          const rule = record.rule_id || String(record.id || "UNKNOWN").slice(0, 12);
+          const meta = record.cve_id || record.cvss ? `CVSS ${record.cvss || ""}`.trim() : formatRelativeTime(record.created_at || record.discovered_at);
+          const sc = severityClass(record.severity);
 
-          const sevCell = document.createElement("td");
-          sevCell.style.cssText = tdStyle;
-          const sevBadge = document.createElement("span");
-          sevBadge.className = sevStyle(record.severity);
-          sevBadge.style.cssText = "padding:2px 8px;border-radius:4px;font-size:.72rem;font-weight:600;";
-          sevBadge.textContent = record.severity || "UNKNOWN";
-          sevCell.appendChild(sevBadge);
+          const mark = document.createElement("div");
+          mark.className = `sev-mark ${sc}`;
 
-          const fileCell = document.createElement("td");
-          fileCell.style.cssText = tdTrunc + "color:var(--muted);";
-          fileCell.textContent = record.file_path || "—";
-          fileCell.title = record.file_path || "";
+          const body = document.createElement("div");
+          body.className = "body";
+          const desc = record.description || "Security finding";
+          const sevBadge = `<span style="display:inline-flex;padding:1px 6px;border-radius:4px;font-size:.66rem;font-weight:700;${SEV_COLOR[sc]||SEV_COLOR.l}">${SEV_LABEL[sc]||"LOW"}</span>`;
+          body.innerHTML = `
+            <div class="top-row">
+              ${sevBadge}
+              <span class="rule ttip" data-tip="${escapeHtml(desc)}" style="cursor:help;">${escapeHtml(desc)}</span>
+              <span class="id">${escapeHtml(rule)}</span>
+            </div>
+            <div class="bot-row">
+              <span class="path">${escapeHtml(path)}:<span class="ln">${escapeHtml(line)}</span></span>
+              <span class="dot-sep">·</span>
+              <span class="tool">${escapeHtml(record.tool || selectedProject?.last_scan_tool || "scanner")}</span>
+              <span class="dot-sep">·</span>
+              <span class="tool">${escapeHtml(meta)}</span>
+            </div>
+          `;
 
-          const ruleCell = document.createElement("td");
-          ruleCell.style.cssText = tdStyle + "color:var(--text);font-weight:600;font-size:.78rem;font-family:monospace;";
-          ruleCell.textContent = record.rule_id || "—";
+          const sla = buildSlaBadge(record);
+          const action = buildActionButtons(record);
 
-          const descCell = document.createElement("td");
-          descCell.style.cssText = tdTrunc + "color:var(--muted);white-space:nowrap;";
-          descCell.textContent = record.description || "—";
-          descCell.title = record.description || "";
-
-          const statusCell = document.createElement("td");
-          statusCell.style.cssText = "padding:12px 16px;";
-          statusCell.appendChild(buildLifecycleBadge(record));
-
-          const slaCell = document.createElement("td");
-          slaCell.style.cssText = "padding:12px 16px;";
-          slaCell.appendChild(buildSlaBadge(record));
-
-          const actionCell = document.createElement("td");
-          actionCell.className = "col-action";
-          actionCell.style.cssText = "padding:10px 14px;box-shadow:-2px 0 6px rgba(0,0,0,.25);";
-          actionCell.appendChild(buildActionButtons(record));
-
-          row.append(idCell, sevCell, fileCell, ruleCell, descCell, statusCell, slaCell, actionCell);
+          row.append(mark, body, sla, action);
           tableBody.appendChild(row);
         });
+
+        // Paginator
+        if (paginatorEl) {
+          if (totalPages <= 1) {
+            paginatorEl.innerHTML = `<span>${total} hallazgos</span>`;
+          } else {
+            const btnStyle = "padding:3px 9px;border-radius:6px;border:1px solid var(--border-2);background:var(--surface-2);color:var(--t-dim);font-size:11.5px;cursor:pointer;transition:background .12s;";
+            const btnActiveStyle = "padding:3px 9px;border-radius:6px;border:1px solid var(--border-2);background:var(--t-hi);color:var(--bg);font-size:11.5px;cursor:pointer;font-weight:700;";
+            const from = start + 1, to = Math.min(start + PAGE_SIZE, total);
+            paginatorEl.innerHTML = "";
+
+            const info = document.createElement("span");
+            info.textContent = `${from}–${to} de ${total}`;
+            paginatorEl.appendChild(info);
+
+            const pages = document.createElement("div");
+            pages.style.cssText = "display:flex;align-items:center;gap:4px;";
+
+            const prevBtn = document.createElement("button");
+            prevBtn.type = "button";
+            prevBtn.textContent = "←";
+            prevBtn.style.cssText = btnStyle;
+            prevBtn.disabled = currentPage === 1;
+            if (currentPage === 1) prevBtn.style.opacity = ".35";
+            prevBtn.addEventListener("click", () => { currentPage--; renderPage(); });
+            pages.appendChild(prevBtn);
+
+            const maxVisible = 7;
+            let pStart = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+            let pEnd = Math.min(totalPages, pStart + maxVisible - 1);
+            if (pEnd - pStart < maxVisible - 1) pStart = Math.max(1, pEnd - maxVisible + 1);
+
+            for (let p = pStart; p <= pEnd; p++) {
+              const pb = document.createElement("button");
+              pb.type = "button";
+              pb.textContent = p;
+              pb.style.cssText = p === currentPage ? btnActiveStyle : btnStyle;
+              const pg = p;
+              pb.addEventListener("click", () => { currentPage = pg; renderPage(); });
+              pages.appendChild(pb);
+            }
+
+            const nextBtn = document.createElement("button");
+            nextBtn.type = "button";
+            nextBtn.textContent = "→";
+            nextBtn.style.cssText = btnStyle;
+            nextBtn.disabled = currentPage === totalPages;
+            if (currentPage === totalPages) nextBtn.style.opacity = ".35";
+            nextBtn.addEventListener("click", () => { currentPage++; renderPage(); });
+            pages.appendChild(nextBtn);
+
+            paginatorEl.appendChild(pages);
+          }
+        }
       }
 
       // ── Remediation modal helpers ──────────────────────────────────────
@@ -1080,8 +1903,8 @@
         // Paleta de colores
         const STYLE = {
           equal:  {rowBg:"transparent", numBg:"#0d1117", codeFg:"#c9d1d9", numFg:"#484f58", signCh:" "},
-          delete: {rowBg:"#2a1212",     numBg:"#2a1212", codeFg:"#ff7b72", numFg:"#5e2828", signCh:"−"},
-          insert: {rowBg:"#122a12",     numBg:"#122a12", codeFg:"#56d364", numFg:"#185018", signCh:"+"},
+          delete: {rowBg:"#1c1010",     numBg:"#1c1010", codeFg:"#cd7070", numFg:"#5e2828", signCh:"−"},
+          insert: {rowBg:"#0f1a0e",     numBg:"#0f1a0e", codeFg:"#5ca870", numFg:"#1a3a1a", signCh:"+"},
           gap:    {rowBg:"#161b22",     numBg:"#161b22", codeFg:"#484f58", numFg:"#30363d", signCh:""},
           pad:    {rowBg:"#161b22",     numBg:"#161b22", codeFg:"transparent", numFg:"transparent", signCh:""},
         };
@@ -1117,7 +1940,7 @@
             tdNum.textContent = showNum ? lineNum : "";
 
             const tdSign = document.createElement("td");
-            tdSign.style.cssText = `min-width:18px;padding:0 4px;color:${type==="delete"?"#f85149":type==="insert"?"#3fb950":"#484f58"};font-weight:700;white-space:nowrap;`;
+            tdSign.style.cssText = `min-width:18px;padding:0 4px;color:${type==="delete"?"#cd7070":type==="insert"?"#5ca870":"#484f58"};font-weight:700;white-space:nowrap;`;
             tdSign.textContent = s.signCh;
 
             const tdCode = document.createElement("td");
@@ -1165,6 +1988,68 @@
         vulnerableCode.textContent = record.code_snippet || "";
         remediationContent.textContent = cleanPatch;
 
+        // Detail panel — descripción + metadatos
+        const detailPanel = document.getElementById("remediation-detail");
+        const descEl      = document.getElementById("remediation-description");
+        const metaChips   = document.getElementById("remediation-meta-chips");
+        if (detailPanel && descEl && metaChips) {
+          const descEn = record.description || record.rule_id || "";
+          const ruleKey = (record.rule_id || "").replace(/[^A-Z0-9]/gi, "").toUpperCase();
+          const descEs = BANDIT_ES[ruleKey] || descEn;
+          let descShowingEs = currentLang === "es";
+
+          function applyDesc() {
+            descEl.textContent = descShowingEs ? descEs : descEn;
+            const toggleBtn = document.getElementById("desc-lang-toggle");
+            if (toggleBtn) {
+              toggleBtn.textContent = descShowingEs ? "EN" : "ES";
+              toggleBtn.title = descShowingEs ? "Ver en inglés" : "Ver en español";
+              toggleBtn.style.color = "var(--t-dim)";
+            }
+          }
+          applyDesc();
+
+          const toggleBtn = document.getElementById("desc-lang-toggle");
+          if (toggleBtn) {
+            toggleBtn.onclick = () => {
+              descShowingEs = !descShowingEs;
+              applyDesc();
+            };
+            toggleBtn.style.display = descEs !== descEn ? "" : "none";
+          }
+
+          metaChips.innerHTML = "";
+          const chipStyle = "display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:5px;font-size:.72rem;font-weight:600;";
+          const sevColors = { CRITICAL:"background:rgba(239,68,68,.15);color:#ef4444;", HIGH:"background:rgba(220,38,38,.13);color:#dc2626;", MEDIUM:"background:rgba(234,179,8,.15);color:#eab308;", LOW:"background:rgba(59,130,246,.13);color:#3b82f6;" };
+          const sevCol = sevColors[String(record.severity || "").toUpperCase()] || sevColors.LOW;
+          if (record.severity) {
+            const s = document.createElement("span");
+            s.style.cssText = chipStyle + sevCol;
+            s.textContent = record.severity;
+            metaChips.appendChild(s);
+          }
+          if (record.cvss) {
+            const s = document.createElement("span");
+            s.style.cssText = chipStyle + "background:rgba(255,255,255,.06);color:var(--t-dim);";
+            s.textContent = `CVSS ${record.cvss}`;
+            metaChips.appendChild(s);
+          }
+          if (record.cve_id) {
+            const s = document.createElement("span");
+            s.style.cssText = chipStyle + "background:rgba(47,129,247,.12);color:#6cb6ff;";
+            s.textContent = record.cve_id;
+            metaChips.appendChild(s);
+          }
+          const toolName = record.tool || selectedProject?.last_scan_tool || "";
+          if (toolName) {
+            const s = document.createElement("span");
+            s.style.cssText = chipStyle + "background:rgba(255,255,255,.06);color:var(--t-dim);";
+            s.textContent = toolName;
+            metaChips.appendChild(s);
+          }
+          detailPanel.style.display = (record.description || record.severity) ? "" : "none";
+        }
+
         // 3b: GitHub-style diff view — obtener archivo + line_number para contexto real
         (async () => {
           let fileData = null;
@@ -1194,6 +2079,8 @@
         diffView.innerHTML = "";
         vulnerableCode.textContent = "";
         remediationContent.textContent = "";
+        const det = document.getElementById("remediation-detail");
+        if (det) det.style.display = "none";
         currentRemediationFindingId = undefined;
         currentPrBranch = undefined;
       }
@@ -1406,7 +2293,12 @@
         } finally {
           refreshButton.disabled = false;
           panelRunScanButton.disabled = false;
-          panelRunScanButton.innerHTML = "▶ Escanear";
+          panelRunScanButton.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/>
+            </svg>
+            Run new scan
+          `;
           applyI18n();
         }
       }
@@ -1625,6 +2517,17 @@
       panelRunScanButton.addEventListener("click", runScan);
       newProjectButton.addEventListener("click", showProjectModal);
       refreshButton.addEventListener("click", loadFindings);
+      projectSelect?.addEventListener("change", async () => {
+        const project = projects.find((item) => String(item.id) === String(projectSelect.value));
+        if (project) await selectProject(project);
+      });
+      document.querySelectorAll(".nav .links a").forEach((link, idx) => {
+        link.addEventListener("click", (event) => {
+          event.preventDefault();
+          if (idx === 3) setView("report");
+          else setView("findings");
+        });
+      });
       createPrButton.addEventListener("click", createPullRequest);
       closeRemediationButton.addEventListener("click", hideRemediationModal);
       closeProjectModalButton.addEventListener("click", hideProjectModal);
@@ -1670,19 +2573,25 @@
         if (view === "findings") {
           findingsTableView.style.display = "";
           findingsReportView.style.display = "none";
-          viewFindingsBtn.style.background = "var(--accent)";
-          viewFindingsBtn.style.color = "#fff";
+          viewFindingsBtn.style.background = "var(--t-hi)";
+          viewFindingsBtn.style.color = "var(--bg)";
           viewReportBtn.style.background = "transparent";
-          viewReportBtn.style.color = "var(--muted)";
+          viewReportBtn.style.color = "var(--t-dim)";
           exportPdfBtn.style.display = "none";
+          document.querySelectorAll(".nav .links a").forEach(a => a.classList.remove("on"));
+          const overviewLink = document.querySelector(".nav .links a:first-child");
+          if (overviewLink) overviewLink.classList.add("on");
         } else {
           findingsTableView.style.display = "none";
           findingsReportView.style.display = "";
           viewFindingsBtn.style.background = "transparent";
-          viewFindingsBtn.style.color = "var(--muted)";
-          viewReportBtn.style.background = "var(--accent)";
-          viewReportBtn.style.color = "#fff";
+          viewFindingsBtn.style.color = "var(--t-dim)";
+          viewReportBtn.style.background = "var(--t-hi)";
+          viewReportBtn.style.color = "var(--bg)";
           exportPdfBtn.style.display = "";
+          document.querySelectorAll(".nav .links a").forEach(a => a.classList.remove("on"));
+          const reportsLink = document.querySelector(".nav .links a:nth-child(4)");
+          if (reportsLink) reportsLink.classList.add("on");
           if (selectedProject) loadReport(selectedProject.id);
         }
       }
@@ -1725,7 +2634,7 @@
             labels: ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
             datasets: [{
               data: ["CRITICAL","HIGH","MEDIUM","LOW"].map(s => data.by_severity[s] || 0),
-              backgroundColor: ["#f85149","#e3693e","#d29922","#58a6ff"],
+              backgroundColor: ["#ef4444","#dc2626","#d29922","#3b82f6"],
               borderRadius: 4,
             }],
           },
@@ -1783,7 +2692,7 @@
         const findingsRows = limited.map((f) => {
           const deadline = f.sla_deadline ? new Date(f.sla_deadline).toLocaleDateString("es-MX") : "—";
           const filePath = (f.file_path || "—").replace(/.*\/repo\//, "").replace(/.*\/source\//, "");
-          const sevColor = ({ CRITICAL: "#c62828", HIGH: "#d84315", MEDIUM: "#e65100", LOW: "#1565c0" })[f.severity] || "#555";
+          const sevColor = ({ CRITICAL: "#dc2626", HIGH: "#991b1b", MEDIUM: "#b45309", LOW: "#1d4ed8" })[f.severity] || "#555";
           return `<tr>
             <td style="font-family:monospace;font-size:10px;">${String(f.id || "").slice(0, 8)}</td>
             <td style="color:${sevColor};font-weight:700;white-space:nowrap;">${f.severity || "—"}</td>
@@ -1813,7 +2722,7 @@
           <style>
             *{box-sizing:border-box;margin:0;padding:0;}
             body{font-family:Arial,sans-serif;color:#1a1a2e;background:#fff;font-size:12px;}
-            .cover{background:#1e3a5f;color:#fff;padding:48px 40px 36px;}
+            .cover{background:#1e3a5f;color:#fff;padding:36px 32px 28px;}
             .cover-platform{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#90b8e0;margin-bottom:10px;}
             .cover-title{font-size:26px;font-weight:800;margin-bottom:4px;}
             .cover-sub{font-size:15px;color:#a0c8f0;margin-bottom:28px;}
@@ -1821,11 +2730,11 @@
             .meta-item{background:rgba(255,255,255,.1);padding:10px 14px;border-radius:6px;}
             .meta-label{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#90b8e0;margin-bottom:3px;}
             .meta-value{font-size:14px;font-weight:700;}
-            .sev-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:20px 40px;background:#f4f6fa;border-bottom:2px solid #dde3ed;}
+            .sev-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:16px 32px;background:#f4f6fa;border-bottom:2px solid #dde3ed;}
             .sev-card{text-align:center;padding:10px;border-radius:6px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08);}
-            .sev-num{font-size:26px;font-weight:800;}
+            .sev-num{font-size:24px;font-weight:800;}
             .sev-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#666;margin-top:2px;}
-            .section{padding:20px 40px;border-bottom:1px solid #dde3ed;}
+            .section{padding:16px 32px;border-bottom:1px solid #dde3ed;}
             .section-title{font-size:14px;font-weight:800;color:#1e3a5f;margin-bottom:14px;padding-bottom:6px;border-bottom:2px solid #1e3a5f;}
             table{width:100%;border-collapse:collapse;font-size:11px;}
             th{background:#1e3a5f;color:#fff;padding:7px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.05em;}
@@ -1849,10 +2758,10 @@
           </div>
 
           <div class="sev-strip">
-            <div class="sev-card"><div class="sev-num" style="color:#c62828;">${sev("CRITICAL")}</div><div class="sev-label">Critical</div></div>
-            <div class="sev-card"><div class="sev-num" style="color:#d84315;">${sev("HIGH")}</div><div class="sev-label">High</div></div>
-            <div class="sev-card"><div class="sev-num" style="color:#e65100;">${sev("MEDIUM")}</div><div class="sev-label">Medium</div></div>
-            <div class="sev-card"><div class="sev-num" style="color:#1565c0;">${sev("LOW")}</div><div class="sev-label">Low</div></div>
+            <div class="sev-card"><div class="sev-num" style="color:#dc2626;">${sev("CRITICAL")}</div><div class="sev-label">Critical</div></div>
+            <div class="sev-card"><div class="sev-num" style="color:#991b1b;">${sev("HIGH")}</div><div class="sev-label">High</div></div>
+            <div class="sev-card"><div class="sev-num" style="color:#b45309;">${sev("MEDIUM")}</div><div class="sev-label">Medium</div></div>
+            <div class="sev-card"><div class="sev-num" style="color:#1d4ed8;">${sev("LOW")}</div><div class="sev-label">Low</div></div>
           </div>
 
           <div class="section">
@@ -1862,10 +2771,10 @@
                 <p style="font-size:11px;font-weight:700;color:#1e3a5f;margin-bottom:8px;">Hallazgos por Severidad</p>
                 <table>
                   <tr><th>Severidad</th><th>Cantidad</th></tr>
-                  <tr><td style="color:#c62828;font-weight:700;">CRITICAL</td><td>${sev("CRITICAL")}</td></tr>
-                  <tr><td style="color:#d84315;font-weight:700;">HIGH</td><td>${sev("HIGH")}</td></tr>
-                  <tr><td style="color:#e65100;font-weight:700;">MEDIUM</td><td>${sev("MEDIUM")}</td></tr>
-                  <tr><td style="color:#1565c0;font-weight:700;">LOW</td><td>${sev("LOW")}</td></tr>
+                  <tr><td style="color:#dc2626;font-weight:700;">CRITICAL</td><td>${sev("CRITICAL")}</td></tr>
+                  <tr><td style="color:#991b1b;font-weight:700;">HIGH</td><td>${sev("HIGH")}</td></tr>
+                  <tr><td style="color:#b45309;font-weight:700;">MEDIUM</td><td>${sev("MEDIUM")}</td></tr>
+                  <tr><td style="color:#1d4ed8;font-weight:700;">LOW</td><td>${sev("LOW")}</td></tr>
                 </table>
               </div>
               <div>
@@ -1922,8 +2831,19 @@
           const statusImg = chartStatus   ? chartStatus.toBase64Image("image/png", 1.0)   : null;
           const rulesImg  = chartRules    ? chartRules.toBase64Image("image/png", 1.0)    : null;
 
+          const PDF_MARGIN = 22; // margen horizontal en unidades PDF (px)
+          const PDF_TOP    = 12; // margen superior
+          const PDF_BOT    = 16; // margen inferior (espacio para el pie de página)
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF({ format: "a4", unit: "px", hotfixes: ["px_scaling"] });
+          const pageW = doc.internal.pageSize.getWidth();
+          const pageH = doc.internal.pageSize.getHeight();
+          const contentW = pageW - 2 * PDF_MARGIN; // ancho del área de contenido
+
+          // containerW = contentW: con scale=2 canvas.width = contentW*2, ratio = 2
+          const containerW = Math.floor(contentW);
           const container = document.createElement("div");
-          container.style.cssText = "position:absolute;left:-9999px;top:0;width:794px;background:#ffffff;color:#1a1a2e;font-family:Arial,sans-serif;";
+          container.style.cssText = `position:absolute;left:-9999px;top:0;width:${containerW}px;background:#ffffff;color:#1a1a2e;font-family:Arial,sans-serif;`;
           container.innerHTML = buildPdfHtml(selectedProject, reportData, allFindings, sevImg, statusImg, rulesImg);
           document.body.appendChild(container);
 
@@ -1936,12 +2856,10 @@
           });
           document.body.removeChild(container);
 
-          const { jsPDF } = window.jspdf;
-          const doc = new jsPDF({ format: "a4", unit: "px", hotfixes: ["px_scaling"] });
-          const pageW = doc.internal.pageSize.getWidth();
-          const pageH = doc.internal.pageSize.getHeight();
-          const ratio = canvas.width / pageW;
-          const pageHpx = pageH * ratio;
+          // canvas.width = containerW*2 ≈ contentW*2; ratio ≈ 2 (igual al original sin margen)
+          const ratio = canvas.width / contentW;
+          const usableH = pageH - PDF_TOP - PDF_BOT; // altura útil sin márgenes
+          const pageHpx = usableH * ratio;
 
           let yOffset = 0;
           let pageNum = 1;
@@ -1956,13 +2874,14 @@
             sliceCanvas.height = sliceH;
             const ctx = sliceCanvas.getContext("2d");
             ctx.drawImage(canvas, 0, -yOffset);
-            const imgData = sliceCanvas.toDataURL("image/jpeg", 0.92);
-            doc.addImage(imgData, "JPEG", 0, 0, pageW, sliceH / ratio);
+            const imgData = sliceCanvas.toDataURL("image/jpeg", 0.93);
+            // addImage con margen horizontal PDF_MARGIN y margen vertical PDF_TOP
+            doc.addImage(imgData, "JPEG", PDF_MARGIN, PDF_TOP, contentW, sliceH / ratio);
 
             doc.setFontSize(7);
             doc.setTextColor(160, 160, 160);
-            doc.text(`Generado por AI DevSecOps Control Plane · ${today} · Confidencial`, 20, pageH - 10);
-            doc.text(`Página ${pageNum}`, pageW - 20, pageH - 10, { align: "right" });
+            doc.text(`Generado por AI DevSecOps Control Plane · ${today} · Confidencial`, PDF_MARGIN + 4, pageH - 5);
+            doc.text(`Página ${pageNum}`, pageW - PDF_MARGIN - 4, pageH - 5, { align: "right" });
 
             yOffset += pageHpx;
             pageNum++;
@@ -1976,23 +2895,51 @@
           showFeedback(`Error exportando PDF: ${e.message}`, "error");
         } finally {
           exportPdfBtn.disabled = false;
-          exportPdfBtn.textContent = "⬇ Exportar PDF";
+          exportPdfBtn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M3 8 L8 3 L13 8 M8 3 V13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Export
+          `;
         }
       }
 
       langToggle.addEventListener("click", () => {
         currentLang = currentLang === "es" ? "en" : "es";
         localStorage.setItem("lang", currentLang);
-        langToggle.textContent = currentLang === "es" ? "ES | EN" : "EN | ES";
+        langToggle.textContent = currentLang === "es" ? "ES" : "EN";
         langToggle.style.fontWeight = "700";
         applyI18n();
+        renderAiStatusBadge();
         if (currentFindings.length > 0) renderRows(currentFindings);
         if (selectedProject) { tableStatus.textContent = `${currentFindings.length} ${t("findings-loaded")} · ${selectedProject.technology} · ${selectedProject.source_type}`; }
         projectStatus.textContent = `${projects.length} ${t("registered-projects")}`;
       });
 
+      // ── Chip filters ──────────────────────────────────────────────────
+      function setActiveChip(filter) {
+        activeFilter = filter;
+        currentPage = 1;
+        ["chip-all","chip-critical","chip-high","chip-breach"].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.classList.remove("on");
+        });
+        const active = document.getElementById({ all:"chip-all", critical:"chip-critical", high:"chip-high", breach:"chip-breach" }[filter]);
+        if (active) active.classList.add("on");
+        filteredFindings = getFilteredSorted(currentFindings, activeFilter);
+        renderPage();
+      }
+      document.getElementById("chip-all")?.addEventListener("click", () => setActiveChip("all"));
+      document.getElementById("chip-critical")?.addEventListener("click", () => setActiveChip("critical"));
+      document.getElementById("chip-high")?.addEventListener("click", () => setActiveChip("high"));
+      document.getElementById("chip-breach")?.addEventListener("click", () => setActiveChip("breach"));
+
       // ── Boot ───────────────────────────────────────────────────────────
-      langToggle.textContent = currentLang === "es" ? "ES | EN" : "EN | ES";
+      if (window.location.hash) {
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+        window.scrollTo(0, 0);
+      }
+      langToggle.textContent = currentLang === "es" ? "ES" : "EN";
       applyI18n();
       renderAiStatusBadge();
       loadAiStatus();

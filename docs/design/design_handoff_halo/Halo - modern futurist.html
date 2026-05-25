@@ -1,0 +1,1195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aegis · Halo — modern futurist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #07090C;
+    --bg-warm:   #0A0D12;
+    --surface:   rgba(255, 255, 255, 0.025);
+    --surface-2: rgba(255, 255, 255, 0.04);
+    --surface-3: rgba(255, 255, 255, 0.06);
+    --border:    rgba(255, 255, 255, 0.07);
+    --border-2:  rgba(255, 255, 255, 0.12);
+
+    --t-hi:      #F5F7FA;
+    --t:         #C2C8D2;
+    --t-dim:     #7A818F;
+    --t-mute:    #4A5160;
+    --t-faint:   #2A2F3A;
+
+    /* Single accent — electric mint */
+    --mint:      #9EFFE0;
+    --mint-dim:  #5AD7B5;
+    --mint-glow: rgba(158, 255, 224, 0.40);
+    --mint-soft: rgba(158, 255, 224, 0.08);
+
+    /* Severity — warm and confident */
+    --crit:      #FF647D;
+    --crit-soft: rgba(255, 100, 125, 0.10);
+    --high:      #FFA45C;
+    --high-soft: rgba(255, 164, 92, 0.10);
+    --med:       #FFCF50;
+    --med-soft:  rgba(255, 207, 80, 0.10);
+    --low:       #94A3B8;
+    --low-soft:  rgba(148, 163, 184, 0.10);
+
+    --f: "Geist", system-ui, sans-serif;
+    --f-mono: "Geist Mono", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--t);
+    font-family: var(--f);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "ss01", "ss03", "tnum";
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ============ AMBIENT — atmospheric, breathing ============ */
+  .atmos {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  }
+  .atmos .b1 {
+    position: absolute;
+    top: -30%; right: -10%;
+    width: 1100px; height: 1100px;
+    background: radial-gradient(circle, var(--mint-glow) 0%, transparent 55%);
+    filter: blur(8px);
+    opacity: 0.50;
+    animation: breathe 14s ease-in-out infinite;
+  }
+  .atmos .b2 {
+    position: absolute;
+    bottom: -40%; left: -20%;
+    width: 1200px; height: 1200px;
+    background: radial-gradient(circle, rgba(120, 100, 255, 0.18) 0%, transparent 60%);
+    filter: blur(10px);
+    opacity: 0.55;
+    animation: breathe2 18s ease-in-out infinite;
+  }
+  .atmos .grain {
+    position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,0.018) 1px, transparent 1px);
+    background-size: 3px 3px;
+    mix-blend-mode: overlay;
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1) translate(0,0); opacity: 0.50; }
+    50%      { transform: scale(1.08) translate(-30px, 20px); opacity: 0.65; }
+  }
+  @keyframes breathe2 {
+    0%, 100% { transform: scale(1) translate(0,0); opacity: 0.55; }
+    50%      { transform: scale(1.05) translate(40px, -30px); opacity: 0.40; }
+  }
+
+  /* ============ APP SHELL ============ */
+  .app {
+    position: relative; z-index: 1;
+    width: 100%; min-height: 100vh;
+    padding: 28px 32px 40px;
+    max-width: 1480px;
+    margin: 0 auto;
+  }
+
+  /* ============ NAV ============ */
+  .nav {
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 22px;
+    background: rgba(13, 16, 22, 0.55);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    margin-bottom: 32px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .brand .mk {
+    width: 30px; height: 30px;
+    border-radius: 9px;
+    background: linear-gradient(140deg, var(--mint) 0%, var(--mint-dim) 100%);
+    display: grid; place-items: center;
+    color: #06231C;
+    box-shadow: 0 0 24px var(--mint-glow), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+  .brand .mk svg { width: 16px; height: 16px; }
+  .brand .nm {
+    font-weight: 600; font-size: 15px;
+    color: var(--t-hi); letter-spacing: -0.01em;
+  }
+  .nav .repo {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  .nav .repo .sl { color: var(--t-mute); }
+  .nav .repo .nm { color: var(--t-hi); font-weight: 500; }
+  .nav .repo .br {
+    color: var(--t-dim);
+    padding: 2px 7px;
+    background: var(--surface-3);
+    border-radius: 6px;
+    font-family: var(--f-mono);
+    font-size: 11px;
+  }
+  .nav .links {
+    display: flex; gap: 4px; margin-left: 8px;
+  }
+  .nav .links a {
+    padding: 7px 14px;
+    border-radius: 9px;
+    font-size: 13px; color: var(--t-dim);
+    text-decoration: none;
+    transition: 160ms;
+  }
+  .nav .links a:hover { color: var(--t); background: var(--surface-2); }
+  .nav .links a.on { color: var(--t-hi); background: var(--surface-3); }
+  .nav .grow { flex: 1; }
+  .nav .status {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 12px;
+    background: var(--mint-soft);
+    border: 1px solid rgba(158, 255, 224, 0.18);
+    border-radius: 999px;
+    font-size: 12px; color: var(--mint);
+  }
+  .nav .status .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--mint);
+    box-shadow: 0 0 8px var(--mint);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.45; }
+  }
+  .nav .ic-btn {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    display: grid; place-items: center;
+    color: var(--t); cursor: pointer;
+    transition: 160ms;
+  }
+  .nav .ic-btn:hover { background: var(--surface-3); color: var(--t-hi); }
+  .nav .ic-btn svg { width: 16px; height: 16px; }
+  .nav .avatar {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(140deg, #6B73FF, #C97AFF);
+    display: grid; place-items: center;
+    color: #fff; font-weight: 600; font-size: 12px;
+    box-shadow: 0 2px 16px rgba(120,100,255,0.30);
+  }
+
+  /* ============ PAGE HEADER ============ */
+  .head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 24px;
+    align-items: flex-end;
+    margin-bottom: 24px;
+  }
+  .head .lbl {
+    font-size: 13px; color: var(--t-dim);
+    margin-bottom: 8px;
+  }
+  .head h1 {
+    margin: 0;
+    font-size: 36px;
+    font-weight: 500;
+    line-height: 1.1;
+    color: var(--t-hi);
+    letter-spacing: -0.025em;
+  }
+  .head h1 .lt { color: var(--t-dim); font-weight: 400; }
+  .head .actions {
+    display: flex; gap: 10px;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 18px;
+    border-radius: 11px;
+    font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: 160ms;
+    border: 1px solid var(--border-2);
+    background: var(--surface-2);
+    color: var(--t-hi);
+  }
+  .btn:hover { background: var(--surface-3); }
+  .btn.primary {
+    background: var(--mint);
+    color: #06231C;
+    border-color: var(--mint);
+    box-shadow: 0 4px 24px var(--mint-glow), inset 0 1px 0 rgba(255,255,255,0.4);
+    font-weight: 600;
+  }
+  .btn.primary:hover {
+    background: #B5FFE5;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 32px var(--mint-glow), inset 0 1px 0 rgba(255,255,255,0.5);
+  }
+
+  /* ============ BENTO GRID ============ */
+  .bento {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    grid-auto-rows: minmax(0, auto);
+    gap: 18px;
+  }
+  .card {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.025) 0%, rgba(255,255,255,0.01) 100%),
+      rgba(13, 16, 22, 0.55);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card .ttl {
+    font-size: 12.5px; color: var(--t-dim);
+    margin-bottom: 4px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card .ttl .accent { color: var(--mint); }
+
+  /* ---- HERO CARD ---- */
+  .hero {
+    grid-column: span 2;
+    grid-row: span 2;
+    padding: 32px 36px;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 32px;
+    align-items: center;
+  }
+  .hero::before {
+    content: "";
+    position: absolute;
+    top: -100px; right: -100px;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, var(--mint-glow), transparent 60%);
+    filter: blur(40px);
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .hero .l-col { position: relative; z-index: 2; }
+  .hero .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 12px;
+    background: var(--mint-soft);
+    border: 1px solid rgba(158, 255, 224, 0.18);
+    border-radius: 999px;
+    font-size: 11.5px; color: var(--mint);
+    margin-bottom: 28px;
+  }
+  .hero .eyebrow .dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--mint); box-shadow: 0 0 6px var(--mint);
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  .hero .figure {
+    font-size: 156px;
+    font-weight: 300;
+    line-height: 0.95;
+    letter-spacing: -0.06em;
+    color: var(--t-hi);
+    font-variant-numeric: tabular-nums;
+    margin: 0 0 8px;
+    background: linear-gradient(180deg, #FFFFFF 30%, rgba(255,255,255,0.65) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .hero .figure-cap {
+    font-size: 15px;
+    color: var(--t-dim);
+    margin-bottom: 28px;
+  }
+  .hero .figure-cap .strong { color: var(--t-hi); font-weight: 500; }
+  .hero .figure-cap .crit { color: var(--crit); font-weight: 500; }
+
+  /* Severity row — proportional bar */
+  .sev-row {
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .sev-bar {
+    display: flex;
+    height: 6px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--surface-3);
+  }
+  .sev-bar > i { display: block; height: 100%; }
+  .sev-bar > i.c { background: var(--crit); }
+  .sev-bar > i.h { background: var(--high); }
+  .sev-bar > i.m { background: var(--med); }
+  .sev-bar > i.l { background: var(--low); }
+  .sev-legend {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .sev-legend .it {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .sev-legend .it .l {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11.5px;
+    color: var(--t-dim);
+  }
+  .sev-legend .it .l .sw {
+    width: 7px; height: 7px; border-radius: 50%;
+  }
+  .sev-legend .it.c .sw { background: var(--crit); box-shadow: 0 0 6px var(--crit); }
+  .sev-legend .it.h .sw { background: var(--high); }
+  .sev-legend .it.m .sw { background: var(--med); }
+  .sev-legend .it.l .sw { background: var(--low); }
+  .sev-legend .it .n {
+    font-size: 22px; font-weight: 500; color: var(--t-hi);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Hero right column — radial visualizer */
+  .hero .r-col {
+    display: grid; place-items: center;
+    position: relative; z-index: 2;
+  }
+  .hero .radial { width: 300px; height: 300px; position: relative; }
+  .hero .radial svg { width: 100%; height: 100%; display: block; }
+  .hero .radial .lbl {
+    position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center;
+  }
+  .hero .radial .lbl .l {
+    font-size: 11px; color: var(--t-dim);
+    margin-bottom: 4px;
+    text-transform: uppercase; letter-spacing: 0.1em;
+  }
+  .hero .radial .lbl .n {
+    font-size: 36px; font-weight: 500;
+    color: var(--t-hi); line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .hero .radial .lbl .n .u { font-size: 14px; color: var(--t-dim); font-weight: 400; }
+  .hero .radial .lbl .d {
+    margin-top: 6px;
+    font-size: 11.5px; color: var(--mint);
+  }
+  .hero .radial-rotate {
+    animation: rotate 60s linear infinite;
+    transform-origin: center;
+  }
+  @keyframes rotate { to { transform: rotate(360deg); } }
+
+  /* ---- KPI CARDS ---- */
+  .kpi { padding: 22px 24px; }
+  .kpi .l {
+    font-size: 12.5px; color: var(--t-dim);
+    margin-bottom: 14px;
+  }
+  .kpi .v-row {
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .kpi .n {
+    font-size: 44px; font-weight: 400;
+    color: var(--t-hi); line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+  }
+  .kpi .n .u { font-size: 18px; color: var(--t-dim); font-weight: 400; margin-left: 2px; }
+  .kpi .delta {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 3px 9px;
+    border-radius: 7px;
+    font-size: 11.5px; font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi .delta.up { background: rgba(158, 255, 224, 0.10); color: var(--mint); }
+  .kpi .delta.dn { background: var(--crit-soft); color: var(--crit); }
+  .kpi .delta.warn { background: var(--high-soft); color: var(--high); }
+  .kpi .delta.flat { background: var(--surface-3); color: var(--t-dim); }
+  .kpi .foot {
+    margin-top: 12px;
+    font-size: 12px; color: var(--t-dim);
+  }
+  .kpi .spark {
+    position: absolute; bottom: 0; right: 0; left: 0;
+    height: 40px;
+    pointer-events: none;
+    opacity: 0.6;
+  }
+  .kpi .spark svg { width: 100%; height: 100%; display: block; }
+
+  /* ---- FINDINGS CARD ---- */
+  .findings {
+    grid-column: span 2;
+    padding: 0;
+  }
+  .findings .head-bar {
+    padding: 22px 26px 16px;
+    display: flex; align-items: center; gap: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .findings .head-bar h3 {
+    margin: 0; font-size: 17px; font-weight: 500;
+    color: var(--t-hi); letter-spacing: -0.01em;
+  }
+  .findings .head-bar .ct {
+    font-size: 12.5px; color: var(--t-dim);
+  }
+  .findings .head-bar .filt {
+    margin-left: auto;
+    display: flex; gap: 6px;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 12px; color: var(--t-dim);
+    cursor: pointer;
+  }
+  .chip:hover { background: var(--surface-3); color: var(--t); }
+  .chip.on { background: var(--t-hi); color: var(--bg); border-color: var(--t-hi); }
+  .chip .n {
+    font-size: 11px;
+    padding: 0 5px;
+    border-radius: 5px;
+    background: var(--surface-3);
+    color: var(--t-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .chip.on .n { background: rgba(7, 9, 12, 0.15); color: var(--bg); }
+
+  .findings .list {
+    display: flex; flex-direction: column;
+  }
+  .frow {
+    display: grid;
+    grid-template-columns: 28px 1fr auto auto;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 26px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    transition: 120ms;
+  }
+  .frow:last-child { border-bottom: none; }
+  .frow:hover { background: var(--surface-2); }
+  .frow .sev-mark {
+    width: 4px; height: 32px;
+    border-radius: 2px;
+  }
+  .frow .sev-mark.c { background: var(--crit); box-shadow: 0 0 8px var(--crit-soft); }
+  .frow .sev-mark.h { background: var(--high); }
+  .frow .sev-mark.m { background: var(--med); }
+  .frow .body {
+    display: flex; flex-direction: column; gap: 3px;
+    min-width: 0;
+  }
+  .frow .top-row {
+    display: flex; align-items: center; gap: 10px;
+    min-width: 0;
+  }
+  .frow .rule {
+    font-size: 14px; font-weight: 500; color: var(--t-hi);
+    letter-spacing: -0.005em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .frow .id {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    color: var(--t-dim);
+    padding: 2px 7px;
+    background: var(--surface-3);
+    border-radius: 5px;
+  }
+  .frow .bot-row {
+    display: flex; align-items: center; gap: 14px;
+    font-size: 12px; color: var(--t-dim);
+  }
+  .frow .path {
+    font-family: var(--f-mono); font-size: 11.5px;
+    color: var(--t-dim);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .frow .path .ln { color: var(--mint); }
+  .frow .tool { color: var(--t-mute); }
+  .frow .dot-sep { color: var(--t-faint); }
+  .frow .sla {
+    font-size: 11px; font-weight: 500;
+    padding: 4px 9px;
+    border-radius: 7px;
+  }
+  .frow .sla.brk { background: var(--crit-soft); color: var(--crit); }
+  .frow .sla.warn { background: var(--high-soft); color: var(--high); }
+  .frow .sla.ok { background: var(--surface-3); color: var(--t-dim); }
+  .frow .act {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 13px;
+    border-radius: 9px;
+    background: var(--surface-3);
+    color: var(--t);
+    font-size: 12px; font-weight: 500;
+    border: 1px solid var(--border-2);
+    cursor: pointer;
+    transition: 160ms;
+  }
+  .frow .act:hover { background: var(--surface-3); color: var(--t-hi); }
+  .frow .act.ai {
+    background: var(--mint-soft);
+    color: var(--mint);
+    border-color: rgba(158, 255, 224, 0.25);
+  }
+  .frow .act.ai:hover {
+    background: rgba(158, 255, 224, 0.16);
+    box-shadow: 0 0 16px rgba(158, 255, 224, 0.20);
+  }
+  .frow .fixing {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 13px;
+    font-size: 12px;
+    color: var(--mint);
+  }
+  .frow .fixing .sp {
+    width: 12px; height: 12px;
+    border: 1.5px solid var(--mint);
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---- AI CARD ---- */
+  .ai-card {
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 18px;
+    position: relative;
+    overflow: hidden;
+  }
+  .ai-card::before {
+    content: "";
+    position: absolute;
+    bottom: -80px; right: -80px;
+    width: 280px; height: 280px;
+    background: radial-gradient(circle, var(--mint-glow), transparent 60%);
+    filter: blur(40px);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .ai-card .ai-head {
+    display: flex; align-items: center; gap: 10px;
+    position: relative; z-index: 2;
+  }
+  .ai-card .ai-head h3 {
+    margin: 0; font-size: 16px; font-weight: 500;
+    color: var(--t-hi); letter-spacing: -0.01em;
+  }
+  .ai-card .ai-head .badge {
+    margin-left: auto;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    background: var(--mint-soft);
+    border: 1px solid rgba(158, 255, 224, 0.18);
+    border-radius: 999px;
+    font-size: 11px; color: var(--mint);
+  }
+  .ai-card .ai-head .badge .dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--mint); box-shadow: 0 0 6px var(--mint);
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+
+  /* Orb visualizer */
+  .orb-wrap {
+    display: grid; place-items: center;
+    padding: 12px 0;
+    position: relative; z-index: 2;
+  }
+  .orb {
+    width: 140px; height: 140px;
+    position: relative;
+  }
+  .orb::before, .orb::after {
+    content: "";
+    position: absolute; inset: 0;
+    border-radius: 50%;
+  }
+  .orb::before {
+    background:
+      radial-gradient(circle at 35% 35%, rgba(255,255,255,0.7) 0%, transparent 35%),
+      radial-gradient(circle at 50% 50%, var(--mint) 0%, var(--mint-dim) 50%, #1A6F5C 100%);
+    box-shadow:
+      0 0 60px var(--mint-glow),
+      inset 0 -20px 40px rgba(0,0,0,0.4);
+    animation: orb-pulse 3s ease-in-out infinite;
+  }
+  .orb::after {
+    border: 1px solid rgba(158,255,224,0.30);
+    transform: scale(1.25);
+    animation: ring 3s ease-in-out infinite;
+  }
+  @keyframes orb-pulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.04); }
+  }
+  @keyframes ring {
+    0%, 100% { opacity: 0.8; transform: scale(1.25); }
+    50%      { opacity: 0.3; transform: scale(1.5); }
+  }
+
+  /* Waveform */
+  .wave {
+    height: 32px;
+    position: relative; z-index: 2;
+    display: flex; align-items: center; gap: 3px;
+    justify-content: center;
+  }
+  .wave i {
+    display: block;
+    width: 3px;
+    background: var(--mint);
+    border-radius: 2px;
+    opacity: 0.6;
+    animation: bar 1.2s ease-in-out infinite;
+  }
+  @keyframes bar {
+    0%, 100% { height: 6px; }
+    50%      { height: var(--h, 22px); }
+  }
+
+  .ai-card .workers {
+    display: flex; flex-direction: column; gap: 10px;
+    position: relative; z-index: 2;
+  }
+  .wrk {
+    padding: 12px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .wrk .r1 {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12.5px;
+  }
+  .wrk .r1 .nm { color: var(--t-hi); font-weight: 500; }
+  .wrk .r1 .tg {
+    font-family: var(--f-mono); font-size: 11px;
+    color: var(--t-dim);
+    padding: 2px 7px;
+    background: var(--surface-3);
+    border-radius: 5px;
+  }
+  .wrk .r1 .st {
+    margin-left: auto;
+    font-size: 11px; color: var(--mint);
+  }
+  .wrk .r1 .st.val { color: var(--mint); }
+  .wrk .r1 .st.idle { color: var(--t-mute); }
+  .wrk .bar {
+    height: 3px; background: var(--surface-3);
+    border-radius: 999px; overflow: hidden;
+  }
+  .wrk .bar > i {
+    display: block; height: 100%;
+    background: linear-gradient(90deg, var(--mint-dim), var(--mint));
+    border-radius: 999px;
+  }
+  .wrk.idle { opacity: 0.55; }
+  .wrk.idle .bar { display: none; }
+
+  .ai-card .stats {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    position: relative; z-index: 2;
+  }
+  .ai-card .stats .it .l {
+    font-size: 12px; color: var(--t-dim);
+    margin-bottom: 4px;
+  }
+  .ai-card .stats .it .n {
+    font-size: 26px; font-weight: 500;
+    color: var(--t-hi); line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .ai-card .stats .it .n .u {
+    font-size: 13px; color: var(--t-dim); font-weight: 400;
+  }
+
+  /* repo selector chip in nav */
+  .ic {
+    width: 14px; height: 14px;
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="logo" viewBox="0 0 22 22">
+      <path d="M11 2 L19 5.2 L19 11.8 C19 16 15.5 19.3 11 20.5 C6.5 19.3 3 16 3 11.8 L3 5.2 Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M7.5 11 L10 13.5 L14.5 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="atmos">
+  <div class="b1"></div>
+  <div class="b2"></div>
+  <div class="grain"></div>
+</div>
+
+<div class="app">
+
+  <!-- NAV -->
+  <div class="nav">
+    <div class="brand">
+      <div class="mk"><svg><use href="#logo"/></svg></div>
+      <span class="nm">Aegis</span>
+    </div>
+    <div class="repo">
+      <span class="sl">/</span>
+      <span class="nm">santander-bank-api</span>
+      <span class="br">main</span>
+    </div>
+    <div class="links">
+      <a href="#" class="on">Overview</a>
+      <a href="#">Findings</a>
+      <a href="#">Pipeline</a>
+      <a href="#">Reports</a>
+      <a href="#">Settings</a>
+    </div>
+    <div class="grow"></div>
+    <div class="status">
+      <span class="dot"></span>
+      <span>Scanning · 3 of 4 adapters</span>
+    </div>
+    <div class="ic-btn" title="Search">
+      <svg viewBox="0 0 20 20" fill="none">
+        <circle cx="9" cy="9" r="5.5" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M13 13 L17 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="ic-btn" title="Notifications">
+      <svg viewBox="0 0 20 20" fill="none">
+        <path d="M5 8.5C5 5.46 7.24 3 10 3C12.76 3 15 5.46 15 8.5V11L16.5 13.5H3.5L5 11V8.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M8 16C8 17.1 8.9 18 10 18C11.1 18 12 17.1 12 16" stroke="currentColor" stroke-width="1.6"/>
+      </svg>
+    </div>
+    <div class="avatar">EM</div>
+  </div>
+
+  <!-- PAGE HEAD -->
+  <div class="head">
+    <div>
+      <div class="lbl">Overview · Last scan 4 minutes ago</div>
+      <h1>Your threat surface, <span class="lt">in motion.</span></h1>
+    </div>
+    <div class="actions">
+      <button class="btn">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M3 8 L8 3 L13 8 M8 3 V13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Export
+      </button>
+      <button class="btn primary">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/>
+        </svg>
+        Run new scan
+      </button>
+    </div>
+  </div>
+
+  <!-- BENTO -->
+  <div class="bento">
+
+    <!-- HERO -->
+    <div class="card hero">
+      <div class="l-col">
+        <div class="eyebrow"><span class="dot"></span>Live · Active exposure</div>
+        <div class="figure">47</div>
+        <div class="figure-cap">
+          active findings across <span class="strong">8 modules</span> · <span class="crit">9 critical</span>
+        </div>
+        <div class="sev-row">
+          <div class="sev-bar">
+            <i class="c" style="width: 19.1%"></i>
+            <i class="h" style="width: 29.8%"></i>
+            <i class="m" style="width: 38.3%"></i>
+            <i class="l" style="width: 12.8%"></i>
+          </div>
+          <div class="sev-legend">
+            <div class="it c"><div class="l"><span class="sw"></span>Critical</div><div class="n">9</div></div>
+            <div class="it h"><div class="l"><span class="sw"></span>High</div><div class="n">14</div></div>
+            <div class="it m"><div class="l"><span class="sw"></span>Medium</div><div class="n">18</div></div>
+            <div class="it l"><div class="l"><span class="sw"></span>Low</div><div class="n">6</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="r-col">
+        <div class="radial">
+          <svg viewBox="0 0 200 200" class="radial-rotate">
+            <!-- soft outer ring -->
+            <circle cx="100" cy="100" r="92" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+            <circle cx="100" cy="100" r="78" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+
+            <!-- severity arcs around the ring -->
+            <!-- 47 segments total; 9 c / 14 h / 18 m / 6 l -->
+            <!-- Critical: -90 → -90 + 9*(360/47) = -90 → -21.06 -->
+            <circle cx="100" cy="100" r="86" fill="none"
+                    stroke="#FF647D" stroke-width="3"
+                    stroke-dasharray="103.4 540"
+                    stroke-dashoffset="0"
+                    transform="rotate(-90 100 100)"/>
+            <!-- High: starts at 68.94deg, length 14*7.66=107.2 -->
+            <circle cx="100" cy="100" r="86" fill="none"
+                    stroke="#FFA45C" stroke-width="3"
+                    stroke-dasharray="160.8 540"
+                    stroke-dashoffset="-103.4"
+                    transform="rotate(-90 100 100)"/>
+            <!-- Medium: 18 -->
+            <circle cx="100" cy="100" r="86" fill="none"
+                    stroke="#FFCF50" stroke-width="3"
+                    stroke-dasharray="206.8 540"
+                    stroke-dashoffset="-264.2"
+                    transform="rotate(-90 100 100)"/>
+            <!-- Low: 6 -->
+            <circle cx="100" cy="100" r="86" fill="none"
+                    stroke="#94A3B8" stroke-width="3"
+                    stroke-dasharray="68.9 540"
+                    stroke-dashoffset="-471"
+                    transform="rotate(-90 100 100)"/>
+
+            <!-- gap markers -->
+            <g stroke="#07090C" stroke-width="2">
+              <line x1="100" y1="14" x2="100" y2="20"/>
+            </g>
+
+            <!-- inner glow ring -->
+            <circle cx="100" cy="100" r="65" fill="none" stroke="rgba(158,255,224,0.15)" stroke-width="1"/>
+
+            <!-- subtle constellation dots around (decorative, evenly spaced) -->
+            <g fill="rgba(255,255,255,0.25)">
+              <circle cx="100" cy="100" r="0"/>
+            </g>
+          </svg>
+
+          <div class="lbl">
+            <div class="l">Total</div>
+            <div class="n">47<span class="u"></span></div>
+            <div class="d">↑ +8 in 24h</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI CARD -->
+    <div class="card ai-card">
+      <div class="ai-head">
+        <h3>AI remediation</h3>
+        <div class="badge"><span class="dot"></span>Live · qwen2.5-coder</div>
+      </div>
+
+      <div class="orb-wrap">
+        <div class="orb"></div>
+      </div>
+
+      <div class="wave">
+        <i style="--h: 14px; animation-delay: 0s"></i>
+        <i style="--h: 22px; animation-delay: 0.1s"></i>
+        <i style="--h: 18px; animation-delay: 0.2s"></i>
+        <i style="--h: 28px; animation-delay: 0.3s"></i>
+        <i style="--h: 24px; animation-delay: 0.4s"></i>
+        <i style="--h: 18px; animation-delay: 0.5s"></i>
+        <i style="--h: 30px; animation-delay: 0.6s"></i>
+        <i style="--h: 20px; animation-delay: 0.7s"></i>
+        <i style="--h: 26px; animation-delay: 0.8s"></i>
+        <i style="--h: 14px; animation-delay: 0.9s"></i>
+        <i style="--h: 22px; animation-delay: 1.0s"></i>
+        <i style="--h: 18px; animation-delay: 1.1s"></i>
+        <i style="--h: 24px; animation-delay: 1.0s"></i>
+        <i style="--h: 18px; animation-delay: 0.9s"></i>
+        <i style="--h: 14px; animation-delay: 0.8s"></i>
+        <i style="--h: 22px; animation-delay: 0.7s"></i>
+        <i style="--h: 28px; animation-delay: 0.6s"></i>
+        <i style="--h: 24px; animation-delay: 0.5s"></i>
+        <i style="--h: 18px; animation-delay: 0.4s"></i>
+        <i style="--h: 14px; animation-delay: 0.3s"></i>
+      </div>
+
+      <div class="workers">
+        <div class="wrk">
+          <div class="r1">
+            <span class="nm">worker-01</span>
+            <span class="tg">B602</span>
+            <span class="st">Generating · 8s</span>
+          </div>
+          <div class="bar"><i style="width: 42%"></i></div>
+        </div>
+        <div class="wrk">
+          <div class="r1">
+            <span class="nm">worker-02</span>
+            <span class="tg">ANG-SECRET</span>
+            <span class="st val">Validating</span>
+          </div>
+          <div class="bar"><i style="width: 88%"></i></div>
+        </div>
+        <div class="wrk idle">
+          <div class="r1">
+            <span class="nm">worker-03</span>
+            <span class="st idle">Idle</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="it">
+          <div class="l">Patches today</div>
+          <div class="n">17</div>
+        </div>
+        <div class="it">
+          <div class="l">Accept rate</div>
+          <div class="n">74<span class="u">%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPI: SLA breaches -->
+    <div class="card kpi">
+      <div class="l">SLA breaches</div>
+      <div class="v-row">
+        <div class="n">13</div>
+        <span class="delta dn">↑ +3</span>
+      </div>
+      <div class="foot">2 overdue · CVSS ≥ 9.0</div>
+      <div class="spark">
+        <svg viewBox="0 0 200 40" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#FF647D" stop-opacity="0.30"/>
+              <stop offset="100%" stop-color="#FF647D" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path d="M0,32 L25,30 L50,26 L75,22 L100,18 L125,16 L150,12 L175,8 L200,4 L200,40 L0,40 Z" fill="url(#g1)"/>
+          <polyline points="0,32 25,30 50,26 75,22 100,18 125,16 150,12 175,8 200,4"
+                    fill="none" stroke="#FF647D" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- KPI: MTTR -->
+    <div class="card kpi">
+      <div class="l">MTTR · critical</div>
+      <div class="v-row">
+        <div class="n">2.4<span class="u">d</span></div>
+        <span class="delta up">↓ 18%</span>
+      </div>
+      <div class="foot">Target 3.0d · trending fast</div>
+      <div class="spark">
+        <svg viewBox="0 0 200 40" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#9EFFE0" stop-opacity="0.30"/>
+              <stop offset="100%" stop-color="#9EFFE0" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path d="M0,10 L25,12 L50,14 L75,12 L100,18 L125,22 L150,28 L175,32 L200,34 L200,40 L0,40 Z" fill="url(#g2)"/>
+          <polyline points="0,10 25,12 50,14 75,12 100,18 125,22 150,28 175,32 200,34"
+                    fill="none" stroke="#9EFFE0" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- FINDINGS -->
+    <div class="card findings">
+      <div class="head-bar">
+        <h3>Active findings</h3>
+        <span class="ct">Sorted by severity, SLA</span>
+        <div class="filt">
+          <span class="chip on">All <span class="n">47</span></span>
+          <span class="chip">Critical <span class="n">9</span></span>
+          <span class="chip">High <span class="n">14</span></span>
+          <span class="chip">Breach <span class="n">13</span></span>
+        </div>
+      </div>
+      <div class="list">
+
+        <div class="frow">
+          <div class="sev-mark c"></div>
+          <div class="body">
+            <div class="top-row">
+              <span class="rule">OS shell-injection in subprocess call</span>
+              <span class="id">B602</span>
+            </div>
+            <div class="bot-row">
+              <span class="path">src/api/main.py:<span class="ln">142</span></span>
+              <span class="dot-sep">·</span>
+              <span class="tool">bandit</span>
+              <span class="dot-sep">·</span>
+              <span class="tool">discovered 12m ago</span>
+            </div>
+          </div>
+          <span class="sla brk">1d overdue</span>
+          <button class="act ai">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 1 L7.2 4.4 L10.8 4.8 L8.2 7.2 L8.8 10.8 L6 9 L3.2 10.8 L3.8 7.2 L1.2 4.8 L4.8 4.4 Z" fill="currentColor"/>
+            </svg>
+            Auto-fix
+          </button>
+        </div>
+
+        <div class="frow">
+          <div class="sev-mark c"></div>
+          <div class="body">
+            <div class="top-row">
+              <span class="rule">Vulnerable dependency · cryptography &lt; 41.0.6</span>
+              <span class="id">CVE-2024-26130</span>
+            </div>
+            <div class="bot-row">
+              <span class="path">requirements.txt:<span class="ln">14</span></span>
+              <span class="dot-sep">·</span>
+              <span class="tool">pip-audit</span>
+              <span class="dot-sep">·</span>
+              <span class="tool">CVSS 9.1</span>
+            </div>
+          </div>
+          <span class="sla brk">6h overdue</span>
+          <button class="act ai">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 1 L7.2 4.4 L10.8 4.8 L8.2 7.2 L8.8 10.8 L6 9 L3.2 10.8 L3.8 7.2 L1.2 4.8 L4.8 4.4 Z" fill="currentColor"/>
+            </svg>
+            Auto-fix
+          </button>
+        </div>
+
+        <div class="frow">
+          <div class="sev-mark c"></div>
+          <div class="body">
+            <div class="top-row">
+              <span class="rule">Hardcoded SQL string concatenation</span>
+              <span class="id">B608</span>
+            </div>
+            <div class="bot-row">
+              <span class="path">src/db/repo.py:<span class="ln">55</span></span>
+              <span class="dot-sep">·</span>
+              <span class="tool">bandit</span>
+              <span class="dot-sep">·</span>
+              <span class="tool">3 occurrences</span>
+            </div>
+          </div>
+          <span class="sla warn">12h left</span>
+          <button class="act ai">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 1 L7.2 4.4 L10.8 4.8 L8.2 7.2 L8.8 10.8 L6 9 L3.2 10.8 L3.8 7.2 L1.2 4.8 L4.8 4.4 Z" fill="currentColor"/>
+            </svg>
+            Auto-fix
+          </button>
+        </div>
+
+        <div class="frow">
+          <div class="sev-mark h"></div>
+          <div class="body">
+            <div class="top-row">
+              <span class="rule">API key committed to source</span>
+              <span class="id">ANG-SECRET-001</span>
+            </div>
+            <div class="bot-row">
+              <span class="path">src/app/config.ts:<span class="ln">9</span></span>
+              <span class="dot-sep">·</span>
+              <span class="tool">semgrep</span>
+              <span class="dot-sep">·</span>
+              <span class="tool">rotated detection on</span>
+            </div>
+          </div>
+          <span class="sla warn">36h left</span>
+          <span class="fixing"><span class="sp"></span>worker-02</span>
+        </div>
+
+        <div class="frow">
+          <div class="sev-mark h"></div>
+          <div class="body">
+            <div class="top-row">
+              <span class="rule">log4j-core remote code execution</span>
+              <span class="id">GHSA-9v9h-cgj8</span>
+            </div>
+            <div class="bot-row">
+              <span class="path">pom.xml:<span class="ln">48</span></span>
+              <span class="dot-sep">·</span>
+              <span class="tool">owasp-dc</span>
+              <span class="dot-sep">·</span>
+              <span class="tool">transitive · spring-boot</span>
+            </div>
+          </div>
+          <span class="sla ok">2d left</span>
+          <button class="act ai">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 1 L7.2 4.4 L10.8 4.8 L8.2 7.2 L8.8 10.8 L6 9 L3.2 10.8 L3.8 7.2 L1.2 4.8 L4.8 4.4 Z" fill="currentColor"/>
+            </svg>
+            Auto-fix
+          </button>
+        </div>
+
+        <div class="frow">
+          <div class="sev-mark m"></div>
+          <div class="body">
+            <div class="top-row">
+              <span class="rule">MD5 used for password hashing</span>
+              <span class="id">B303</span>
+            </div>
+            <div class="bot-row">
+              <span class="path">src/utils/hash.py:<span class="ln">23</span></span>
+              <span class="dot-sep">·</span>
+              <span class="tool">bandit</span>
+              <span class="dot-sep">·</span>
+              <span class="tool">legacy · safe migration available</span>
+            </div>
+          </div>
+          <span class="sla ok">5d left</span>
+          <button class="act ai">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 1 L7.2 4.4 L10.8 4.8 L8.2 7.2 L8.8 10.8 L6 9 L3.2 10.8 L3.8 7.2 L1.2 4.8 L4.8 4.4 Z" fill="currentColor"/>
+            </svg>
+            Auto-fix
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-25 (Diff Viewer v9 — max-height explícito, CONTEXT=20, pad=#161b22)
+Ultima actualizacion: 2026-05-25 (Dashboard UX — paginación, filtros chip, iconos botones, HIGH rojo, toggle ES/EN desc, PDF márgenes)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -257,13 +257,19 @@ src/dashboard/index.html capacidades actuales:
   - Paso 1: cards con iconos SVG inline (Py azul, Angular rojo, Java ☕, Full Scan escudo, Custom engranaje), descripcion de herramientas y badge de stack. Hover resaltado via CSS .profile-card.
   - Paso 2: sub-selector GitHub / GitLab con SVG logos; placeholder del input de URL cambia segun seleccion (setCloneSource()).
 - Panel Custom con checkboxes DAST/Quality (disabled, badge Proximamente).
-- Tabla de hallazgos con columna STATUS.
-- Boton "▶ Escanear" duplicado en el header del panel de findings (panel-run-scan), sincronizado con el boton global del header. Se deshabilita durante scan con spinner.
-- Auto-Fix → modal de remediacion → PR button.
+- Tabla de hallazgos con paginacion (PAGE_SIZE=20), badge de severidad inline (CRIT/HIGH/MED/LOW pill rojo/naranja/amarillo/azul).
+- Filtros chip funcionales: Todos / Critical / High / Breach — resetean a pagina 1. ✅
+- Botones de accion con iconos SVG: Fix (✨ sparkles), Riesgo (⚠ triangulo), FP (✗ circulo), Historial (🕐 reloj). ✅
+- Severidades HIGH en rojo (#ef4444) — unificado CSS + JS + charts. ✅
+- Hero card padding reducido (6px vs 9px, gap 4px vs 7px, figura 24px vs 28px). ✅
+- KPI spark reducido (26px vs 40px). ✅
+- Auto-Fix → modal de remediacion → PR button (icono cohete SVG). ✅
   - Header con badge rule_id + path relativo corto (shortPath()).
   - Vista diff split-screen dos columnas: izquierda "Antes" (rojo, lineas −), derecha "Despues" (verde, lineas +). En mobile (< 640px) colapsa a columna unica via media query.
   - Codigo propuesto se limpia de backtick fences antes de mostrar (cleanCodeFences()).
+  - Panel descripcion con toggle ES↔EN: muestra traduccion del diccionario BANDIT_ES (~35 reglas cubiertas) o original ingles. Boton oculto si descripcion ES = EN (sin traduccion disponible). ✅
 - Tab Reportes con graficas Chart.js (by_severity, by_status, overdue).
+- PDF export: contenedor 377px (la mitad del contentW para scale=2), addImage con margen horizontal PDF_MARGIN=22px; footer con numero de pagina en margen. ✅
 - Indicador AI Engine Online/Offline.
 
 ---
@@ -327,6 +333,7 @@ Phase 2 ya implementado ✅:
 - Modal de remediacion: badge rule_id + path relativo, diff view rojo/verde, limpieza de backticks.
 - Diff view split-screen dos columnas (Antes / Despues), responsive en mobile.
 - Diff Viewer v9: scroll via `max-height:calc(85vh - 200px)` explícito (elimina manipulación del padre DOM); CONTEXT=20 líneas; pad rows usan `#161b22` (gris visible) en vez de casi-negro, haciendo el espacio de alineamiento distinguible. ✅
+- Dashboard UX 2026-05-25: paginación tabla (20 items/página), filtros chip activos, iconos SVG en botones, HIGH→rojo, hero margins reducidos, toggle ES/EN descripción modal, PDF con márgenes. ✅
 - ScanProfile cards con iconos SVG, descripciones reales de herramientas, tool badges y hover.
 - Mini-badges de severidad C/H/M/L en lista de proyectos; GET /api/projects incluye findings_summary.
 - Boton "▶ Escanear" en panel de findings. Header global sin boton redundante de scan.
