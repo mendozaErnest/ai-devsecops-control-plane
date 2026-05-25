@@ -45,8 +45,9 @@
 
 ### Phase 2 — Dashboard UX III
 - [x] Diff view: softer colors (#2a1212 / #122a12), per-column scroll (overflow-x/y:auto, max-height:380px), sticky line numbers (left:0)
-- [x] Remediation modal: max-height:85vh, diff wrapper flex:1 (fills available height), column headers sticky top:0
+- [x] Remediation modal: max-width:900px, max-height:85vh, diff wrapper flex:1, column headers sticky top:0
 - [x] Header: removed redundant `▶ Escanear Proyecto` button — single scan entry point in project panel
+- [x] Diff scroll clipping fix: parent wrapper `overflow:hidden` → `overflow:auto`; removed `height:100%` from `#diff-view` so columns drive height independently
 - [x] PDF export: `⬇ Exportar PDF` button in Reporte tab — jsPDF + html2canvas + chart.toBase64Image() — cover page, executive summary, charts, top-50 findings table, footer with page numbers
 - [x] `GET /api/projects` + `GET /api/projects/{id}`: include `last_scan_tool` and `last_scan_at` via efficient subquery (no N+1)
 
