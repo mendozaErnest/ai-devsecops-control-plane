@@ -63,6 +63,6 @@
 - [ ] DAST adapter real (OWASP ZAP)
 - [ ] Quality adapter (SonarQube Community / Pylint / ESLint)
 - [ ] Post-patch validation: `tsc --noEmit` (Angular), `javac`/Maven (Java)
-- [ ] Diff view with LCS for line-level precision (currently shows all-old then all-new)
+- [x] Diff view with LCS for line-level precision — `renderDiffView` v9: `max-height:calc(85vh-200px)` scroll (no DOM parent manipulation), `CONTEXT=20`, pad rows `#161b22` (visible neutral), aligned delete/insert rows, real line numbers, `···` separators, snippet fallback
 - [ ] Multi-finding PR (batch remediation in one branch)
 - [ ] Webhook: block merge on open critical findings

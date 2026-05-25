@@ -790,6 +790,29 @@ async def get_finding_audit(finding_id: uuid.UUID):
         }
 
 
+@app.get("/api/findings/{finding_id}/file_content")
+async def get_finding_file_content(finding_id: uuid.UUID):
+    """Devuelve el contenido completo del archivo fuente asociado al finding."""
+    with Session(engine) as session:
+        finding = session.get(Finding, finding_id)
+        if not finding:
+            raise HTTPException(status_code=404, detail="Finding not found")
+        if not finding.file_path:
+            raise HTTPException(status_code=404, detail="Finding has no file_path")
+    try:
+        with open(finding.file_path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        return {
+            "content": content,
+            "file_path": finding.file_path,
+            "line_number": finding.line_start if finding.line_start else 1,
+        }
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"File not found: {finding.file_path}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.get("/api/reports/project/{project_id}")
 async def get_project_report(project_id: uuid.UUID):
     with Session(engine) as session:
