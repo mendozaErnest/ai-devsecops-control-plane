@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-23 (Phase 2 — Dashboard UX: diff split-screen, severity badges, scan panel button, profile cards con iconos)
+Ultima actualizacion: 2026-05-23 (Phase 2 — Dashboard UX: diff scroll fix, modal 85vh, header scan btn removed, PDF export, last_scan_tool in API)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -318,8 +318,7 @@ Reglas permanentes:
 ## Proximos Pasos Recomendados
 
 Inmediato (proxima sesion):
-1. FIX BUG: orchestrator._run_sast instancia adapters directamente sin os.environ.
-2. FIX: CombinedScannerAdapter.tool_name concatena nombres de todos los hijos.
+1. FIX pendiente: CombinedScannerAdapter.tool_name concatena nombres de todos los hijos.
 
 Phase 2 ya implementado ✅:
 - normalize_file_path_for_github(): rutas absolutas workspace→relativas para GitHub API.
@@ -327,14 +326,20 @@ Phase 2 ya implementado ✅:
 - Diff view split-screen dos columnas (Antes / Despues), responsive en mobile.
 - ScanProfile cards con iconos SVG, descripciones reales de herramientas, tool badges y hover.
 - Mini-badges de severidad C/H/M/L en lista de proyectos; GET /api/projects incluye findings_summary.
-- Boton "▶ Escanear" en panel de findings (ademas del header global), sincronizado con spinner.
+- Boton "▶ Escanear" en panel de findings. Header global sin boton redundante de scan.
 - Sub-selector GitHub / GitLab en Paso 2 del wizard con placeholder dinamico.
+- Diff view: colores suaves (#2a1212/#122a12), scroll por columna, line numbers sticky.
+- Modal remediacion: max-height:85vh, diff wrapper flex:1.
+- PDF export via jsPDF + html2canvas + chart.toBase64Image() (portada, resumen, graficas, top-50 findings).
+- GET /api/projects + GET /api/projects/{id}: last_scan_tool y last_scan_at via subquery eficiente.
+- orchestrator._run_sast: instancia adapters directamente (sin os.environ). ✅
 
 Phase 3:
-3. DAST adapter real (OWASP ZAP).
-4. Quality adapter (SonarQube Community o Pylint/ESLint).
-5. Validacion post-patch: tsc --noEmit (Angular), javac/Maven (Java).
-6. Diff view con LCS real para mostrar lineas cambiadas (no solo old vs new completo).
+1. DAST adapter real (OWASP ZAP).
+2. Quality adapter (SonarQube Community o Pylint/ESLint).
+3. Validacion post-patch: tsc --noEmit (Angular), javac/Maven (Java).
+4. Diff view con LCS real para mostrar lineas cambiadas (no solo old vs new completo).
+5. CombinedScannerAdapter.tool_name: concatenar nombres de todos los hijos.
 
 ---
 

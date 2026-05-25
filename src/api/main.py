@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from .database import create_db_and_tables, engine
@@ -201,7 +202,32 @@ def normalize_technology(technology: str) -> str:
     return normalized
 
 
-def project_to_response(project: Project, findings: list[Finding] | None = None) -> dict:
+def get_last_scans_for_projects(
+    session: Session, project_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[str | None, object]]:
+    """Single query: returns {project_id: (tool, started_at)} for the latest scan of each project."""
+    if not project_ids:
+        return {}
+    subq = (
+        select(Scan.project_id, func.max(Scan.started_at).label("latest_at"))
+        .where(Scan.project_id.in_(project_ids))
+        .group_by(Scan.project_id)
+        .subquery()
+    )
+    scans = session.exec(
+        select(Scan).join(
+            subq,
+            (Scan.project_id == subq.c.project_id) & (Scan.started_at == subq.c.latest_at),
+        )
+    ).all()
+    return {scan.project_id: (scan.tool, scan.started_at) for scan in scans}
+
+
+def project_to_response(
+    project: Project,
+    findings: list[Finding] | None = None,
+    last_scan: tuple | None = None,
+) -> dict:
     findings = findings or []
     sev_counts: dict[str, int] = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
     for f in findings:
@@ -209,11 +235,14 @@ def project_to_response(project: Project, findings: list[Finding] | None = None)
         if sev in sev_counts:
             sev_counts[sev] += 1
 
+    last_scan_tool, last_scan_at = last_scan if last_scan else (None, None)
     return {
         **project.model_dump(mode="json"),
         "critical_findings": sev_counts["CRITICAL"] + sev_counts["HIGH"],
         "finding_count": len(findings),
         "findings_summary": {**sev_counts, "total": len(findings)},
+        "last_scan_tool": last_scan_tool,
+        "last_scan_at": last_scan_at.isoformat() if last_scan_at else None,
     }
 
 
@@ -395,9 +424,14 @@ class _NullAdapter:
 async def list_projects():
     with Session(engine) as session:
         projects = session.exec(select(Project).order_by(Project.created_at.desc())).all()
-
+        project_ids = [p.id for p in projects]
+        last_scans = get_last_scans_for_projects(session, project_ids)
         return [
-            project_to_response(project, get_project_findings(session, project.id))
+            project_to_response(
+                project,
+                get_project_findings(session, project.id),
+                last_scans.get(project.id),
+            )
             for project in projects
         ]
 
@@ -410,7 +444,12 @@ async def get_project(project_id: uuid.UUID):
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
 
-        return project_to_response(project, get_project_findings(session, project.id))
+        last_scans = get_last_scans_for_projects(session, [project_id])
+        return project_to_response(
+            project,
+            get_project_findings(session, project.id),
+            last_scans.get(project_id),
+        )
 
 
 @app.get("/api/projects/{project_id}/findings")

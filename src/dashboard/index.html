@@ -6,6 +6,8 @@
     <title>AI DevSecOps Control Plane</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
       :root {
         --bg-base:    #0d1117;
@@ -135,11 +137,6 @@
           <button type="button" id="new-project"
             style="padding:7px 16px;border-radius:6px;font-size:.82rem;font-weight:600;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);cursor:pointer;transition:background .15s;"
             data-i18n="new-project">Nuevo Proyecto</button>
-
-          <!-- Scan -->
-          <button type="button" id="run-scan"
-            style="padding:7px 16px;border-radius:6px;font-size:.82rem;font-weight:600;background:var(--accent);border:none;color:#fff;cursor:pointer;transition:background .15s;display:inline-flex;align-items:center;gap:6px;"
-            data-i18n="scan-project">▶ Escanear Proyecto</button>
         </div>
       </div>
     </header>
@@ -210,6 +207,9 @@
               <button type="button" id="refresh-findings"
                 style="padding:6px 16px;border-radius:6px;font-size:.8rem;font-weight:600;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);cursor:pointer;transition:background .15s;"
                 data-i18n="refresh">Actualizar</button>
+              <button type="button" id="export-pdf-btn"
+                style="display:none;padding:6px 16px;border-radius:6px;font-size:.8rem;font-weight:600;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);cursor:pointer;transition:background .15s;">
+                ⬇ Exportar PDF</button>
             </div>
           </div>
 
@@ -400,7 +400,7 @@
     <!-- ══════════════ REMEDIATION MODAL ══════════════ -->
     <div id="remediation-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);padding:24px;"
       role="dialog" aria-modal="true" aria-labelledby="remediation-title">
-      <section style="width:100%;max-width:900px;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+      <section style="width:100%;max-width:900px;max-height:85vh;display:flex;flex-direction:column;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
 
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0;">
           <div>
@@ -412,8 +412,8 @@
             aria-label="Cerrar">✕</button>
         </div>
 
-        <div style="overflow:auto;max-height:60vh;flex:1;background:#0d1117;">
-          <div id="diff-view" style="display:flex;width:100%;font-family:'Courier New',monospace;font-size:.8rem;line-height:1.7;"></div>
+        <div style="flex:1;min-height:0;overflow:hidden;background:#0d1117;">
+          <div id="diff-view" style="display:flex;align-items:stretch;height:100%;width:100%;font-family:'Courier New',monospace;font-size:.8rem;line-height:1.7;"></div>
           <!-- kept hidden for JS state tracking -->
           <pre id="vulnerable-code" style="display:none;"></pre>
           <pre id="remediation-content" style="display:none;"></pre>
@@ -531,7 +531,6 @@
       }
 
       // ── DOM refs ───────────────────────────────────────────────────────
-      const runScanButton       = document.getElementById("run-scan");
       const panelRunScanButton  = document.getElementById("panel-run-scan");
       const newProjectButton    = document.getElementById("new-project");
       const refreshButton       = document.getElementById("refresh-findings");
@@ -1013,10 +1012,10 @@
 
         function buildColumn(lines, sign, rowBg, numColor, signColor, codeColor, borderColor, headerBg, headerLabel) {
           const col = document.createElement("div");
-          col.style.cssText = `flex:1;min-width:0;overflow-x:auto;border-right:1px solid ${borderColor};`;
+          col.style.cssText = `flex:1;min-width:0;overflow-x:auto;overflow-y:auto;max-height:380px;border-right:1px solid ${borderColor};`;
 
           const hdr = document.createElement("div");
-          hdr.style.cssText = `padding:5px 12px;background:${headerBg};color:var(--muted);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid ${borderColor};display:flex;align-items:center;gap:6px;`;
+          hdr.style.cssText = `padding:5px 12px;background:${headerBg};color:var(--muted);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid ${borderColor};display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:2;`;
           hdr.innerHTML = `<span style="color:${signColor};font-size:.9rem;">${sign}</span> ${headerLabel}`;
           col.appendChild(hdr);
 
@@ -1024,23 +1023,26 @@
           lines.forEach((line) => {
             const row = document.createElement("div");
             row.style.cssText = `display:flex;background:${rowBg};`;
+            const stickyLabel = document.createElement("div");
+            stickyLabel.style.cssText = `display:flex;flex-shrink:0;position:sticky;left:0;background:${rowBg};z-index:1;`;
             const num = document.createElement("span");
-            num.style.cssText = `min-width:36px;padding:0 6px;color:${numColor};font-size:.7rem;user-select:none;flex-shrink:0;text-align:right;line-height:1.7;`;
+            num.style.cssText = `min-width:36px;padding:0 6px;color:${numColor};font-size:.7rem;user-select:none;text-align:right;line-height:1.7;`;
             num.textContent = n++;
             const pre = document.createElement("span");
-            pre.style.cssText = `min-width:16px;padding:0 4px;color:${signColor};font-weight:700;flex-shrink:0;`;
+            pre.style.cssText = `min-width:16px;padding:0 4px;color:${signColor};font-weight:700;`;
             pre.textContent = sign;
+            stickyLabel.append(num, pre);
             const code = document.createElement("span");
             code.style.cssText = `color:${codeColor};padding:0 8px;white-space:pre;`;
             code.textContent = line;
-            row.append(num, pre, code);
+            row.append(stickyLabel, code);
             col.appendChild(row);
           });
           return col;
         }
 
-        const leftCol  = buildColumn(origLines, "−", "#3d1a1a", "#6e3333", "#f85149", "#ff7b72", "#5a2222", "#1e0e0e", "Antes");
-        const rightCol = buildColumn(propLines, "+", "#1a3d1a", "#1e4d1e", "#3fb950", "#56d364", "#1a3d1a", "#0e1e0e", "Después");
+        const leftCol  = buildColumn(origLines, "−", "#2a1212", "#5e2828", "#f85149", "#ff7b72", "#3a1515", "#160808", "Antes");
+        const rightCol = buildColumn(propLines, "+", "#122a12", "#185018", "#3fb950", "#56d364", "#122a12", "#081608", "Después");
         rightCol.style.borderRight = "none";
 
         diffView.appendChild(leftCol);
@@ -1279,10 +1281,8 @@
         if (!ensureServerContext()) return;
         if (!selectedProject) { showFeedback("Selecciona un proyecto antes de escanear.", "error"); return; }
 
-        runScanButton.disabled = true;
         refreshButton.disabled = true;
         panelRunScanButton.disabled = true;
-        runScanButton.innerHTML = `<span class="spinner"></span> Scanning…`;
         panelRunScanButton.innerHTML = `<span class="spinner"></span> Escaneando…`;
         scanStatus.textContent = "En progreso";
         tableStatus.textContent = "Ejecutando scanner…";
@@ -1303,10 +1303,8 @@
           tableStatus.textContent = "No se pudo ejecutar el escaneo";
           showFeedback(`No se pudo ejecutar el escaneo: ${error.message}`, "error");
         } finally {
-          runScanButton.disabled = false;
           refreshButton.disabled = false;
           panelRunScanButton.disabled = false;
-          runScanButton.innerHTML = `▶ ${t("scan-project").replace("▶ ", "")}`;
           panelRunScanButton.innerHTML = "▶ Escanear";
           applyI18n();
         }
@@ -1523,7 +1521,6 @@
       }
 
       // ── Event listeners ────────────────────────────────────────────────
-      runScanButton.addEventListener("click", runScan);
       panelRunScanButton.addEventListener("click", runScan);
       newProjectButton.addEventListener("click", showProjectModal);
       refreshButton.addEventListener("click", loadFindings);
@@ -1563,6 +1560,7 @@
       const findingsReportView = document.getElementById("findings-report-view");
       const reportLoading      = document.getElementById("report-loading");
       const reportContent      = document.getElementById("report-content");
+      const exportPdfBtn       = document.getElementById("export-pdf-btn");
       let activeView = "findings";
       let chartSeverity = null, chartStatus = null, chartRules = null;
 
@@ -1575,6 +1573,7 @@
           viewFindingsBtn.style.color = "#fff";
           viewReportBtn.style.background = "transparent";
           viewReportBtn.style.color = "var(--muted)";
+          exportPdfBtn.style.display = "none";
         } else {
           findingsTableView.style.display = "none";
           findingsReportView.style.display = "";
@@ -1582,6 +1581,7 @@
           viewFindingsBtn.style.color = "var(--muted)";
           viewReportBtn.style.background = "var(--accent)";
           viewReportBtn.style.color = "#fff";
+          exportPdfBtn.style.display = "";
           if (selectedProject) loadReport(selectedProject.id);
         }
       }
@@ -1662,6 +1662,222 @@
 
       viewFindingsBtn.addEventListener("click", () => setView("findings"));
       viewReportBtn.addEventListener("click", () => setView("report"));
+      exportPdfBtn.addEventListener("click", exportToPDF);
+
+      // ── PDF export ─────────────────────────────────────────────────────
+      function buildPdfHtml(project, reportData, findings, sevImg, statusImg, rulesImg) {
+        const date = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" });
+        const byS = reportData.by_severity || {};
+        const byStatus = reportData.by_status || {};
+        const totalFindings = reportData.total_findings || 0;
+        const overdueCount = reportData.overdue_count || 0;
+        const withinSla = totalFindings - overdueCount;
+        const sev = (s) => byS[s] || 0;
+
+        const sevOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+        const sorted = [...findings].sort((a, b) => (sevOrder[a.severity] ?? 4) - (sevOrder[b.severity] ?? 4));
+        const limited = sorted.slice(0, 50);
+        const hasMore = findings.length > 50;
+
+        const findingsRows = limited.map((f) => {
+          const deadline = f.sla_deadline ? new Date(f.sla_deadline).toLocaleDateString("es-MX") : "—";
+          const filePath = (f.file_path || "—").replace(/.*\/repo\//, "").replace(/.*\/source\//, "");
+          const sevColor = ({ CRITICAL: "#c62828", HIGH: "#d84315", MEDIUM: "#e65100", LOW: "#1565c0" })[f.severity] || "#555";
+          return `<tr>
+            <td style="font-family:monospace;font-size:10px;">${String(f.id || "").slice(0, 8)}</td>
+            <td style="color:${sevColor};font-weight:700;white-space:nowrap;">${f.severity || "—"}</td>
+            <td style="font-size:10px;word-break:break-all;">${escapeHtml(filePath)}</td>
+            <td style="font-size:10px;font-family:monospace;">${escapeHtml((f.rule_id || "—").slice(0, 30))}</td>
+            <td style="font-size:10px;">${escapeHtml((f.description || "—").slice(0, 70))}</td>
+            <td style="white-space:nowrap;">${escapeHtml(f.status || "open")}</td>
+            <td style="white-space:nowrap;">${escapeHtml(deadline)}</td>
+          </tr>`;
+        }).join("");
+
+        const statusRows = Object.entries(byStatus).map(([s, c]) =>
+          `<tr><td>${escapeHtml(s)}</td><td style="font-weight:700;">${c}</td></tr>`
+        ).join("");
+
+        const chartsSection = (sevImg || statusImg || rulesImg) ? `
+          <div class="section">
+            <h2 class="section-title">2. Gráficas</h2>
+            <div style="display:grid;grid-template-columns:${sevImg && statusImg ? "1fr 1fr" : "1fr"};gap:16px;margin-bottom:16px;">
+              ${sevImg ? `<div class="card"><p class="card-title">Por Severidad</p><img src="${sevImg}" style="width:100%;max-height:200px;object-fit:contain;background:#fff;"></div>` : ""}
+              ${statusImg ? `<div class="card"><p class="card-title">Por Estado</p><img src="${statusImg}" style="width:100%;max-height:200px;object-fit:contain;background:#fff;"></div>` : ""}
+            </div>
+            ${rulesImg ? `<div class="card"><p class="card-title">Top Reglas</p><img src="${rulesImg}" style="width:100%;max-height:180px;object-fit:contain;background:#fff;"></div>` : ""}
+          </div>` : "";
+
+        return `
+          <style>
+            *{box-sizing:border-box;margin:0;padding:0;}
+            body{font-family:Arial,sans-serif;color:#1a1a2e;background:#fff;font-size:12px;}
+            .cover{background:#1e3a5f;color:#fff;padding:48px 40px 36px;}
+            .cover-platform{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#90b8e0;margin-bottom:10px;}
+            .cover-title{font-size:26px;font-weight:800;margin-bottom:4px;}
+            .cover-sub{font-size:15px;color:#a0c8f0;margin-bottom:28px;}
+            .cover-meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+            .meta-item{background:rgba(255,255,255,.1);padding:10px 14px;border-radius:6px;}
+            .meta-label{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#90b8e0;margin-bottom:3px;}
+            .meta-value{font-size:14px;font-weight:700;}
+            .sev-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:20px 40px;background:#f4f6fa;border-bottom:2px solid #dde3ed;}
+            .sev-card{text-align:center;padding:10px;border-radius:6px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08);}
+            .sev-num{font-size:26px;font-weight:800;}
+            .sev-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#666;margin-top:2px;}
+            .section{padding:20px 40px;border-bottom:1px solid #dde3ed;}
+            .section-title{font-size:14px;font-weight:800;color:#1e3a5f;margin-bottom:14px;padding-bottom:6px;border-bottom:2px solid #1e3a5f;}
+            table{width:100%;border-collapse:collapse;font-size:11px;}
+            th{background:#1e3a5f;color:#fff;padding:7px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.05em;}
+            td{padding:7px 10px;border-bottom:1px solid #e8ecf2;vertical-align:top;}
+            tr:nth-child(even) td{background:#f8f9fb;}
+            .card{background:#f4f6fa;border:1px solid #dde3ed;border-radius:6px;padding:14px;}
+            .card-title{font-size:11px;font-weight:700;color:#1e3a5f;margin-bottom:10px;}
+            .note{font-size:10px;color:#888;font-style:italic;text-align:center;padding:8px;margin-top:6px;}
+          </style>
+
+          <div class="cover">
+            <div class="cover-platform">AI DevSecOps Control Plane</div>
+            <div class="cover-title">Reporte de Seguridad</div>
+            <div class="cover-sub">${escapeHtml(project.name)}</div>
+            <div class="cover-meta">
+              <div class="meta-item"><div class="meta-label">Fecha de Generación</div><div class="meta-value" style="font-size:12px;">${date}</div></div>
+              <div class="meta-item"><div class="meta-label">Tecnología</div><div class="meta-value" style="font-size:12px;text-transform:capitalize;">${escapeHtml(project.technology || "—")}</div></div>
+              <div class="meta-item"><div class="meta-label">Herramienta(s)</div><div class="meta-value" style="font-size:12px;">${escapeHtml(project.last_scan_tool || "—")}</div></div>
+              <div class="meta-item"><div class="meta-label">Total Hallazgos</div><div class="meta-value">${totalFindings}</div></div>
+            </div>
+          </div>
+
+          <div class="sev-strip">
+            <div class="sev-card"><div class="sev-num" style="color:#c62828;">${sev("CRITICAL")}</div><div class="sev-label">Critical</div></div>
+            <div class="sev-card"><div class="sev-num" style="color:#d84315;">${sev("HIGH")}</div><div class="sev-label">High</div></div>
+            <div class="sev-card"><div class="sev-num" style="color:#e65100;">${sev("MEDIUM")}</div><div class="sev-label">Medium</div></div>
+            <div class="sev-card"><div class="sev-num" style="color:#1565c0;">${sev("LOW")}</div><div class="sev-label">Low</div></div>
+          </div>
+
+          <div class="section">
+            <h2 class="section-title">1. Resumen Ejecutivo</h2>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+              <div>
+                <p style="font-size:11px;font-weight:700;color:#1e3a5f;margin-bottom:8px;">Hallazgos por Severidad</p>
+                <table>
+                  <tr><th>Severidad</th><th>Cantidad</th></tr>
+                  <tr><td style="color:#c62828;font-weight:700;">CRITICAL</td><td>${sev("CRITICAL")}</td></tr>
+                  <tr><td style="color:#d84315;font-weight:700;">HIGH</td><td>${sev("HIGH")}</td></tr>
+                  <tr><td style="color:#e65100;font-weight:700;">MEDIUM</td><td>${sev("MEDIUM")}</td></tr>
+                  <tr><td style="color:#1565c0;font-weight:700;">LOW</td><td>${sev("LOW")}</td></tr>
+                </table>
+              </div>
+              <div>
+                <p style="font-size:11px;font-weight:700;color:#1e3a5f;margin-bottom:8px;">Estado SLA / Distribución</p>
+                <table>
+                  <tr><th>Métrica</th><th>Cantidad</th></tr>
+                  <tr><td>Dentro de SLA</td><td style="color:#2e7d32;font-weight:700;">${withinSla}</td></tr>
+                  <tr><td>Vencidos SLA</td><td style="color:#c62828;font-weight:700;">${overdueCount}</td></tr>
+                </table>
+                <br>
+                <table>
+                  <tr><th>Estado</th><th>Cantidad</th></tr>
+                  ${statusRows}
+                </table>
+              </div>
+            </div>
+          </div>
+
+          ${chartsSection}
+
+          <div class="section">
+            <h2 class="section-title">3. Lista de Hallazgos${hasMore ? " (Top 50 por severidad)" : ""}</h2>
+            <table>
+              <tr>
+                <th style="width:64px;">ID</th>
+                <th style="width:76px;">Severidad</th>
+                <th style="width:130px;">Archivo</th>
+                <th style="width:110px;">Regla</th>
+                <th>Descripción</th>
+                <th style="width:72px;">Estado</th>
+                <th style="width:72px;">SLA</th>
+              </tr>
+              ${findingsRows}
+            </table>
+            ${hasMore ? `<p class="note">Mostrando 50 de ${findings.length} hallazgos. Ordenados por severidad descendente.</p>` : ""}
+          </div>`;
+      }
+
+      async function exportToPDF() {
+        if (!selectedProject) { showFeedback("Selecciona un proyecto para exportar.", "error"); return; }
+        exportPdfBtn.disabled = true;
+        exportPdfBtn.textContent = "Generando PDF…";
+
+        try {
+          const [reportRes, findingsRes] = await Promise.all([
+            fetch(`/api/reports/project/${selectedProject.id}`),
+            fetch(`/api/projects/${selectedProject.id}/findings`),
+          ]);
+          if (!reportRes.ok || !findingsRes.ok) throw new Error("Error cargando datos del reporte.");
+          const reportData = await reportRes.json();
+          const allFindings = await findingsRes.json();
+
+          const sevImg    = chartSeverity ? chartSeverity.toBase64Image("image/png", 1.0) : null;
+          const statusImg = chartStatus   ? chartStatus.toBase64Image("image/png", 1.0)   : null;
+          const rulesImg  = chartRules    ? chartRules.toBase64Image("image/png", 1.0)    : null;
+
+          const container = document.createElement("div");
+          container.style.cssText = "position:absolute;left:-9999px;top:0;width:794px;background:#ffffff;color:#1a1a2e;font-family:Arial,sans-serif;";
+          container.innerHTML = buildPdfHtml(selectedProject, reportData, allFindings, sevImg, statusImg, rulesImg);
+          document.body.appendChild(container);
+
+          const canvas = await html2canvas(container, {
+            scale: 2,
+            backgroundColor: "#ffffff",
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+          });
+          document.body.removeChild(container);
+
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF({ format: "a4", unit: "px", hotfixes: ["px_scaling"] });
+          const pageW = doc.internal.pageSize.getWidth();
+          const pageH = doc.internal.pageSize.getHeight();
+          const ratio = canvas.width / pageW;
+          const pageHpx = pageH * ratio;
+
+          let yOffset = 0;
+          let pageNum = 1;
+          const today = new Date().toLocaleDateString("es-MX");
+
+          while (yOffset < canvas.height) {
+            if (yOffset > 0) doc.addPage();
+
+            const sliceH = Math.min(pageHpx, canvas.height - yOffset);
+            const sliceCanvas = document.createElement("canvas");
+            sliceCanvas.width = canvas.width;
+            sliceCanvas.height = sliceH;
+            const ctx = sliceCanvas.getContext("2d");
+            ctx.drawImage(canvas, 0, -yOffset);
+            const imgData = sliceCanvas.toDataURL("image/jpeg", 0.92);
+            doc.addImage(imgData, "JPEG", 0, 0, pageW, sliceH / ratio);
+
+            doc.setFontSize(7);
+            doc.setTextColor(160, 160, 160);
+            doc.text(`Generado por AI DevSecOps Control Plane · ${today} · Confidencial`, 20, pageH - 10);
+            doc.text(`Página ${pageNum}`, pageW - 20, pageH - 10, { align: "right" });
+
+            yOffset += pageHpx;
+            pageNum++;
+          }
+
+          const safeName = selectedProject.name.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 40);
+          const dateStr = new Date().toISOString().split("T")[0];
+          doc.save(`security-report-${safeName}-${dateStr}.pdf`);
+          showFeedback("PDF exportado correctamente.", "success");
+        } catch (e) {
+          showFeedback(`Error exportando PDF: ${e.message}`, "error");
+        } finally {
+          exportPdfBtn.disabled = false;
+          exportPdfBtn.textContent = "⬇ Exportar PDF";
+        }
+      }
 
       langToggle.addEventListener("click", () => {
         currentLang = currentLang === "es" ? "en" : "es";
