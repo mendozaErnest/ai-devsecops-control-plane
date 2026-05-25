@@ -37,13 +37,20 @@
 - [x] Panel scan button `▶ Escanear` in findings panel header (synced spinner with header button)
 - [x] Clone wizard step 2: GitHub / GitLab sub-selector with logos + dynamic URL placeholder
 
+### Phase 2 — Dashboard UX III
+- [x] Diff view: softer colors (#2a1212 / #122a12), per-column scroll (overflow-x/y:auto, max-height:380px), sticky line numbers (left:0)
+- [x] Remediation modal: max-height:85vh, diff wrapper flex:1 (fills available height), column headers sticky top:0
+- [x] Header: removed redundant `▶ Escanear Proyecto` button — single scan entry point in project panel
+- [x] PDF export: `⬇ Exportar PDF` button in Reporte tab — jsPDF + html2canvas + chart.toBase64Image() — cover page, executive summary, charts, top-50 findings table, footer with page numbers
+- [x] `GET /api/projects` + `GET /api/projects/{id}`: include `last_scan_tool` and `last_scan_at` via efficient subquery (no N+1)
+
 ---
 
 ## Pendiente
 
 ### Bug crítico
 - [x] `orchestrator._run_sast`: instanciar adapters directamente sin `os.environ["SCANNER_ENGINE"]`
-- [ ] `CombinedScannerAdapter.tool_name`: concatenar nombres de todos los hijos
+- [ ] `CombinedScannerAdapter.tool_name`: concatenar nombres de todos los hijos (pendiente)
 
 ### Phase 3 — Quality + DAST
 - [ ] DAST adapter real (OWASP ZAP)
