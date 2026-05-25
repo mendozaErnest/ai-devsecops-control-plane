@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-25 (Tarea B — tests Python patching + docker-compose.yml funcional)
+Ultima actualizacion: 2026-05-25 (UX fix — diff scroll clipping, colores, modal size, botón global)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -330,7 +330,9 @@ Phase 2 ya implementado ✅:
 - Boton "▶ Escanear" en panel de findings. Header global sin boton redundante de scan.
 - Sub-selector GitHub / GitLab en Paso 2 del wizard con placeholder dinamico.
 - Diff view: colores suaves (#2a1212/#122a12), scroll por columna, line numbers sticky.
-- Modal remediacion: max-height:85vh, diff wrapper flex:1.
+- Modal remediacion: max-width:900px, max-height:85vh, diff wrapper flex:1.
+- Diff scroll clipping fix: parent wrapper overflow:hidden → overflow:auto; height:100% eliminado de #diff-view para que las columnas dicten su altura (max-height:380px;overflow-y:auto). ✅
+- Boton global "▶ Escanear Proyecto" eliminado del header; punto unico: panel de findings. ✅
 - PDF export via jsPDF + html2canvas + chart.toBase64Image() (portada, resumen, graficas, top-50 findings).
 - GET /api/projects + GET /api/projects/{id}: last_scan_tool y last_scan_at via subquery eficiente.
 - orchestrator._run_sast: instancia adapters directamente (sin os.environ). ✅
