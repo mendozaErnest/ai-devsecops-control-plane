@@ -12,10 +12,11 @@ import random
 import sqlite3
 import subprocess
 import urllib.request
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 
-import requests
-import yaml
+def parse_xml(data):
+    # Parse XML data safely using defusedxml
+    return ET.fromstring(data)
 
 
 # Vulnerability: hardcoded password.
