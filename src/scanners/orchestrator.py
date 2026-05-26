@@ -138,8 +138,27 @@ class ScanOrchestrator:
         target_path: str,
         technology: str,
     ) -> list[Finding]:
-        logger.info("Quality runner: tool=%s not yet implemented", profile.quality_tool)
-        return []
+        from src.scanners.eslint_adapter import EslintAdapter
+        from src.scanners.pylint_adapter import PylintAdapter
+
+        quality_tool = (profile.quality_tool or "").strip().lower()
+        norm_tech = technology.strip().lower()
+
+        if quality_tool == "pylint" and norm_tech == "python":
+            adapter = PylintAdapter()
+        elif quality_tool == "eslint" and norm_tech in {"angular", "typescript"}:
+            adapter = EslintAdapter()
+        else:
+            message = f"No Quality adapter for technology={technology} quality_tool={profile.quality_tool}"
+            logger.warning(message)
+            raise RuntimeError(message)
+
+        findings = adapter.execute_scan(target_path)
+        if getattr(adapter, "error", None):
+            logger.warning("Quality runner %s reported: %s", adapter.tool_name, adapter.error)
+            raise RuntimeError(adapter.error)
+
+        return findings
 
     def _deduplicate(self, findings: list[Finding]) -> list[Finding]:
         seen: dict[str, Finding] = {}

@@ -108,6 +108,49 @@ def test_orchestrator_dast_placeholder():
     assert "dast" in result.tools_run
 
 
+def test_orchestrator_quality_runs_when_enabled():
+    profile = ScanProfile(
+        name="Python Quality",
+        sast_enabled=False,
+        dast_enabled=False,
+        quality_enabled=True,
+        quality_tool="pylint",
+    )
+
+    mock_finding = MagicMock()
+    mock_finding.fingerprint = "quality-fp"
+
+    with patch("src.scanners.pylint_adapter.PylintAdapter") as MockPylint:
+        MockPylint.return_value.execute_scan.return_value = [mock_finding]
+        MockPylint.return_value.error = None
+        orchestrator = ScanOrchestrator()
+        result = orchestrator.run(profile, "/some/path", "python")
+
+    assert len(result.findings) == 1
+    assert "quality" in result.tools_run
+    assert result.errors == []
+
+
+def test_orchestrator_quality_missing_tool_is_reported_without_crashing():
+    profile = ScanProfile(
+        name="Python Quality",
+        sast_enabled=False,
+        dast_enabled=False,
+        quality_enabled=True,
+        quality_tool="pylint",
+    )
+
+    with patch("src.scanners.pylint_adapter.PylintAdapter") as MockPylint:
+        MockPylint.return_value.execute_scan.return_value = []
+        MockPylint.return_value.error = "pylint not found"
+        orchestrator = ScanOrchestrator()
+        result = orchestrator.run(profile, "/some/path", "python")
+
+    assert result.findings == []
+    assert "quality: pylint not found" in result.errors
+    assert "quality" not in result.tools_run
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # test_orchestrator_deduplication
 # ─────────────────────────────────────────────────────────────────────────────
