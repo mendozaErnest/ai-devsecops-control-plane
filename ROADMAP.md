@@ -30,7 +30,7 @@
 - [x] `tests/test_github_path.py` (4 tests — 46 total)
 
 ### Tarea B — Tests + Docker
-- [x] `tests/test_safe_patching_python.py` (6 tests — 52 total): build_safe_patched_content short patch, invalid patch, target not found, full-file replace, too-short guard, insert_missing_imports dedup
+- [x] `tests/test_safe_patching_python.py` (6 tests — 52 total at Tarea B): build_safe_patched_content short patch, invalid patch, target not found, full-file replace, too-short guard, insert_missing_imports dedup
 - [x] `docker-compose.yml`: services api + ollama + ollama-init, healthchecks, named volumes, no anonymous volumes
 - [x] `Dockerfile`: python:3.12-slim base, installs code/requirements.txt, copies src/
 - [x] `.env.example`: all required vars documented (GitHub App, OLLAMA_HOST, DATABASE_URL)
@@ -76,6 +76,14 @@
 - [x] PR deduplication: `GET /api/remediate/{id}/pr` returns persisted PR data; `POST` checks GitHub for open PR before creating a new one; persists result
 - [x] `get_existing_open_pr_for_branch()` wrapper in `github_client.py` — manages httpx client internally
 - [x] Dashboard `checkExistingPR()`: silently pre-fills PR link when modal opens if PR already exists
+- [x] `CombinedScannerAdapter.tool_name`: concatenates all child tool names with `+`
+
+### Phase 3 — Quality First (2026-05-26)
+- [x] Pylint quality adapter for Python: JSON parsing, HIGH/MEDIUM/LOW mapping, missing-binary handling
+- [x] ESLint quality adapter for Angular/TypeScript: local `node_modules/.bin/eslint` or `npx --no-install eslint`, JSON parsing, missing-binary handling
+- [x] `ScanOrchestrator._run_quality`: routes `quality_tool=pylint|eslint`, reports tool errors without crashing the scan
+- [x] Dashboard custom profile: Code Quality selectable; creates a real ScanProfile with `quality_enabled` + `quality_tool`
+- [x] Tests: adapter normalization/missing binary + orchestrator Quality success/error paths
 
 ---
 
@@ -83,11 +91,12 @@
 
 ### Bug crítico
 - [x] `orchestrator._run_sast`: instanciar adapters directamente sin `os.environ["SCANNER_ENGINE"]`
-- [ ] `CombinedScannerAdapter.tool_name`: concatenar nombres de todos los hijos (pendiente)
+- [x] `CombinedScannerAdapter.tool_name`: concatenar nombres de todos los hijos
 
 ### Phase 3 — Quality + DAST
 - [ ] DAST adapter real (OWASP ZAP)
-- [ ] Quality adapter (SonarQube Community / Pylint / ESLint)
+- [x] Quality adapter ligero (Pylint / ESLint)
+- [ ] Quality adapter SonarQube Community
 - [ ] Post-patch validation: `tsc --noEmit` (Angular), `javac`/Maven (Java)
 - [x] Diff view with LCS for line-level precision — `renderDiffView` v9: `max-height:calc(85vh-200px)` scroll (no DOM parent manipulation), `CONTEXT=20`, pad rows `#161b22` (visible neutral), aligned delete/insert rows, real line numbers, `···` separators, snippet fallback
 - [ ] Multi-finding PR (batch remediation in one branch)

@@ -1,6 +1,6 @@
 # Roadmap — AI DevSecOps Control Plane
 
-Ultima actualizacion: 2026-05-23
+Ultima actualizacion: 2026-05-26
 
 Objetivo: plataforma AppSec de orquestacion que conecta multiples
 herramientas (SAST, DAST, Quality) con AI remediation local.
@@ -49,7 +49,7 @@ Implementacion con VSCode + Claude Sonnet 4.6 como agente.
 | Endpoints GET/POST/PUT /api/profiles | ✅ |
 | ScanOrchestrator con ThreadPoolExecutor | ✅ |
 | DAST runner placeholder (retorna [] sin crash) | ✅ |
-| Quality runner placeholder (retorna [] sin crash) | ✅ |
+| Quality runner real Pylint/ESLint (sin crash si falta binario) | ✅ |
 | FK scan_profile_id en Project | ✅ |
 | UI wizard 2 pasos: perfil → ZIP/clone | ✅ |
 | Tab Reportes en dashboard (Chart.js) | ✅ |
@@ -61,8 +61,8 @@ Implementacion con VSCode + Claude Sonnet 4.6 como agente.
 
 | Item | Detalle |
 |---|---|
-| **FIX: Semgrep no corre via ScanOrchestrator** | _run_sast usa os.environ en thread (unreliable). Fix: instanciar adapters directamente segun profile.sast_tools sin os.environ. Ver ai-current-project-context.md seccion BUG CRITICO. |
-| **FIX: CombinedScannerAdapter.tool_name** | Solo muestra primer hijo. Debe concatenar todos con "+". |
+| ✅ Semgrep via ScanOrchestrator | Resuelto: _run_sast instancia adapters directamente segun profile.sast_tools, sin os.environ compartido entre threads. |
+| ✅ CombinedScannerAdapter.tool_name | Resuelto: concatena nombres de todos los adapters hijos con "+". |
 
 ### Pendiente — Ciclo de vida
 
@@ -100,7 +100,7 @@ La logica de regression es prerequisito para que SLA y reportes tengan datos rea
 |---|---|---|
 | DAST adapter real | OWASP ZAP REST API | ZAP corriendo en Docker |
 | Code Quality adapter | SonarQube Community REST API | SonarQube en Docker |
-| Pylint / ESLint adapter | CLI directo | Sin servidor externo |
+| ✅ Pylint / ESLint adapter | CLI directo | Sin servidor externo |
 | Semgrep framework rulesets | p/django, p/flask, p/java-spring | Solo agregar al diccionario |
 
 ---
@@ -136,11 +136,8 @@ Explorer Agent → Attacker Agent → Verifier Agent
 ## Orden De Implementacion Recomendado
 
 ```
-Sesion actual:  Fix bug orchestrator Semgrep + tool_name
-Dia 1-2:        regression → accepted_risk/false_positive → historial
-Dia 3-4:        SLA tracking → reportes con trend
-Dia 5-6:        Webhook PR → Check Run → block merge (sale gratis)
-Dia 7:          GitHub Actions workflow reutilizable
-Dia 8-9:        DAST ZAP adapter (Docker prerequisito)
-Dia 10:         Semgrep framework rulesets (p/django, p/flask, p/java-spring)
+Completado:     Fix orchestrator Semgrep + tool_name + Pylint/ESLint Quality
+Siguiente:      DAST ZAP adapter (Docker prerequisito)
+Despues:        SonarQube Community adapter o validacion post-patch tsc/javac
+Luego:          Multi-finding PR y Semgrep framework rulesets
 ```

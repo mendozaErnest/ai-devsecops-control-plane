@@ -826,10 +826,10 @@
                 DAST — OWASP ZAP
                 <span style="padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:700;background:rgba(47,129,247,.2);color:var(--accent);margin-left:auto;">Próximamente</span>
               </label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;cursor:not-allowed;opacity:.5;">
-                <input type="checkbox" disabled style="accent-color:var(--accent);">
-                Code Quality — SonarQube
-                <span style="padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:700;background:rgba(47,129,247,.2);color:var(--accent);margin-left:auto;">Próximamente</span>
+              <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--text);cursor:pointer;">
+                <input id="custom-quality-enabled" type="checkbox" style="accent-color:var(--accent);">
+                Code Quality — Pylint / ESLint
+                <span style="padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:700;background:rgba(63,185,80,.16);color:var(--ok);margin-left:auto;">Disponible</span>
               </label>
             </div>
           </div>
@@ -2625,6 +2625,55 @@
         return wizardSelectedProfileId;
       }
 
+      function qualityToolForTechnology(technology) {
+        const normalized = String(technology || "").trim().toLowerCase();
+        if (normalized === "python") return "pylint";
+        if (normalized === "angular" || normalized === "typescript") return "eslint";
+        return null;
+      }
+
+      function sastToolsForTechnology(technology, selectedTools) {
+        const normalized = String(technology || "").trim().toLowerCase();
+        if (normalized !== "python" && selectedTools === "bandit") return "semgrep";
+        return selectedTools;
+      }
+
+      async function resolvedProfileIdForTechnology(technology) {
+        if (wizardSelectedProfileId !== "custom") return resolvedProfileId();
+
+        const selectedSastTools = document.querySelector('input[name="custom-sast-tools"]:checked')?.value || "semgrep";
+        const sastTools = sastToolsForTechnology(technology, selectedSastTools);
+        const wantsQuality = document.getElementById("custom-quality-enabled")?.checked || false;
+        const qualityTool = wantsQuality ? qualityToolForTechnology(technology) : null;
+
+        if (wantsQuality && !qualityTool) {
+          throw new Error("Code Quality por ahora está disponible para Python y Angular/TypeScript.");
+        }
+
+        const payload = {
+          name: `Custom ${String(technology || "Project").toUpperCase()} ${wantsQuality ? "SAST + Quality" : "SAST"}`,
+          description: wantsQuality
+            ? "Perfil personalizado creado desde el dashboard con SAST y Quality."
+            : "Perfil personalizado creado desde el dashboard con SAST.",
+          sast_enabled: true,
+          sast_tools: sastTools,
+          dast_enabled: false,
+          quality_enabled: Boolean(qualityTool),
+          quality_tool: qualityTool,
+        };
+
+        const response = await fetch("/api/profiles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(formatApiError(data.detail, "No se pudo crear el perfil personalizado."));
+
+        wizardProfiles.push(data);
+        return data.id;
+      }
+
       function showProjectModal() {
         if (wizardProfiles.length === 0) loadWizardProfiles();
         // auto-select first profile
@@ -2646,18 +2695,19 @@
         const fileInput = document.getElementById("zip-file");
         if (!fileInput.files.length) { showFeedback("Selecciona un archivo ZIP.", "error"); return; }
 
-        const formData = new FormData();
-        formData.append("file", fileInput.files[0]);
-        formData.append("name", document.getElementById("zip-name").value);
-        formData.append("technology", document.getElementById("zip-technology").value);
-        const pid = resolvedProfileId();
-        if (pid !== null) formData.append("scan_profile_id", pid);
-
         const btn = uploadProjectForm.querySelector("button");
         const orig = btn.textContent;
         btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Cargando…`;
 
         try {
+          const technology = document.getElementById("zip-technology").value;
+          const formData = new FormData();
+          formData.append("file", fileInput.files[0]);
+          formData.append("name", document.getElementById("zip-name").value);
+          formData.append("technology", technology);
+          const pid = await resolvedProfileIdForTechnology(technology);
+          if (pid !== null) formData.append("scan_profile_id", pid);
+
           const response = await fetch("/api/projects/upload-zip", { method: "POST", body: formData });
           const result = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(formatApiError(result.detail, "No se pudo cargar el ZIP."));
@@ -2679,7 +2729,6 @@
           name: document.getElementById("repo-name").value,
           repo_url: document.getElementById("repo-url").value,
           technology: document.getElementById("repo-technology").value,
-          scan_profile_id: resolvedProfileId(),
         };
         if (!payload.name.trim() || !payload.repo_url.trim()) {
           showFeedback("Nombre y URL del repositorio son obligatorios.", "error"); return;
@@ -2689,6 +2738,7 @@
         btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Clonando…`;
 
         try {
+          payload.scan_profile_id = await resolvedProfileIdForTechnology(payload.technology);
           const response = await fetch("/api/projects/clone-repo", {
             method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
           });
