@@ -828,9 +828,13 @@
               </label>
               <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--text);cursor:pointer;">
                 <input id="custom-quality-enabled" type="checkbox" style="accent-color:var(--accent);">
-                Code Quality — Pylint / ESLint
+                Code Quality
                 <span style="padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:700;background:rgba(63,185,80,.16);color:var(--ok);margin-left:auto;">Disponible</span>
               </label>
+              <select id="custom-quality-tool" style="width:100%;padding:8px 10px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);font-size:.78rem;">
+                <option value="auto">Auto — Pylint / ESLint</option>
+                <option value="sonarqube">SonarQube Community</option>
+              </select>
             </div>
           </div>
 
@@ -2626,6 +2630,9 @@
       }
 
       function qualityToolForTechnology(technology) {
+        const selectedQualityTool = document.getElementById("custom-quality-tool")?.value || "auto";
+        if (selectedQualityTool === "sonarqube") return "sonarqube";
+
         const normalized = String(technology || "").trim().toLowerCase();
         if (normalized === "python") return "pylint";
         if (normalized === "angular" || normalized === "typescript") return "eslint";

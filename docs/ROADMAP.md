@@ -49,7 +49,7 @@ Implementacion con VSCode + Claude Sonnet 4.6 como agente.
 | Endpoints GET/POST/PUT /api/profiles | ✅ |
 | ScanOrchestrator con ThreadPoolExecutor | ✅ |
 | DAST runner placeholder (retorna [] sin crash) | ✅ |
-| Quality runner real Pylint/ESLint (sin crash si falta binario) | ✅ |
+| Quality runner real Pylint/ESLint/SonarQube (sin crash si falta config/binario) | ✅ |
 | FK scan_profile_id en Project | ✅ |
 | UI wizard 2 pasos: perfil → ZIP/clone | ✅ |
 | Tab Reportes en dashboard (Chart.js) | ✅ |
@@ -99,7 +99,7 @@ La logica de regression es prerequisito para que SLA y reportes tengan datos rea
 | Item | Herramienta | Prerequisito |
 |---|---|---|
 | DAST adapter real | OWASP ZAP REST API | ZAP corriendo en Docker |
-| Code Quality adapter | SonarQube Community REST API | SonarQube en Docker |
+| ✅ Code Quality adapter | SonarQube Community REST API | SonarQube en Docker + token local |
 | ✅ Pylint / ESLint adapter | CLI directo | Sin servidor externo |
 | Semgrep framework rulesets | p/django, p/flask, p/java-spring | Solo agregar al diccionario |
 
@@ -136,8 +136,8 @@ Explorer Agent → Attacker Agent → Verifier Agent
 ## Orden De Implementacion Recomendado
 
 ```
-Completado:     Fix orchestrator Semgrep + tool_name + Pylint/ESLint Quality
+Completado:     Fix orchestrator Semgrep + tool_name + Pylint/ESLint/SonarQube Quality
 Siguiente:      DAST ZAP adapter (Docker prerequisito)
-Despues:        SonarQube Community adapter o validacion post-patch tsc/javac
+Despues:        Validacion post-patch tsc/javac o multi-finding PR
 Luego:          Multi-finding PR y Semgrep framework rulesets
 ```

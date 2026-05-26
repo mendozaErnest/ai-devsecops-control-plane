@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-26 (Quality-first: Pylint/ESLint adapters, dashboard custom Quality profile, roadmap reconciled)
+Ultima actualizacion: 2026-05-26 (Quality-first: Pylint/ESLint/SonarQube adapters, dashboard custom Quality profile, Docker ZAP/Sonar ready)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -46,12 +46,12 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - Dashboard: SPA estatica HTML/JavaScript/Tailwind servida desde GET /.
 - Scanners SAST: Bandit + Semgrep (Python), Semgrep (Angular/Java).
 - Scanners SCA: pip-audit (Python), OWASP Dependency Check (Java).
-- Scanners Quality: Pylint (Python), ESLint (Angular/TypeScript).
+- Scanners Quality: Pylint (Python), ESLint (Angular/TypeScript), SonarQube Community REST.
 - Orquestacion: ScanProfile + ScanOrchestrator con ThreadPoolExecutor.
 - SLA deadlines: CRITICAL=3d, HIGH=7d, MEDIUM=30d, LOW=90d.
 - IA local: Ollama, modelo por defecto qwen2.5-coder:14b.
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (58 tests).
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (65 tests).
 
 Dependencias en code/requirements.txt:
 
@@ -89,6 +89,7 @@ src/scanners/pip_audit_adapter.py     ← Python SCA
 src/scanners/odc_adapter.py           ← Java SCA (OWASP DC)
 src/scanners/pylint_adapter.py        ← Python Quality
 src/scanners/eslint_adapter.py        ← Angular/TypeScript Quality
+src/scanners/sonarqube_adapter.py     ← SonarQube Community Quality REST
 src/ai_engine/remediator.py
 src/integrations/github_client.py
 src/dashboard/index.html
@@ -211,8 +212,10 @@ ScanOrchestrator._run_quality() ejecuta adapters reales segun ScanProfile:
 
 - python + quality_tool=pylint → PylintAdapter.
 - angular/typescript + quality_tool=eslint → EslintAdapter.
-- Java Quality queda pendiente.
+- python/angular/typescript/java + quality_tool=sonarqube → SonarQubeAdapter REST.
+- Java Quality por CLI local queda pendiente; Java puede consumir findings SonarQube si el proyecto ya fue analizado en Sonar.
 - Si falta el binario (`pylint`, `node_modules/.bin/eslint` o `npx --no-install eslint`), el adapter retorna [] y el orquestador reporta el error sin tumbar todo el scan.
+- SonarQube usa `SONARQUBE_URL`, `SONARQUBE_TOKEN` y opcionalmente `SONARQUBE_PROJECT_KEY`; si no hay project key deriva una desde el nombre del target_path.
 
 ---
 
@@ -293,15 +296,16 @@ src/dashboard/index.html capacidades actuales:
 ```text
 tests/test_angular_prompt.py          (4 tests)
 tests/test_finding_upsert.py          (6 tests)
+tests/test_file_content_path.py       (2 tests)
 tests/test_github_path.py             (4 tests)
 tests/test_odc_adapter.py             (5 tests)
 tests/test_pip_audit_adapter.py       (5 tests)
-tests/test_quality_adapters.py        (4 tests)
+tests/test_quality_adapters.py        (7 tests)
 tests/test_safe_patching_python.py    (6 tests)  ← nuevo
-tests/test_scan_profile.py            (9 tests)
+tests/test_scan_profile.py            (11 tests)
 tests/test_semantic_patching.py       (11 tests)
 tests/test_semgrep_adapter.py         (4 tests)
-Total: 58 passed
+Total: 65 passed
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -331,7 +335,7 @@ Reglas permanentes:
 
 1. DAST runner sigue como placeholder — retorna [].
 2. Validacion Angular/Java es heuristica (brace-counting), no parser real.
-3. SonarQube y Java Quality siguen pendientes.
+3. Java Quality local sigue pendiente; SonarQube requiere proyecto previamente analizado para devolver findings.
 4. workspace/ puede contener uploads temporales; no versionar.
 5. ensure_sqlite_schema() es SQLite-only; desactivar para PostgreSQL.
 6. El contexto del archivo usa Finding.line_start; si el scanner reporta una línea incorrecta el contexto puede mostrar código diferente al snippet real.
@@ -377,9 +381,8 @@ Tarea B ya implementado ✅:
 
 Phase 3:
 1. DAST adapter real (OWASP ZAP).
-2. Quality adapter SonarQube Community.
-3. Validacion post-patch: tsc --noEmit (Angular), javac/Maven (Java).
-4. Multi-finding PR (batch remediation en una rama).
+2. Validacion post-patch: tsc --noEmit (Angular), javac/Maven (Java).
+3. Multi-finding PR (batch remediation en una rama).
 
 ---
 
