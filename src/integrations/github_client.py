@@ -1250,40 +1250,60 @@ def build_pr_body(finding_details: dict, remediation_text: str) -> str:
         str(finding_details.get("file_path", "")),
     )
 
-    return f"""## AI Security Remediation
+    severity = finding_details.get("severity", "UNKNOWN")
+    rule_id = finding_details.get("rule_id", "UNKNOWN")
+    file_path = finding_details.get("file_path", "UNKNOWN")
+    line_start = finding_details.get("line_start", "")
+    description = finding_details.get("description", "No description provided.")
+    code_snippet = finding_details.get("code_snippet", "")
+    cwe_raw = finding_details.get("cwe_id") or finding_details.get("cwe") or ""
+    cwe_number = re.search(r"\d+", str(cwe_raw)).group() if re.search(r"\d+", str(cwe_raw)) else None
 
-This Pull Request was opened by the AI DevSecOps Control Plane using a GitHub App installation token.
+    # Extract the code block for the "Fix aplicado" section
+    patch_content = (
+        extract_python_code_block(remediation_text)
+        if technology == "python"
+        else extract_generic_code_block(remediation_text, technology, file_path)
+    )
+    if patch_content:
+        fix_section = f"```{fence_label}\n{patch_content}\n```"
+    else:
+        fix_section = remediation_text
 
-### Finding
+    cwe_ref = (
+        f"- CWE-{cwe_number}: https://cwe.mitre.org/data/definitions/{cwe_number}.html"
+        if cwe_number
+        else "- CWE: no disponible para este hallazgo"
+    )
 
-- Finding ID: `{finding_details.get("id", "UNKNOWN")}`
-- Rule: `{finding_details.get("rule_id", "UNKNOWN")}`
-- Severity: `{finding_details.get("severity", "UNKNOWN")}`
-- Confidence: `{finding_details.get("confidence", "UNKNOWN")}`
-- CWE: `{finding_details.get("cwe_id", finding_details.get("cwe", "N/A"))}`
-- Technology: `{technology}`
-- File: `{finding_details.get("file_path", "UNKNOWN")}`
-- Lines: `{finding_details.get("line_start", "UNKNOWN")}` - `{finding_details.get("line_end", "UNKNOWN")}`
+    loc = f"`{file_path}:{line_start}`" if line_start else f"`{file_path}`"
 
-### Description
+    return f"""## \U0001f512 Security Fix — {severity} [{rule_id}]
 
-{finding_details.get("description", "No description provided.")}
+**Herramienta:** {technology} | **Archivo:** {loc}
 
-### Original code context
+### Problema
+
+{description}
+
+### Contexto original
 
 ```{fence_label}
-{finding_details.get("code_snippet", "")}
+{code_snippet}
 ```
 
-### AI analysis and suggested remediation
+### Fix aplicado
 
-{remediation_text}
+{fix_section}
 
-### Review notes
+### Referencias
 
-- Review the source diff carefully before merging.
-- Re-run the security scan after merge.
-- If this PR has no source-code diff, the AI response did not include a safe non-empty `{technology}` code block.
+{cwe_ref}
+- Generado por: Ollama `qwen2.5-coder:14b` (inferencia local)
+
+---
+*Este PR fue generado automáticamente por AI DevSecOps Control Plane.*
+*Revisar antes de hacer merge.*
 """
 
 

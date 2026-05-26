@@ -86,6 +86,17 @@
 - [x] Dashboard custom profile: Code Quality selectable; creates a real ScanProfile with `quality_enabled` + `quality_tool`
 - [x] Tests: adapter normalization/missing binary + orchestrator Quality success/error paths
 
+### Phase 3 — SonarQube Integration Hardening (2026-05-25)
+- [x] Bearer token auth (`Authorization: Bearer <token>`) replacing Basic Auth — SonarQube Community v26+ compatible
+- [x] `run_sonar_scan(target_path)`: sonar-scanner CLI subprocess with graceful RuntimeError if not in PATH
+- [x] `fetch_sonar_issues(page_size)`: standalone REST function with 401/404 explicit errors
+- [x] `_sonar_env()`: centralized env-var helper (SONARQUBE_URL / TOKEN / PROJECT_KEY)
+- [x] `POST /api/scan/sonar`: endpoint that optionally triggers CLI then fetches + persists issues
+- [x] `SONARQUBE_URL` updated to `http://localhost:9000` in `.env` for local dev
+- [x] SonarQube project `ai-devsecops-control-plane` created via REST API
+- [x] Token validated: `{"valid": true}` via `GET /api/authentication/validate`
+- [x] Tests updated: removed `auth=(token, "")` from mock clients (Bearer is the auth path now)
+
 ---
 
 ## Pendiente
@@ -102,3 +113,13 @@
 - [x] Diff view with LCS for line-level precision — `renderDiffView` v9: `max-height:calc(85vh-200px)` scroll (no DOM parent manipulation), `CONTEXT=20`, pad rows `#161b22` (visible neutral), aligned delete/insert rows, real line numbers, `···` separators, snippet fallback
 - [ ] Multi-finding PR (batch remediation in one branch)
 - [ ] Webhook: block merge on open critical findings
+
+### Phase 3 — sonar-scanner CLI + PR Format (2026-05-26)
+- [x] `sonar-scanner` CLI 6.2.1 installed in `~/.local/bin/sonar-scanner`
+- [x] `sonar-project.properties` in repo root (token excluded, passed at runtime)
+- [x] First real analysis: 125 issues in SonarQube project `ai-devsecops-control-plane`
+- [x] `run_sonar_scan()`: fallback path detection for `~/.local/bin` and `/opt/sonar-scanner` when binary not in PATH
+- [x] `build_pr_body()` restructured: `🔒 Security Fix — {severity} [{rule_id}]`, Herramienta/Archivo, Problema, Fix aplicado (extracted code block), Referencias CWE, footer ES
+- [x] Dashboard `buildToolBadge()`: color-coded pill per scanner (SonarQube blue, Bandit yellow, Semgrep lightblue, ESLint red, Pylint green)
+- [x] Dashboard `detectTool(finding)`: infers scanner from `rule_id` namespace (`python:`, `gitlab.bandit.`, `B\d{3}`, etc.) — fixes badge showing wrong tool for SonarQube findings
+- [x] `GET /api/ping` 500 fix: add `iputils-ping` to Dockerfile + `FileNotFoundError` → HTTP 503 + `timeout=15` in `subprocess.run`

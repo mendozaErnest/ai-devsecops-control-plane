@@ -1708,6 +1708,49 @@
         return `${Math.max(1, minutes)}min`;
       }
 
+      function detectTool(finding) {
+        const ruleId = (finding.rule_id || '').toLowerCase();
+
+        // SonarQube native rule namespaces (rule_id format: "namespace:RuleKey")
+        if (ruleId.startsWith('python:') ||
+            ruleId.startsWith('python.lang') ||
+            ruleId.startsWith('web:') ||
+            ruleId.startsWith('java:') ||
+            ruleId.startsWith('typescript:') ||
+            ruleId.startsWith('javascript:') ||
+            ruleId.startsWith('gitlab.bandit.')) {
+          return 'sonarqube';
+        }
+        if (ruleId.includes('semgrep') || ruleId.includes('/')) return 'semgrep';
+        if (/^b\d{3}$/.test(ruleId)) return 'bandit';
+        if (ruleId.startsWith('pylint') || ruleId.includes('pylint')) return 'pylint';
+        if (ruleId.startsWith('eslint') || ruleId.includes('eslint')) return 'eslint';
+
+        // Fall back to the stored scan tool name
+        const scanTool = (finding.tool || '').toLowerCase();
+        if (scanTool.includes('sonar')) return 'sonarqube';
+        if (scanTool.includes('bandit')) return 'bandit';
+        if (scanTool.includes('semgrep')) return 'semgrep';
+        if (scanTool.includes('eslint')) return 'eslint';
+        if (scanTool.includes('pylint')) return 'pylint';
+
+        return 'unknown';
+      }
+
+      function buildToolBadge(finding) {
+        const tool = detectTool(finding);
+        const badges = {
+          sonarqube: { label: 'SonarQube', color: 'rgba(59,130,246,0.15)',  border: 'rgba(59,130,246,0.4)',  text: '#60a5fa' },
+          bandit:    { label: 'Bandit',    color: 'rgba(234,179,8,0.15)',   border: 'rgba(234,179,8,0.4)',   text: '#d29922' },
+          semgrep:   { label: 'Semgrep',   color: 'rgba(88,166,255,0.15)',  border: 'rgba(88,166,255,0.4)',  text: '#58a6ff' },
+          eslint:    { label: 'ESLint',    color: 'rgba(255,123,114,0.15)', border: 'rgba(255,123,114,0.4)', text: '#ff7b72' },
+          pylint:    { label: 'Pylint',    color: 'rgba(63,185,80,0.15)',   border: 'rgba(63,185,80,0.4)',   text: '#3fb950' },
+          unknown:   { label: 'Scanner',   color: 'rgba(110,118,129,0.15)', border: 'rgba(110,118,129,0.4)', text: '#8b949e' },
+        };
+        const b = badges[tool] || badges.unknown;
+        return `<span style="background:${b.color};border:1px solid ${b.border};color:${b.text};padding:1px 7px;border-radius:4px;font-size:11px;font-family:monospace;font-weight:700;white-space:nowrap;">${b.label}</span>`;
+      }
+
       function buildSlaBadge(record) {
         const span = document.createElement("span");
         span.className = "sla ok";
@@ -1858,7 +1901,7 @@
             <div class="bot-row">
               <span class="path">${escapeHtml(path)}:<span class="ln">${escapeHtml(line)}</span></span>
               <span class="dot-sep">·</span>
-              <span class="tool">${escapeHtml(record.tool || selectedProject?.last_scan_tool || "scanner")}</span>
+              ${buildToolBadge(record)}
               <span class="dot-sep">·</span>
               <span class="tool">${escapeHtml(meta)}</span>
             </div>

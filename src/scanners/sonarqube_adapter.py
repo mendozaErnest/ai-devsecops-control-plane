@@ -1,6 +1,9 @@
 import hashlib
+import logging
 import os
 import re
+import shutil
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -9,6 +12,7 @@ import httpx
 from src.api.models import Finding
 from src.scanners.base import BaseScannerAdapter
 
+logger = logging.getLogger(__name__)
 
 SONAR_SEVERITY_MAP = {
     "BLOCKER": "CRITICAL",
@@ -22,6 +26,93 @@ SONAR_SEVERITY_MAP = {
 }
 
 
+def _sonar_env() -> tuple[str, str, str]:
+    """Returns (base_url, token, project_key) from environment."""
+    base_url = (os.getenv("SONARQUBE_URL") or "http://localhost:9000").rstrip("/")
+    token = os.getenv("SONARQUBE_TOKEN", "")
+    project_key = (
+        os.getenv("SONARQUBE_PROJECT_KEY")
+        or os.getenv("SONAR_PROJECT_KEY")
+        or ""
+    )
+    return base_url, token, project_key
+
+
+def run_sonar_scan(target_path: str) -> dict:
+    """Execute sonar-scanner CLI against target_path.
+
+    Raises RuntimeError if CLI is not in PATH or the scan fails.
+    """
+    base_url, token, project_key = _sonar_env()
+
+    _FALLBACK_PATHS = [
+        Path.home() / ".local" / "bin" / "sonar-scanner",
+        Path("/opt/sonar-scanner/bin/sonar-scanner"),
+        Path("/usr/local/bin/sonar-scanner"),
+    ]
+
+    scanner_bin = shutil.which("sonar-scanner") or next(
+        (str(p) for p in _FALLBACK_PATHS if p.exists()), None
+    )
+    if not scanner_bin:
+        raise RuntimeError(
+            "sonar-scanner not found in PATH. "
+            "Install from: https://docs.sonarsource.com/sonarqube/latest/"
+            "analyzing-source-code/scanners/sonarscanner/"
+        )
+
+    if not project_key:
+        project_key = re.sub(
+            r"[^A-Za-z0-9_.:-]+", "-", Path(target_path).resolve().name or "project"
+        ).strip("-")
+
+    cmd = [
+        scanner_bin,
+        f"-Dsonar.projectKey={project_key}",
+        f"-Dsonar.sources={target_path}",
+        f"-Dsonar.host.url={base_url}",
+        f"-Dsonar.token={token}",
+        "-Dsonar.language=py",
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"sonar-scanner failed (rc={result.returncode}): {result.stderr[:500]}"
+        )
+
+    return {"status": "scan_submitted", "stdout": result.stdout[-1000:]}
+
+
+def fetch_sonar_issues(page_size: int = 500) -> list[dict]:
+    """Fetch unresolved issues from SonarQube REST API using env vars."""
+    base_url, token, project_key = _sonar_env()
+
+    if not token:
+        raise ValueError("SONARQUBE_TOKEN is not configured in .env")
+    if not project_key:
+        raise ValueError("SONARQUBE_PROJECT_KEY is not configured in .env")
+
+    url = f"{base_url}/api/issues/search"
+    params = {"componentKeys": project_key, "ps": page_size, "resolved": "false"}
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with httpx.Client(timeout=30) as client:
+        response = client.get(url, params=params, headers=headers)
+
+    if response.status_code == 401:
+        raise PermissionError(
+            "Invalid or expired SonarQube token. Check SONARQUBE_TOKEN in .env"
+        )
+    if response.status_code == 404:
+        raise ValueError(
+            f"Project '{project_key}' not found in SonarQube. Did you create it?"
+        )
+    response.raise_for_status()
+
+    return response.json().get("issues", [])
+
+
 class SonarQubeAdapter(BaseScannerAdapter):
     tool_name = "sonarqube"
 
@@ -31,14 +122,10 @@ class SonarQubeAdapter(BaseScannerAdapter):
         token: str | None = None,
         project_key: str | None = None,
     ) -> None:
-        self.base_url = (base_url or os.getenv("SONARQUBE_URL") or "http://localhost:9000").rstrip("/")
-        self.token = token if token is not None else os.getenv("SONARQUBE_TOKEN", "")
-        self.project_key = (
-            project_key
-            or os.getenv("SONARQUBE_PROJECT_KEY")
-            or os.getenv("SONAR_PROJECT_KEY")
-            or ""
-        )
+        env_base_url, env_token, env_project_key = _sonar_env()
+        self.base_url = (base_url or env_base_url).rstrip("/")
+        self.token = token if token is not None else env_token
+        self.project_key = project_key or env_project_key
         self.raw_output: dict = {}
         self.returncode: int | None = None
         self.error: str | None = None
@@ -57,8 +144,12 @@ class SonarQubeAdapter(BaseScannerAdapter):
             self.raw_output = {"error": self.error}
             return []
 
+        # SonarQube Community v26+ uses Bearer token authentication
+        headers = {"Authorization": f"Bearer {self.token}"}
         try:
-            with httpx.Client(base_url=self.base_url, timeout=30.0, auth=(self.token, "")) as client:
+            with httpx.Client(
+                base_url=self.base_url, timeout=30.0, headers=headers
+            ) as client:
                 response = client.get(
                     "/api/issues/search",
                     params={
@@ -86,7 +177,10 @@ class SonarQubeAdapter(BaseScannerAdapter):
             self.error = "SonarQube authentication failed. Check SONARQUBE_TOKEN."
             return []
         if response.status_code != 200:
-            self.error = self.extract_error(parsed) or f"SonarQube API returned HTTP {response.status_code}"
+            self.error = (
+                self.extract_error(parsed)
+                or f"SonarQube API returned HTTP {response.status_code}"
+            )
             return []
 
         issues = parsed.get("issues", [])
@@ -125,7 +219,9 @@ class SonarQubeAdapter(BaseScannerAdapter):
             fingerprint=self.generate_fingerprint(issue, rule_id, component_path, line, message),
         )
 
-    def normalize_component_path(self, component: str, target_path: str, project_key: str) -> str:
+    def normalize_component_path(
+        self, component: str, target_path: str, project_key: str
+    ) -> str:
         path = component
         prefix = f"{project_key}:"
         if path.startswith(prefix):
