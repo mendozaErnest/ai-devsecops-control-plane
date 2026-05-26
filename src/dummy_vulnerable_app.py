@@ -57,13 +57,22 @@ def load_orders_for_customer(customer_id):
     return cursor.execute(query).fetchall()
 
 
-def update_account_status(account_id, status):
-    # Vulnerability: SQL injection via f-string query construction.
-    connection = sqlite3.connect("accounts.db")
-    cursor = connection.cursor()
-    query = f"UPDATE accounts SET status = '{status}' WHERE id = {account_id}"
-    cursor.execute(query)
-    connection.commit()
+def execute_query(database_path, query, params):
+    # Establish a connection to the database
+    conn = sqlite3.connect(database_path)
+    cursor = conn.cursor()
+
+    try:
+        # Execute the query using parameterized inputs
+        cursor.execute(query, params)
+        result = cursor.fetchall()
+        return result
+    except sqlite3.Error as e:
+        print(f"An error occurred: {e}")
+        return None
+    finally:
+        # Close the database connection
+        conn.close()
 
 
 def delete_audit_logs(before_date):
