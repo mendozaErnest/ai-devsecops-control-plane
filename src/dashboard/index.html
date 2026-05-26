@@ -201,23 +201,39 @@
 
       .app {
         position: relative; z-index: 1; width: 100%; min-height: 100vh;
-        padding: 9px 12px 14px; max-width: 1480px; margin: 0 auto;
+        padding: 10px 12px 14px; max-width: 1480px; margin: 0 auto;
       }
+      .app.nav-floating { padding-top: 78px; }
       .nav {
-        display: flex; align-items: center; gap: 8px; padding: 5px 12px;
-        background: rgba(13, 16, 22, 0.55); border: 1px solid var(--border);
-        border-radius: 10px; backdrop-filter: blur(20px) saturate(140%);
-        -webkit-backdrop-filter: blur(20px) saturate(140%); margin-bottom: 9px;
+        position: relative; z-index: 40;
+        display: flex; align-items: center; gap: 12px; padding: 7px 12px;
+        background: rgba(13, 16, 22, 0.72); border: 1px solid var(--border);
+        border-radius: 12px; backdrop-filter: blur(20px) saturate(140%);
+        -webkit-backdrop-filter: blur(20px) saturate(140%); margin-bottom: 12px;
+        transition: transform .22s ease, background .22s ease, border-color .22s ease, box-shadow .22s ease, padding .22s ease, width .22s ease;
       }
-      .brand { display: flex; align-items: center; gap: 12px; }
+      .nav.is-floating {
+        position: fixed; top: 10px; left: 50%; width: min(calc(100% - 24px), 1456px);
+        transform: translateX(-50%);
+        background: rgba(13, 16, 22, 0.90);
+        border-color: rgba(255,255,255,0.14);
+        box-shadow: 0 18px 60px rgba(0,0,0,0.42), 0 0 0 1px rgba(255,255,255,0.02);
+        padding: 6px 12px;
+      }
+      .brand { display: flex; align-items: center; gap: 12px; min-width: 230px; }
       .brand .mk {
+        display: grid;
         width: 30px; height: 30px; border-radius: 9px;
         background: linear-gradient(140deg, var(--mint) 0%, var(--mint-dim) 100%);
-        display: grid; place-items: center; color: #06231C;
+        place-items: center; color: #06231C;
         box-shadow: 0 0 24px var(--mint-glow), inset 0 1px 0 rgba(255,255,255,0.4);
       }
       .brand .mk svg { width: 16px; height: 16px; }
-      .brand .nm { font-weight: 600; font-size: 15px; color: var(--t-hi); letter-spacing: -0.01em; white-space: nowrap; }
+      .brand .wordmark { display: flex; flex-direction: column; line-height: 1; }
+      .brand .ey { color: #9aa8b8; font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
+      .brand .nm { margin-top: 5px; font-weight: 700; font-size: 21px; color: var(--t-hi); letter-spacing: .01em; white-space: nowrap; }
+      .nav.is-floating .brand .ey { font-size: 9px; letter-spacing: .16em; }
+      .nav.is-floating .brand .nm { font-size: 17px; margin-top: 3px; }
       .repo-wrap { display: inline-flex; align-items: center; gap: 10px; }
       .repo {
         display: flex; align-items: center; gap: 10px; padding: 6px 14px;
@@ -312,12 +328,15 @@
         box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);
       }
       .bento { display: grid; grid-template-columns: 1.4fr 1fr 1fr; grid-auto-rows: minmax(0, auto); gap: 7px; }
+      #bento-left-col { grid-column: 1 / -1; display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 7px; align-items: stretch; }
+      #bento-left-col > .card { height: 100%; align-self: stretch; }
       .card {
         background: linear-gradient(180deg, rgba(255,255,255,0.025) 0%, rgba(255,255,255,0.01) 100%), rgba(13, 16, 22, 0.55);
         border: 1px solid var(--border); border-radius: 12px; backdrop-filter: blur(20px) saturate(140%);
         -webkit-backdrop-filter: blur(20px) saturate(140%); padding: 9px; position: relative; overflow: hidden;
+        align-self: start;
       }
-      .hero { grid-column: span 2; padding: 6px 12px 5px; display: flex; flex-direction: column; gap: 4px; align-self: start; }
+      .hero { padding: 6px 12px 5px; display: flex; flex-direction: column; gap: 4px; align-self: stretch; min-height: 150px; }
       .hero::before {
         content: ""; position: absolute; top: -100px; right: -100px; width: 500px; height: 500px;
         background: radial-gradient(circle, var(--mint-glow), transparent 60%); filter: blur(40px); opacity: 0.6; pointer-events: none;
@@ -362,7 +381,7 @@
       .radial .lbl .n { font-size: 24px; font-weight: 500; color: var(--t-hi); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
       .radial .lbl .d { margin-top: 6px; font-size: 11.5px; color: var(--mint); }
       .radial-rotate { animation: halo-spin 60s linear infinite; transform-origin: center; }
-      .kpi { padding: 5px 8px; align-self: start; }
+      .kpi { padding: 12px 14px; align-self: stretch; overflow: hidden; min-height: 150px; }
       .kpi .l { font-size: 9px; color: var(--t-dim); margin-bottom: 2px; }
       .kpi .v-row { display: flex; align-items: baseline; gap: 4px; }
       .kpi .n { font-size: 13px; font-weight: 400; color: var(--t-hi); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
@@ -373,9 +392,9 @@
       .delta.warn { background: var(--high-soft); color: var(--high); }
       .delta.flat { background: var(--surface-3); color: var(--t-dim); }
       .kpi .foot { margin-top: 2px; font-size: 9px; color: var(--t-dim); }
-      .kpi .spark { position: absolute; bottom: 0; right: 0; left: 0; height: 14px; pointer-events: none; opacity: 0.6; }
+      .kpi .spark { position: absolute; bottom: 0; right: 0; left: 0; height: 42px; pointer-events: none; opacity: 0.6; }
       .kpi .spark svg { width: 100%; height: 100%; display: block; }
-      .ai-card { padding: 9px; display: flex; flex-direction: column; gap: 7px; grid-row: span 2; }
+      .ai-card { grid-column: 1 / -1; padding: 9px; display: flex; flex-direction: column; gap: 7px; align-self: start; overflow: hidden; max-height: none; }
       .ai-card::before {
         content: ""; position: absolute; bottom: -80px; right: -80px; width: 280px; height: 280px;
         background: radial-gradient(circle, var(--mint-glow), transparent 60%); filter: blur(40px); opacity: 0.7; pointer-events: none;
@@ -383,17 +402,10 @@
       .ai-head { display: flex; align-items: center; gap: 10px; position: relative; z-index: 2; }
       .ai-head h3 { margin: 0; font-size: 11px; font-weight: 600; color: var(--t-hi); letter-spacing: -0.01em; }
       .ai-head .badge { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--mint-soft); border: 1px solid rgba(158,255,224,0.18); border-radius: 999px; font-size: 11px; color: var(--mint); }
-      .ai-summary {
-        position: relative; z-index: 2; padding: 14px 16px;
-        background: var(--surface-2); border: 1px solid var(--border);
-        border-radius: 12px;
-      }
-      .ai-summary .label { font-size: 12px; color: var(--t-dim); margin-bottom: 6px; }
-      .ai-summary .value { font-size: 18px; font-weight: 500; color: var(--t-hi); letter-spacing: -0.01em; }
-      .wave { height: 32px; position: relative; z-index: 2; display: flex; align-items: center; gap: 3px; justify-content: center; }
-      .wave i { display: block; width: 3px; background: var(--mint); border-radius: 2px; opacity: 0.6; animation: wave-bar 1.2s ease-in-out infinite; }
+      .wave { height: 24px; position: relative; z-index: 2; display: flex; align-items: center; gap: 3px; justify-content: center; }
+      .wave i { display: block; width: 3px; height: 14px; background: var(--mint); border-radius: 2px; opacity: 0.45; animation: none; }
       @keyframes wave-bar { 0%, 100% { height: 6px; } 50% { height: var(--h, 22px); } }
-      .workers { display: flex; flex-direction: column; gap: 10px; position: relative; z-index: 2; }
+      .workers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; position: relative; z-index: 2; }
       .wrk { padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; gap: 7px; }
       .wrk .r1 { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
       .wrk .nm { color: var(--t-hi); font-weight: 500; }
@@ -404,15 +416,22 @@
       .wrk .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--mint-dim), var(--mint)); border-radius: 999px; }
       .wrk.idle { opacity: 0.55; }
       .wrk.idle .bar { display: none; }
-      .ai-card .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding-top: 14px; border-top: 1px solid var(--border); position: relative; z-index: 2; }
-      .ai-card .stats .l { font-size: 12px; color: var(--t-dim); margin-bottom: 4px; }
-      .ai-card .stats .n { font-size: 26px; font-weight: 500; color: var(--t-hi); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-      .ai-card .stats .u { font-size: 13px; color: var(--t-dim); font-weight: 400; }
-      .findings { grid-column: 1 / -1; padding: 0; }
+      .ai-card .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 9px; border-top: 1px solid var(--border); position: relative; z-index: 2; }
+      .ai-card .stats .l { font-size: 9px; color: var(--t-dim); margin-bottom: 2px; }
+      .ai-card .stats .n { font-size: 17px; font-weight: 500; color: var(--t-hi); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+      .ai-card .stats .u { font-size: 10px; color: var(--t-dim); font-weight: 400; }
+      .findings { grid-column: 1 / -1; padding: 0; align-self: start; }
       .findings .head-bar { padding: 8px 10px 6px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-      .findings .head-bar h3 { margin: 0; font-size: 12px; font-weight: 500; color: var(--t-hi); letter-spacing: -0.01em; }
-      .findings .ct { font-size: 12.5px; color: var(--t-dim); }
+      .findings .head-bar h3 { margin: 0; font-size: 18px; font-weight: 650; color: var(--t-hi); letter-spacing: -0.01em; }
+      .findings .ct { display:block; margin-top:2px; font-size: 14px; color: var(--t-dim); }
       .findings .filt { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+      #pr-action-container { display: flex; justify-content: flex-end; }
+      #btn-pr {
+        display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: center;
+        gap: 8px !important; width: fit-content; white-space: nowrap; min-width: 232px;
+      }
+      #btn-pr svg { display: block !important; flex-shrink: 0 !important; min-width: 14px; }
+      #btn-pr span { display: inline !important; line-height: 1 !important; white-space: nowrap; }
       .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; font-size: 12px; color: var(--t-dim); cursor: pointer; }
       .chip.on { background: var(--t-hi); color: var(--bg); border-color: var(--t-hi); }
       .chip .n { font-size: 11px; padding: 0 5px; border-radius: 5px; background: var(--surface-3); color: var(--t-dim); font-variant-numeric: tabular-nums; }
@@ -457,9 +476,11 @@
 
       @media (max-width: 1180px) {
         .bento { grid-template-columns: 1fr 1fr; }
-        .ai-card { grid-column: span 1; }
+        #bento-left-col { grid-column: 1 / -1; grid-template-columns: 1.2fr 1fr 1fr !important; }
+        .ai-card { grid-column: 1 / -1; }
         .hero { grid-template-columns: 1fr; }
         .hero .r-col { display: none; }
+        .workers { grid-template-columns: 1fr; }
       }
       @media (max-width: 840px) {
         .app { padding: 10px 12px 16px; }
@@ -468,6 +489,7 @@
         .nav .links { order: 3; width: 100%; overflow-x: auto; margin-left: 0; }
         .head { grid-template-columns: 1fr; }
         .bento { grid-template-columns: 1fr; }
+        #bento-left-col { grid-column: 1 / -1; grid-template-columns: 1fr !important; }
         .hero, .findings, .ai-card { grid-column: span 1; }
         .hero .figure { font-size: clamp(32px, 10vw, 40px); }
         .sev-legend { grid-template-columns: repeat(2, 1fr); }
@@ -492,15 +514,16 @@
       .ttip:hover::after { opacity: 1; }
 
       /* Report view */
-      .report-kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
-      .report-kpi-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+      #report-content { display: flex; flex-direction: column; gap: 10px; }
+      .report-kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 0; }
+      .report-kpi-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 0; }
       .report-kpi-label { font-size: 10.5px; color: var(--t-dim); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
       .report-kpi-value { font-size: 26px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1; }
-      .report-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
-      .report-chart-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
-      .report-chart-label { font-size: 10px; color: var(--t-dim); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; }
+      .report-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 0; }
+      .report-chart-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 0; }
+      .report-chart-label { font-size: .72rem; color: var(--t-dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; }
       .view-toggle { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
-      .view-toggle button { padding: 4px 12px; border-radius: 6px; font-size: 11.5px; font-weight: 600; border: none; cursor: pointer; transition: background .12s, color .12s; }
+      .view-toggle button { padding: 6px 14px; border-radius: 6px; font-size: 13.5px; font-weight: 700; border: none; cursor: pointer; transition: background .12s, color .12s; }
     </style>
   </head>
   <body>
@@ -523,7 +546,10 @@
       <nav class="nav" aria-label="AI DevSecOps Control Plane">
         <div class="brand">
           <div class="mk"><svg><use href="#logo"/></svg></div>
-          <span class="nm">AI DevSecOps Control Plane</span>
+          <div class="wordmark" aria-label="AI DevSecOps Control Plane">
+            <span class="ey">AI DevSecOps</span>
+            <span class="nm">Control Plane</span>
+          </div>
         </div>
 
         <div class="repo-wrap">
@@ -578,12 +604,6 @@
           <div class="scan-meta"><span class="dot"></span><span id="scan-adapter-status">Scanning · 3 of 4 adapters</span></div>
         </div>
         <div class="actions">
-          <button type="button" id="export-pdf-btn" class="btn">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-              <path d="M3 8 L8 3 L13 8 M8 3 V13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span data-i18n="btn-export">Export</span>
-          </button>
           <button type="button" id="panel-run-scan" class="btn primary">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
               <path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/>
@@ -594,39 +614,63 @@
       </header>
 
       <main class="bento">
-        <section class="card hero">
-          <div class="l-col">
-            <div class="eyebrow"><span class="dot"></span><span data-i18n="live-exposure">Live · Active exposure</span></div>
-            <div id="total-count" class="figure">0</div>
-            <div class="figure-cap">
-              <span data-i18n="findings-across">hallazgos en</span> <span id="module-count" class="strong">0 módulos</span> · <span id="critical-copy" class="crit">0 críticos</span>
-            </div>
-            <div class="sev-row">
-              <div class="sev-bar">
-                <i id="sev-bar-critical" class="c" style="width:0%"></i>
-                <i id="sev-bar-high" class="h" style="width:0%"></i>
-                <i id="sev-bar-medium" class="m" style="width:0%"></i>
-                <i id="sev-bar-low" class="l" style="width:0%"></i>
+        <div id="bento-left-col" style="grid-column:1 / -1;display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:7px;align-items:stretch;">
+          <section class="card hero">
+            <div class="l-col">
+              <div class="eyebrow"><span class="dot"></span><span data-i18n="live-exposure">Live · Active exposure</span></div>
+              <div id="total-count" class="figure">0</div>
+              <div class="figure-cap">
+                <span data-i18n="findings-across">hallazgos en</span> <span id="module-count" class="strong">0 módulos</span> · <span id="critical-copy" class="crit">0 críticos</span>
               </div>
-              <div class="sev-legend">
-                <div class="it c"><div class="l"><span class="sw"></span><span data-i18n="sev-critical">Critical</span></div><div id="critical-count" class="n">0</div></div>
-                <div class="it h"><div class="l"><span class="sw"></span><span data-i18n="sev-high">High</span></div><div id="high-count" class="n">0</div></div>
-                <div class="it m"><div class="l"><span class="sw"></span><span data-i18n="sev-medium">Medium</span></div><div id="medium-count" class="n">0</div></div>
-                <div class="it l"><div class="l"><span class="sw"></span><span data-i18n="sev-low">Low</span></div><div id="low-count" class="n">0</div></div>
+              <div class="sev-row">
+                <div class="sev-bar">
+                  <i id="sev-bar-critical" class="c" style="width:0%"></i>
+                  <i id="sev-bar-high" class="h" style="width:0%"></i>
+                  <i id="sev-bar-medium" class="m" style="width:0%"></i>
+                  <i id="sev-bar-low" class="l" style="width:0%"></i>
+                </div>
+                <div class="sev-legend">
+                  <div class="it c"><div class="l"><span class="sw"></span><span data-i18n="sev-critical">Critical</span></div><div id="critical-count" class="n">0</div></div>
+                  <div class="it h"><div class="l"><span class="sw"></span><span data-i18n="sev-high">High</span></div><div id="high-count" class="n">0</div></div>
+                  <div class="it m"><div class="l"><span class="sw"></span><span data-i18n="sev-medium">Medium</span></div><div id="medium-count" class="n">0</div></div>
+                  <div class="it l"><div class="l"><span class="sw"></span><span data-i18n="sev-low">Low</span></div><div id="low-count" class="n">0</div></div>
+                </div>
               </div>
             </div>
-          </div>
 
-        </section>
+          </section>
+
+          <section class="card kpi">
+            <div class="l" data-i18n="kpi-sla-breaches">SLA breaches</div>
+            <div class="v-row"><div id="sla-breaches" class="n">0</div><span id="sla-delta" class="delta dn"><span data-i18n="kpi-live">↑ live</span></span></div>
+            <div id="sla-foot" class="foot">0 overdue · CVSS ≥ 9.0</div>
+            <div class="spark">
+              <svg viewBox="0 0 200 40" preserveAspectRatio="none">
+                <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF647D" stop-opacity="0.30"/><stop offset="100%" stop-color="#FF647D" stop-opacity="0"/></linearGradient></defs>
+                <path d="M0,32 L25,30 L50,26 L75,22 L100,18 L125,16 L150,12 L175,8 L200,4 L200,40 L0,40 Z" fill="url(#g1)"/>
+                <polyline points="0,32 25,30 50,26 75,22 100,18 125,16 150,12 175,8 200,4" fill="none" stroke="#FF647D" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </div>
+          </section>
+
+          <section class="card kpi">
+            <div class="l" data-i18n="kpi-mttr">MTTR · critical</div>
+            <div class="v-row"><div class="n">2.4<span class="u">d</span></div><span class="delta up">↓ 18%</span></div>
+            <div class="foot" data-i18n="kpi-mttr-foot">Target 3.0d · trending fast</div>
+            <div class="spark">
+              <svg viewBox="0 0 200 40" preserveAspectRatio="none">
+                <defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#9EFFE0" stop-opacity="0.30"/><stop offset="100%" stop-color="#9EFFE0" stop-opacity="0"/></linearGradient></defs>
+                <path d="M0,10 L25,12 L50,14 L75,12 L100,18 L125,22 L150,28 L175,32 L200,34 L200,40 L0,40 Z" fill="url(#g2)"/>
+                <polyline points="0,10 25,12 50,14 75,12 100,18 125,22 150,28 175,32 200,34" fill="none" stroke="#9EFFE0" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </div>
+          </section>
+        </div>
 
         <section class="card ai-card">
           <div class="ai-head">
             <h3 data-i18n="ai-remediation">AI remediation</h3>
             <div class="badge"><span class="dot"></span><span id="ai-model-chip">Live · local model</span></div>
-          </div>
-          <div class="ai-summary">
-            <div class="label" data-i18n="remediation-engine">Remediation engine</div>
-            <div id="ai-engine-summary" class="value">Local model ready</div>
           </div>
           <div class="wave">
             <i style="--h:14px;animation-delay:0s"></i><i style="--h:22px;animation-delay:.1s"></i><i style="--h:18px;animation-delay:.2s"></i><i style="--h:28px;animation-delay:.3s"></i><i style="--h:24px;animation-delay:.4s"></i>
@@ -653,32 +697,6 @@
           </div>
         </section>
 
-        <section class="card kpi">
-          <div class="l" data-i18n="kpi-sla-breaches">SLA breaches</div>
-          <div class="v-row"><div id="sla-breaches" class="n">0</div><span id="sla-delta" class="delta dn"><span data-i18n="kpi-live">↑ live</span></span></div>
-          <div id="sla-foot" class="foot">0 overdue · CVSS ≥ 9.0</div>
-          <div class="spark">
-            <svg viewBox="0 0 200 40" preserveAspectRatio="none">
-              <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF647D" stop-opacity="0.30"/><stop offset="100%" stop-color="#FF647D" stop-opacity="0"/></linearGradient></defs>
-              <path d="M0,32 L25,30 L50,26 L75,22 L100,18 L125,16 L150,12 L175,8 L200,4 L200,40 L0,40 Z" fill="url(#g1)"/>
-              <polyline points="0,32 25,30 50,26 75,22 100,18 125,16 150,12 175,8 200,4" fill="none" stroke="#FF647D" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </div>
-        </section>
-
-        <section class="card kpi">
-          <div class="l" data-i18n="kpi-mttr">MTTR · critical</div>
-          <div class="v-row"><div class="n">2.4<span class="u">d</span></div><span class="delta up">↓ 18%</span></div>
-          <div class="foot" data-i18n="kpi-mttr-foot">Target 3.0d · trending fast</div>
-          <div class="spark">
-            <svg viewBox="0 0 200 40" preserveAspectRatio="none">
-              <defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#9EFFE0" stop-opacity="0.30"/><stop offset="100%" stop-color="#9EFFE0" stop-opacity="0"/></linearGradient></defs>
-              <path d="M0,10 L25,12 L50,14 L75,12 L100,18 L125,22 L150,28 L175,32 L200,34 L200,40 L0,40 Z" fill="url(#g2)"/>
-              <polyline points="0,10 25,12 50,14 75,12 100,18 125,22 150,28 175,32 200,34" fill="none" stroke="#9EFFE0" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </div>
-        </section>
-
         <section class="card findings">
           <div class="head-bar">
             <div>
@@ -696,6 +714,26 @@
                 <span id="chip-high" class="chip"><span data-i18n="sev-high">High</span> <span id="filter-high-count" class="n">0</span></span>
                 <span id="chip-breach" class="chip"><span data-i18n="filter-breach">Breach</span> <span id="filter-breach-count" class="n">0</span></span>
               </div>
+              <button type="button" id="export-pdf-btn"
+                style="display:none;flex-direction:row;align-items:center;gap:8px;
+                       width:fit-content;white-space:nowrap;
+                       padding:5px 14px;border-radius:7px;background:#c62828;color:#fff;
+                       font-size:.78rem;font-weight:700;border:none;cursor:pointer;
+                       transition:background .15s;"
+                onmouseover="this.style.background='#b71c1c'"
+                onmouseout="this.style.background='#c62828'">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round"
+                     style="display:block;flex-shrink:0;min-width:13px;">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="9" y1="13" x2="15" y2="13"/>
+                  <line x1="9" y1="17" x2="15" y2="17"/>
+                  <line x1="9" y1="9" x2="11" y2="9"/>
+                </svg>
+                <span id="export-pdf-label" data-i18n="btn-export-pdf" style="display:inline;line-height:1;">Exportar como PDF</span>
+              </button>
             </div>
           </div>
           <div id="findings-table-view" class="list">
@@ -899,10 +937,48 @@
           <p id="pr-footer-text" style="color:var(--muted);font-size:.8rem;" data-i18n="modal-footer-pr">Convierte esta remediación en una propuesta de revisión en GitHub.</p>
           <div id="pr-action-container">
             <button type="button" id="btn-pr"
-              style="display:inline-flex;align-items:center;gap:7px;padding:8px 18px;border-radius:8px;background:#202A38;color:var(--t-hi);font-size:.82rem;font-weight:600;border:1px solid rgba(122,140,165,.45);cursor:pointer;transition:background .15s;">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0Z"/></svg>
-              <span data-i18n="convert-pr">Convertir a Pull Request</span>
+              style="display:flex;flex-direction:row;align-items:center;gap:8px;
+                     width:fit-content;white-space:nowrap;
+                     padding:8px 18px;border-radius:8px;background:#202A38;
+                     color:var(--t-hi);font-size:.82rem;font-weight:600;
+                     border:1px solid rgba(122,140,165,.45);cursor:pointer;transition:background .15s;">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"
+                   style="display:block;flex-shrink:0;min-width:14px;">
+                <path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0Z"/>
+              </svg>
+              <span data-i18n="convert-pr" style="display:inline;line-height:1;">Convertir a Pull Request</span>
             </button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ══════════════ BRANCH DELETE CONFIRM MODAL ══════════════ -->
+    <div id="branch-confirm-modal" style="display:none;position:fixed;inset:0;z-index:70;align-items:center;justify-content:center;background:rgba(0,0,0,.72);backdrop-filter:blur(5px);padding:24px;"
+      role="dialog" aria-modal="true" aria-labelledby="branch-confirm-title">
+      <section style="width:100%;max-width:430px;background:#111820;border:1px solid rgba(255,255,255,.12);border-radius:12px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.7);">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:18px 20px 12px;border-bottom:1px solid rgba(255,255,255,.08);">
+          <div>
+            <h2 id="branch-confirm-title" style="color:var(--t-hi);font-size:1rem;font-weight:700;margin:0;">Eliminar rama y cerrar PR</h2>
+            <p style="color:var(--t-dim);font-size:.78rem;margin-top:5px;">Esta acción limpia el estado persistido de la remediación.</p>
+          </div>
+          <button type="button" id="close-branch-confirm"
+            style="width:32px;height:32px;border-radius:7px;background:var(--surface-2);border:1px solid var(--border-2);color:var(--t-dim);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;"
+            aria-label="Cerrar">✕</button>
+        </div>
+        <div style="padding:18px 20px 20px;display:flex;flex-direction:column;gap:14px;">
+          <div style="display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:10px;background:rgba(248,81,73,.09);border:1px solid rgba(248,81,73,.22);">
+            <div style="width:28px;height:28px;border-radius:8px;background:rgba(248,81,73,.16);color:#ff7b72;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;">!</div>
+            <div>
+              <p style="color:var(--t);font-size:.84rem;line-height:1.45;margin:0;">Se cerrará el Pull Request abierto y se eliminará la rama remota:</p>
+              <p id="branch-confirm-branch" style="color:var(--t-hi);font-family:var(--f-mono);font-size:.8rem;margin-top:7px;word-break:break-all;"></p>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:10px;">
+            <button type="button" id="cancel-branch-delete"
+              style="padding:8px 14px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border-2);color:var(--t);font-size:.82rem;font-weight:600;cursor:pointer;">Cancelar</button>
+            <button type="button" id="confirm-branch-delete"
+              style="padding:8px 14px;border-radius:8px;background:#8b1d1d;border:1px solid #c33;color:#ffd7d7;font-size:.82rem;font-weight:700;cursor:pointer;">Eliminar rama</button>
           </div>
         </div>
       </section>
@@ -1026,6 +1102,7 @@
           "report-sev-lbl":     "Por Severidad",
           "report-status-lbl":  "Por Estado",
           "report-rules-lbl":   "Top Reglas",
+          "btn-export-pdf":     "Exportar como PDF",
         },
         en: {
           "new-project":        "New Project",
@@ -1103,9 +1180,10 @@
           "report-sev-lbl":     "By Severity",
           "report-status-lbl":  "By Status",
           "report-rules-lbl":   "Top Rules",
+          "btn-export-pdf":     "Export as PDF",
         },
       };
-      let currentLang = localStorage.getItem("lang") || "es";
+      let currentLang = "en";
       function t(key) { return i18n[currentLang]?.[key] ?? i18n.es[key] ?? key; }
       function applyI18n() {
         document.querySelectorAll("[data-i18n]").forEach((el) => {
@@ -1113,8 +1191,16 @@
         });
       }
 
+      function updateFloatingNav() {
+        if (!topNav) return;
+        const floating = window.scrollY > 18;
+        topNav.classList.toggle("is-floating", floating);
+        topNav.closest(".app")?.classList.toggle("nav-floating", floating);
+      }
+
       // ── DOM refs ───────────────────────────────────────────────────────
       const panelRunScanButton  = document.getElementById("panel-run-scan");
+      const topNav              = document.querySelector(".nav");
       const newProjectButton    = document.getElementById("new-project");
       const refreshButton       = document.getElementById("refresh-findings");
       const projectsList        = document.getElementById("projects-list");
@@ -1150,6 +1236,11 @@
       const closeRemediationButton = document.getElementById("close-remediation");
       const createPrButton      = document.getElementById("btn-pr");
       const prActionContainer   = document.getElementById("pr-action-container");
+      const branchConfirmModal  = document.getElementById("branch-confirm-modal");
+      const branchConfirmBranch = document.getElementById("branch-confirm-branch");
+      const branchConfirmClose  = document.getElementById("close-branch-confirm");
+      const branchConfirmCancel = document.getElementById("cancel-branch-delete");
+      const branchConfirmDelete = document.getElementById("confirm-branch-delete");
       const projectModal        = document.getElementById("project-modal");
       const closeProjectModalButton = document.getElementById("close-project-modal");
       const uploadProjectForm   = document.getElementById("upload-project-form");
@@ -1172,6 +1263,9 @@
       const auditModalMeta      = document.getElementById("audit-modal-meta");
       const auditEventsList     = document.getElementById("audit-events-list");
       const closeAuditModalBtn  = document.getElementById("close-audit-modal");
+
+      window.addEventListener("scroll", updateFloatingNav, { passive: true });
+      updateFloatingNav();
 
       // ── State ──────────────────────────────────────────────────────────
       let currentRemediationFindingId;
@@ -1374,7 +1468,7 @@
         fixBtn.style.cssText = btnBase + (aiStatus.available
           ? "color:#D9E2EE;border-color:rgba(122,140,165,.32);"
           : "color:var(--t-mute);cursor:not-allowed;opacity:.55;");
-        fixBtn.innerHTML = `${IC_SPARKLE} ${t("btn-fix")}`;
+        fixBtn.innerHTML = `<span style="display:inline-flex;align-items:center;flex-shrink:0;">${IC_SPARKLE}</span><span>${t("btn-fix")}</span>`;
         fixBtn.disabled = !aiStatus.available;
         fixBtn.addEventListener("click", () => remediateFinding(record, fixBtn));
         wrap.appendChild(fixBtn);
@@ -1599,24 +1693,36 @@
       }
 
       // ── SLA badge ──────────────────────────────────────────────────────
+      function formatShortDuration(ms) {
+        const abs = Math.max(0, Math.abs(ms));
+        const totalMinutes = Math.ceil(abs / 60000);
+        const days = Math.floor(totalMinutes / 1440);
+        const hours = Math.floor((totalMinutes % 1440) / 60);
+        const minutes = totalMinutes % 60;
+        if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+        if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}min` : `${hours}h`;
+        return `${Math.max(1, minutes)}min`;
+      }
+
       function buildSlaBadge(record) {
         const span = document.createElement("span");
         span.className = "sla ok";
-        if (!record.sla_deadline) { span.textContent = "SLA open"; return span; }
+        if (!record.sla_deadline) { span.textContent = "SLA"; return span; }
         const deadline = new Date(record.sla_deadline);
-        const daysLeft = Math.ceil((deadline - Date.now()) / 86400000);
-        if (daysLeft < 0) {
+        const remaining = deadline - Date.now();
+        const label = formatShortDuration(remaining);
+        if (remaining < 0) {
           span.className = "sla brk";
-          span.textContent = `${Math.abs(daysLeft)}d overdue`;
-          span.title = `Overdue ${Math.abs(daysLeft)} days`;
-        } else if (daysLeft <= 2) {
+          span.textContent = `-${label}`;
+          span.title = `SLA ${span.textContent}`;
+        } else if (remaining <= 2 * 86400000) {
           span.className = "sla warn";
-          span.textContent = `${daysLeft}d left`;
-          span.title = `${daysLeft} days remaining`;
+          span.textContent = label;
+          span.title = `SLA ${label}`;
         } else {
           span.className = "sla ok";
-          span.textContent = `${daysLeft}d left`;
-          span.title = `${daysLeft} days remaining`;
+          span.textContent = label;
+          span.title = `SLA ${label}`;
         }
         return span;
       }
@@ -1996,7 +2102,7 @@
           const descEn = record.description || record.rule_id || "";
           const ruleKey = (record.rule_id || "").replace(/[^A-Z0-9]/gi, "").toUpperCase();
           const descEs = BANDIT_ES[ruleKey] || descEn;
-          let descShowingEs = currentLang === "es";
+          let descShowingEs = false;
 
           function applyDesc() {
             descEl.textContent = descShowingEs ? descEs : descEn;
@@ -2005,6 +2111,7 @@
               toggleBtn.textContent = descShowingEs ? "EN" : "ES";
               toggleBtn.title = descShowingEs ? "Ver en inglés" : "Ver en español";
               toggleBtn.style.color = "var(--t-dim)";
+              toggleBtn.style.display = "";
             }
           }
           applyDesc();
@@ -2015,7 +2122,7 @@
               descShowingEs = !descShowingEs;
               applyDesc();
             };
-            toggleBtn.style.display = descEs !== descEn ? "" : "none";
+            toggleBtn.style.display = "";
           }
 
           metaChips.innerHTML = "";
@@ -2062,16 +2169,61 @@
 
         resetPullRequestAction(record.has_remediation && selectedProject && selectedProject.source_type === "repo");
         remediationModal.style.display = "flex";
+
+        if (record.has_remediation && selectedProject?.source_type === "repo") {
+          checkExistingPR(record.id);
+        }
+      }
+
+      async function checkExistingPR(findingId) {
+        try {
+          const res = await fetch(`/api/remediate/${findingId}/pr`);
+          if (!res.ok) return;   // 404 = no PR yet, silently skip
+          const data = await res.json();
+          if (data.pr_url) {
+            currentPrBranch = data.branch;
+            renderPullRequestSuccess(data.pr_url);
+          }
+        } catch (_) {
+          // Fail silently — do not block modal opening
+        }
+      }
+
+      function enforcePullRequestButtonRow() {
+        createPrButton.style.display = "flex";
+        createPrButton.style.flexDirection = "row";
+        createPrButton.style.alignItems = "center";
+        createPrButton.style.justifyContent = "center";
+        createPrButton.style.gap = "8px";
+        createPrButton.style.width = "fit-content";
+        createPrButton.style.minWidth = "232px";
+        createPrButton.style.whiteSpace = "nowrap";
+
+        const icon = createPrButton.querySelector("svg");
+        if (icon) {
+          icon.style.display = "block";
+          icon.style.flexShrink = "0";
+          icon.style.minWidth = "14px";
+        }
+
+        const label = createPrButton.querySelector("[data-i18n='convert-pr']");
+        if (label) {
+          label.style.display = "inline";
+          label.style.lineHeight = "1";
+          label.style.whiteSpace = "nowrap";
+        }
       }
 
       function resetPullRequestAction(hasRemediation = true) {
         prActionContainer.innerHTML = "";
         prActionContainer.appendChild(createPrButton);
-        createPrButton.style.display = hasRemediation ? "" : "none";
+        createPrButton.style.display = hasRemediation ? "flex" : "none";
         createPrButton.disabled = false;
         createPrButton.querySelector("[data-i18n='convert-pr']").textContent = t("convert-pr");
         createPrButton.style.opacity = "1";
         createPrButton.style.cursor = "pointer";
+        enforcePullRequestButtonRow();
+        if (!hasRemediation) createPrButton.style.display = "none";
       }
 
       function hideRemediationModal() {
@@ -2101,6 +2253,7 @@
         createPrButton.style.opacity = ".5";
         createPrButton.style.cursor = "not-allowed";
         createPrButton.querySelector("[data-i18n='convert-pr']").textContent = "⏳ Creando PR…";
+        enforcePullRequestButtonRow();
 
         try {
           const response = await fetch(`/api/remediate/${currentRemediationFindingId}/pr`, { method: "POST" });
@@ -2108,12 +2261,19 @@
           if (!response.ok) throw new Error(formatApiError(result.detail, "Error al crear el PR."));
           currentPrBranch = result.branch;
           renderPullRequestSuccess(result.pr_url);
-          showFeedback("Pull Request creado correctamente.", "success");
+          const isCached = result.cached === true;
+          showFeedback(
+            isCached
+              ? "PR existente recuperado — no se creó uno nuevo."
+              : "Pull Request creado correctamente.",
+            isCached ? "info" : "success"
+          );
         } catch (error) {
           createPrButton.disabled = false;
           createPrButton.style.opacity = "1";
           createPrButton.style.cursor = "pointer";
           createPrButton.querySelector("[data-i18n='convert-pr']").textContent = t("convert-pr");
+          enforcePullRequestButtonRow();
           const prev = prActionContainer.querySelector("p");
           if (prev) prev.remove();
           const errP = document.createElement("p");
@@ -2143,12 +2303,44 @@
         prActionContainer.appendChild(wrap);
       }
 
+      function confirmBranchDeletion(branchName) {
+        if (!branchConfirmModal) return Promise.resolve(false);
+        branchConfirmBranch.textContent = branchName || "security-fix-*";
+        branchConfirmModal.style.display = "flex";
+
+        return new Promise((resolve) => {
+          const close = (confirmed) => {
+            branchConfirmModal.style.display = "none";
+            branchConfirmClose.removeEventListener("click", onCancel);
+            branchConfirmCancel.removeEventListener("click", onCancel);
+            branchConfirmDelete.removeEventListener("click", onConfirm);
+            branchConfirmModal.removeEventListener("click", onBackdrop);
+            window.removeEventListener("keydown", onKey);
+            resolve(confirmed);
+          };
+          const onCancel = () => close(false);
+          const onConfirm = () => close(true);
+          const onBackdrop = (event) => {
+            if (event.target === branchConfirmModal) close(false);
+          };
+          const onKey = (event) => {
+            if (event.key === "Escape") close(false);
+          };
+
+          branchConfirmClose.addEventListener("click", onCancel);
+          branchConfirmCancel.addEventListener("click", onCancel);
+          branchConfirmDelete.addEventListener("click", onConfirm);
+          branchConfirmModal.addEventListener("click", onBackdrop);
+          window.addEventListener("keydown", onKey);
+        });
+      }
+
       async function deletePullRequestBranch(button) {
         if (!currentRemediationFindingId) {
           showFeedback("No hay rama asociada al hallazgo actual.", "error");
           return;
         }
-        const confirmed = window.confirm(`¿Eliminar la rama ${currentPrBranch || ""} en GitHub?`);
+        const confirmed = await confirmBranchDeletion(currentPrBranch || `security-fix-${currentRemediationFindingId}`);
         if (!confirmed) return;
 
         const orig = button.textContent;
@@ -2159,8 +2351,14 @@
           const response = await fetch(`/api/remediate/${currentRemediationFindingId}/pr`, { method: "DELETE" });
           const result = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(formatApiError(result.detail, "Error al eliminar la rama."));
-          button.style.display = "none";
-          showFeedback("Rama eliminada de GitHub.", "success");
+          currentPrBranch = undefined;
+          resetPullRequestAction(true);
+          showFeedback(
+            result.pr_closed
+              ? "Pull Request cerrado, rama eliminada y estado local limpiado."
+              : "Rama eliminada y estado local limpiado.",
+            "success"
+          );
         } catch (error) {
           button.disabled = false;
           button.textContent = orig;
@@ -2174,7 +2372,7 @@
           showFeedback("AI Engine offline: inicia Ollama para generar remediaciones locales.", "error");
           return;
         }
-        const orig = button.textContent;
+        const origHtml = button.innerHTML;
         button.disabled = true;
         button.innerHTML = `<span class="spinner"></span> Pensando…`;
         showFeedback("El motor de IA está generando una remediación sugerida.", "info");
@@ -2185,12 +2383,15 @@
           if (!response.ok) throw new Error(formatApiError(result.detail, `HTTP ${response.status}`));
           record.has_remediation = true;
           showRemediationModal(record, result.patch || "No patch was returned.");
-          showFeedback("Remediación generada y guardada.", "success");
+          const msg = result.cached
+            ? "Remediación recuperada del caché — no se llamó a Ollama."
+            : "Remediación generada y guardada.";
+          showFeedback(msg, "success");
         } catch (error) {
           showFeedback(`No se pudo generar la remediación: ${error.message}`, "error");
         } finally {
           button.disabled = false;
-          button.textContent = orig;
+          button.innerHTML = origHtml;
         }
       }
 
@@ -2588,7 +2789,7 @@
           viewFindingsBtn.style.color = "var(--t-dim)";
           viewReportBtn.style.background = "var(--t-hi)";
           viewReportBtn.style.color = "var(--bg)";
-          exportPdfBtn.style.display = "";
+          exportPdfBtn.style.display = "flex";
           document.querySelectorAll(".nav .links a").forEach(a => a.classList.remove("on"));
           const reportsLink = document.querySelector(".nav .links a:nth-child(4)");
           if (reportsLink) reportsLink.classList.add("on");
@@ -2679,17 +2880,15 @@
         const date = new Date().toLocaleDateString("es-MX", { year: "numeric", month: "long", day: "numeric" });
         const byS = reportData.by_severity || {};
         const byStatus = reportData.by_status || {};
-        const totalFindings = reportData.total_findings || 0;
+        const totalFindings = reportData.total_findings ?? findings.length;
         const overdueCount = reportData.overdue_count || 0;
         const withinSla = totalFindings - overdueCount;
         const sev = (s) => byS[s] || 0;
 
         const sevOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
         const sorted = [...findings].sort((a, b) => (sevOrder[a.severity] ?? 4) - (sevOrder[b.severity] ?? 4));
-        const limited = sorted.slice(0, 50);
-        const hasMore = findings.length > 50;
 
-        const findingsRows = limited.map((f) => {
+        const findingsRows = sorted.map((f) => {
           const deadline = f.sla_deadline ? new Date(f.sla_deadline).toLocaleDateString("es-MX") : "—";
           const filePath = (f.file_path || "—").replace(/.*\/repo\//, "").replace(/.*\/source\//, "");
           const sevColor = ({ CRITICAL: "#dc2626", HIGH: "#991b1b", MEDIUM: "#b45309", LOW: "#1d4ed8" })[f.severity] || "#555";
@@ -2795,8 +2994,8 @@
 
           ${chartsSection}
 
-          <div class="section">
-            <h2 class="section-title">3. Lista de Hallazgos${hasMore ? " (Top 50 por severidad)" : ""}</h2>
+          <div class="section pdf-findings-section">
+            <h2 class="section-title">3. Lista de Hallazgos (${sorted.length} registros encontrados)</h2>
             <table>
               <tr>
                 <th style="width:64px;">ID</th>
@@ -2809,14 +3008,15 @@
               </tr>
               ${findingsRows}
             </table>
-            ${hasMore ? `<p class="note">Mostrando 50 de ${findings.length} hallazgos. Ordenados por severidad descendente.</p>` : ""}
+            <p class="note">Mostrando todos los hallazgos encontrados en el scan. Ordenados por severidad descendente.</p>
           </div>`;
       }
 
       async function exportToPDF() {
         if (!selectedProject) { showFeedback("Selecciona un proyecto para exportar.", "error"); return; }
+        const labelEl = document.getElementById("export-pdf-label");
         exportPdfBtn.disabled = true;
-        exportPdfBtn.textContent = "Generando PDF…";
+        if (labelEl) labelEl.textContent = "Generando…";
 
         try {
           const [reportRes, findingsRes] = await Promise.all([
@@ -2831,82 +3031,113 @@
           const statusImg = chartStatus   ? chartStatus.toBase64Image("image/png", 1.0)   : null;
           const rulesImg  = chartRules    ? chartRules.toBase64Image("image/png", 1.0)    : null;
 
-          const PDF_MARGIN = 22; // margen horizontal en unidades PDF (px)
-          const PDF_TOP    = 12; // margen superior
-          const PDF_BOT    = 16; // margen inferior (espacio para el pie de página)
           const { jsPDF } = window.jspdf;
-          const doc = new jsPDF({ format: "a4", unit: "px", hotfixes: ["px_scaling"] });
+          const doc  = new jsPDF({ format: "a4", unit: "px", hotfixes: ["px_scaling"] });
           const pageW = doc.internal.pageSize.getWidth();
           const pageH = doc.internal.pageSize.getHeight();
-          const contentW = pageW - 2 * PDF_MARGIN; // ancho del área de contenido
 
-          // containerW = contentW: con scale=2 canvas.width = contentW*2, ratio = 2
-          const containerW = Math.floor(contentW);
-          const container = document.createElement("div");
-          container.style.cssText = `position:absolute;left:-9999px;top:0;width:${containerW}px;background:#ffffff;color:#1a1a2e;font-family:Arial,sans-serif;`;
-          container.innerHTML = buildPdfHtml(selectedProject, reportData, allFindings, sevImg, statusImg, rulesImg);
-          document.body.appendChild(container);
+          // ── Márgenes explícitos ──────────────────────────────────────────────
+          const ML = 44;   // margen izquierdo y derecho (doble del valor previo)
+          const MT = 32;   // margen superior (doble del valor previo)
+          const MB = 48;   // margen inferior (doble del valor previo y espacio para footer)
+          const contentW = pageW - 2 * ML;
+          const usableH  = pageH - MT - MB;   // altura útil por página
 
-          const canvas = await html2canvas(container, {
-            scale: 2,
-            backgroundColor: "#ffffff",
-            useCORS: true,
-            allowTaint: true,
-            logging: false,
-          });
-          document.body.removeChild(container);
-
-          // canvas.width = containerW*2 ≈ contentW*2; ratio ≈ 2 (igual al original sin margen)
-          const ratio = canvas.width / contentW;
-          const usableH = pageH - PDF_TOP - PDF_BOT; // altura útil sin márgenes
-          const pageHpx = usableH * ratio;
-
-          let yOffset = 0;
-          let pageNum = 1;
           const today = new Date().toLocaleDateString("es-MX");
+          let pageNum = 1;
+          let hasRenderedPage = false;
 
-          while (yOffset < canvas.height) {
-            if (yOffset > 0) doc.addPage();
+          const renderPdfSection = async (sectionName) => {
+            // ── Renderizar HTML fuera de pantalla ────────────────────────────────
+            const containerW = Math.floor(contentW);
+            const container  = document.createElement("div");
+            container.style.cssText =
+              `position:absolute;left:-9999px;top:0;width:${containerW}px;` +
+              `background:#ffffff;color:#1a1a2e;font-family:Arial,sans-serif;`;
+            container.innerHTML = buildPdfHtml(
+              selectedProject, reportData, allFindings, sevImg, statusImg, rulesImg
+            );
 
-            const sliceH = Math.min(pageHpx, canvas.height - yOffset);
-            const sliceCanvas = document.createElement("canvas");
-            sliceCanvas.width = canvas.width;
-            sliceCanvas.height = sliceH;
-            const ctx = sliceCanvas.getContext("2d");
-            ctx.drawImage(canvas, 0, -yOffset);
-            const imgData = sliceCanvas.toDataURL("image/jpeg", 0.93);
-            // addImage con margen horizontal PDF_MARGIN y margen vertical PDF_TOP
-            doc.addImage(imgData, "JPEG", PDF_MARGIN, PDF_TOP, contentW, sliceH / ratio);
+            if (sectionName === "summary") {
+              container.querySelector(".pdf-findings-section")?.remove();
+            } else if (sectionName === "findings") {
+              Array.from(container.children).forEach((child) => {
+                const isStyle = child.tagName.toLowerCase() === "style";
+                const isFindings = child.classList.contains("pdf-findings-section");
+                if (!isStyle && !isFindings) child.remove();
+              });
+            }
 
-            doc.setFontSize(7);
-            doc.setTextColor(160, 160, 160);
-            doc.text(`Generado por AI DevSecOps Control Plane · ${today} · Confidencial`, PDF_MARGIN + 4, pageH - 5);
-            doc.text(`Página ${pageNum}`, pageW - PDF_MARGIN - 4, pageH - 5, { align: "right" });
+            document.body.appendChild(container);
 
-            yOffset += pageHpx;
-            pageNum++;
-          }
+            const canvas = await html2canvas(container, {
+              scale: 2, backgroundColor: "#ffffff",
+              useCORS: true, allowTaint: true, logging: false,
+            });
+            document.body.removeChild(container);
+
+            // ratio exacto: cuántos píxeles de canvas = 1 px de PDF
+            const ratio = canvas.width / contentW;
+
+            // altura de canvas que cabe en una página útil
+            const pageHpx = Math.floor(usableH * ratio);
+            let yOffset = 0;
+
+            while (yOffset < canvas.height) {
+              if (hasRenderedPage) doc.addPage();
+
+              // sliceH nunca supera pageHpx NI lo que queda de canvas
+              const remaining = canvas.height - yOffset;
+              const sliceH    = Math.min(pageHpx, remaining);
+
+              // Crear slice del canvas
+              const sliceCanvas    = document.createElement("canvas");
+              sliceCanvas.width    = canvas.width;
+              sliceCanvas.height   = sliceH;
+              const ctx = sliceCanvas.getContext("2d");
+              ctx.drawImage(canvas, 0, -yOffset);
+              const imgData = sliceCanvas.toDataURL("image/jpeg", 0.93);
+
+              // Dibujar imagen respetando MT arriba y MB abajo
+              // La altura de imagen en unidades PDF = sliceH / ratio (máximo = usableH)
+              const imgH = sliceH / ratio;
+              doc.addImage(imgData, "JPEG", ML, MT, contentW, imgH);
+
+              // Footer centrado en el margen inferior
+              const footerY = MT + usableH + MB / 2;
+              doc.setFontSize(7);
+              doc.setTextColor(160, 160, 160);
+              doc.text(
+                `Generado por AI DevSecOps Control Plane · ${today} · Confidencial`,
+                ML + 4, footerY
+              );
+              doc.text(`Página ${pageNum}`, pageW - ML - 4, footerY, { align: "right" });
+
+              yOffset += pageHpx;
+              pageNum++;
+              hasRenderedPage = true;
+            }
+          };
+
+          await renderPdfSection("summary");
+          await renderPdfSection("findings");
 
           const safeName = selectedProject.name.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 40);
-          const dateStr = new Date().toISOString().split("T")[0];
+          const dateStr  = new Date().toISOString().split("T")[0];
           doc.save(`security-report-${safeName}-${dateStr}.pdf`);
           showFeedback("PDF exportado correctamente.", "success");
         } catch (e) {
           showFeedback(`Error exportando PDF: ${e.message}`, "error");
         } finally {
           exportPdfBtn.disabled = false;
-          exportPdfBtn.innerHTML = `
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <path d="M3 8 L8 3 L13 8 M8 3 V13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            Export
-          `;
+          exportPdfBtn.style.display = "flex";
+          const labelEl2 = document.getElementById("export-pdf-label");
+          if (labelEl2) labelEl2.textContent = t("btn-export-pdf") || "Exportar como PDF";
         }
       }
 
       langToggle.addEventListener("click", () => {
         currentLang = currentLang === "es" ? "en" : "es";
-        localStorage.setItem("lang", currentLang);
         langToggle.textContent = currentLang === "es" ? "ES" : "EN";
         langToggle.style.fontWeight = "700";
         applyI18n();

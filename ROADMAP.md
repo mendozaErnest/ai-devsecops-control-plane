@@ -63,6 +63,20 @@
 - [x] Remediation modal description: ES↔EN toggle button (shows when BANDIT_ES translation exists); BANDIT_ES dictionary covers ~35 common Bandit rules
 - [x] PDF margins: container width uses contentW/2 so canvas=contentW after scale=2; addImage with PDF_MARGIN=22px horizontal offset
 
+### Phase 2 — Dashboard UX V (2026-05-25)
+- [x] PDF top/bottom margins: PDF_TOP=14, PDF_BOT=22; footer centered at `pageH - PDF_BOT/2` — no content overlap on any page
+- [x] Export button relocated: removed from global header → sticky bar inside #findings-report-view only; PDF document icon, red (#c62828), "Exportar como PDF" / "Export as PDF"
+- [x] Export button i18n: `btn-export-pdf` key in both locales; label updated by `applyI18n()` via data-i18n; `finally` block uses `t("btn-export-pdf")` to restore label
+- [x] Report chart spacing: `#report-content` flex-column gap:10px; KPI grid margin-bottom:0; charts-grid gap:10px; chart-label font-size:.72rem, margin-bottom:6px
+
+### Phase 2 — Reliability & Dedup (2026-05-25)
+- [x] PR button icon inline: `white-space:nowrap` on button + `flex-shrink:0;display:block` on SVG — icon and text always on same line
+- [x] Remediation cache: `POST /api/remediate/{id}` checks for existing `Remediation` row first; returns `cached:true` without calling Ollama; dashboard shows differentiated feedback
+- [x] PR persistence: `Remediation.pr_url` + `Remediation.pr_branch` fields; SQLite migration in `ensure_sqlite_schema()`
+- [x] PR deduplication: `GET /api/remediate/{id}/pr` returns persisted PR data; `POST` checks GitHub for open PR before creating a new one; persists result
+- [x] `get_existing_open_pr_for_branch()` wrapper in `github_client.py` — manages httpx client internally
+- [x] Dashboard `checkExistingPR()`: silently pre-fills PR link when modal opens if PR already exists
+
 ---
 
 ## Pendiente
