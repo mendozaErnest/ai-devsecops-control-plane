@@ -148,7 +148,7 @@ def test_sonarqube_adapter_normalizes_rest_issues(tmp_path):
         project_key="demo-project",
     )
 
-    with patch("src.scanners.sonarqube_adapter.httpx.Client", return_value=httpx.Client(transport=transport, base_url=adapter.base_url, auth=(adapter.token, ""))):
+    with patch("src.scanners.sonarqube_adapter.httpx.Client", return_value=httpx.Client(transport=transport, base_url=adapter.base_url)):
         findings = adapter.execute_scan(str(tmp_path))
 
     assert [finding.severity for finding in findings] == ["MEDIUM", "HIGH"]
@@ -176,7 +176,7 @@ def test_sonarqube_adapter_auth_failure_returns_clear_error(tmp_path):
         project_key="demo-project",
     )
 
-    with patch("src.scanners.sonarqube_adapter.httpx.Client", return_value=httpx.Client(transport=transport, base_url=adapter.base_url, auth=(adapter.token, ""))):
+    with patch("src.scanners.sonarqube_adapter.httpx.Client", return_value=httpx.Client(transport=transport, base_url=adapter.base_url)):
         findings = adapter.execute_scan(str(tmp_path))
 
     assert findings == []

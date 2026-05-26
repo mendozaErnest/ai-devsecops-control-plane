@@ -1,0 +1,6 @@
+projectKey=ai-devsecops-control-plane
+serverUrl=http://localhost:9000
+serverVersion=26.5.0.122743
+dashboardUrl=http://localhost:9000/dashboard?id=ai-devsecops-control-plane
+ceTaskId=6cd3df47-2283-4937-b96f-b946382a6eac
+ceTaskUrl=http://localhost:9000/api/ce/task?id=6cd3df47-2283-4937-b96f-b946382a6eac

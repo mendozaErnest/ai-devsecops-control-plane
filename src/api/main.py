@@ -179,10 +179,35 @@ def get_allowed_scan_roots() -> list[Path]:
     return roots
 
 
+def remap_legacy_path(target_path: str) -> str:
+    """Translate a host-absolute path to the current PROJECT_ROOT if it no longer exists.
+
+    Handles the case where projects were registered while the API ran on the host
+    (path: /home/user/.../workspace/uploads/UUID/repo) but now the API runs inside
+    Docker where the same tree is mounted at /app/workspace/uploads/UUID/repo.
+    """
+    path = Path(target_path)
+    if path.exists():
+        return target_path
+
+    _ANCHORS = ("workspace/uploads/", "workspace/")
+    for anchor in _ANCHORS:
+        anchor_str = str(path)
+        idx = anchor_str.find(anchor)
+        if idx != -1:
+            relative_tail = anchor_str[idx:]
+            remapped = PROJECT_ROOT / relative_tail
+            if remapped.exists():
+                return str(remapped)
+
+    return target_path
+
+
 def validate_scan_target(target_path: str) -> str:
     if not target_path.strip():
         raise HTTPException(status_code=400, detail="target_path is required")
 
+    target_path = remap_legacy_path(target_path)
     expanded_path = Path(target_path).expanduser()
 
     if not os.path.exists(expanded_path):
@@ -663,6 +688,51 @@ async def scan_code(request: ScanRequest | None = None):
     return await run_scan(target_path, technology)
 
 
+@app.post("/api/scan/sonar")
+async def scan_with_sonar(target_path: str = "."):
+    """Fetch SonarQube issues and persist them. Optionally triggers sonar-scanner CLI first."""
+    import logging as _logging
+    from src.scanners.sonarqube_adapter import SonarQubeAdapter, run_sonar_scan
+
+    _logger = _logging.getLogger(__name__)
+
+    resolved_path = (
+        str(PROJECT_ROOT)
+        if target_path == "."
+        else validate_scan_target(target_path)
+    )
+
+    # Try CLI scan; skip gracefully if sonar-scanner is not installed
+    cli_result = None
+    try:
+        cli_result = await asyncio.to_thread(run_sonar_scan, resolved_path)
+    except RuntimeError as exc:
+        _logger.warning("sonar-scanner CLI skipped: %s", exc)
+
+    adapter = SonarQubeAdapter()
+    findings = await asyncio.to_thread(adapter.execute_scan, resolved_path)
+
+    if adapter.error and not findings:
+        raise HTTPException(status_code=500, detail=adapter.error)
+
+    saved = await asyncio.to_thread(
+        persist_scan,
+        resolved_path,
+        "python",
+        adapter,
+        findings,
+    )
+
+    return {
+        "scan_submitted": cli_result is not None,
+        "issues_fetched": len(findings),
+        "new_findings": saved,
+        "sonarqube_url": adapter.base_url,
+        "project_key": adapter.project_key or adapter.derive_project_key(resolved_path),
+        "warning": adapter.error,
+    }
+
+
 @app.get("/api/ai-status")
 async def ai_status():
     return await check_ollama_status()
@@ -1125,15 +1195,25 @@ def validate_ipv4(ip: str) -> str:
 async def ping(ip: str):
     safe_ip = validate_ipv4(ip)
     command = ["ping", "-c", "4", safe_ip]
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=503,
+            detail="ping binary not available in this container. Rebuild the image.",
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=408, detail="Ping timeout")
 
     return {
-        "command": command,
+        "ip": safe_ip,
         "returncode": result.returncode,
+        "reachable": result.returncode == 0,
         "stdout": result.stdout,
         "stderr": result.stderr,
     }

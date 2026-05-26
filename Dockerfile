@@ -7,6 +7,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         git \
+        iputils-ping \
         nodejs \
         npm \
     && rm -rf /var/lib/apt/lists/*

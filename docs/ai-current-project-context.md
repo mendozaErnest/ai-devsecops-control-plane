@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-26 (Quality-first: Pylint/ESLint/SonarQube adapters, dashboard custom Quality profile, Docker ZAP/Sonar ready)
+Ultima actualizacion: 2026-05-26 (badge origen detecta SonarQube por rule_id namespace; ping 500 corregido — iputils-ping en Dockerfile + FileNotFoundError handling)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -190,6 +190,7 @@ para parchear BanditAdapter y CombinedScannerAdapter en su modulo de origen.
 - PUT  /api/profiles/{id}                   → actualiza perfil
 - GET  /api/findings/{finding_id}/file_content → contenido completo del archivo fuente
 - GET  /api/reports/project/{id}            → reporte by_severity/status/top_rules
+- POST /api/scan/sonar                      → fetch SonarQube issues + persist (CLI optional)
 - POST /api/webhooks/github                 → webhook PR con HMAC-SHA256
 
 ---
@@ -215,7 +216,12 @@ ScanOrchestrator._run_quality() ejecuta adapters reales segun ScanProfile:
 - python/angular/typescript/java + quality_tool=sonarqube → SonarQubeAdapter REST.
 - Java Quality por CLI local queda pendiente; Java puede consumir findings SonarQube si el proyecto ya fue analizado en Sonar.
 - Si falta el binario (`pylint`, `node_modules/.bin/eslint` o `npx --no-install eslint`), el adapter retorna [] y el orquestador reporta el error sin tumbar todo el scan.
-- SonarQube usa `SONARQUBE_URL`, `SONARQUBE_TOKEN` y opcionalmente `SONARQUBE_PROJECT_KEY`; si no hay project key deriva una desde el nombre del target_path.
+- SonarQube usa `SONARQUBE_URL`, `SONARQUBE_TOKEN` y `SONARQUBE_PROJECT_KEY`; si no hay project key deriva una desde target_path.
+- Auth: Bearer token (`Authorization: Bearer <token>`), no Basic Auth — compatible con SonarQube Community v26+.
+- `run_sonar_scan(target_path)`: invoca sonar-scanner CLI como subprocess; si el binario no está en PATH lanza RuntimeError (el endpoint lo captura y sigue).
+- `fetch_sonar_issues(page_size)`: consulta REST `/api/issues/search` con Bearer token; valida 401/404 con mensajes claros.
+- `POST /api/scan/sonar`: intenta CLI (graceful skip), llama `SonarQubeAdapter.execute_scan()`, persiste con `persist_scan()`.
+- `SONARQUBE_URL` en `.env` apunta a `http://localhost:9000` para dev local; cambiar a `http://sonarqube:9000` en Docker.
 
 ---
 
@@ -270,6 +276,7 @@ src/dashboard/index.html capacidades actuales:
 - Modal 2 pasos: Paso 1 = seleccion de ScanProfile (cards), Paso 2 = ZIP/clone.
   - Paso 1: cards con iconos SVG inline (Py azul, Angular rojo, Java ☕, Full Scan escudo, Custom engranaje), descripcion de herramientas y badge de stack. Hover resaltado via CSS .profile-card.
   - Paso 2: sub-selector GitHub / GitLab con SVG logos; placeholder del input de URL cambia segun seleccion (setCloneSource()).
+- Badge de origen del scanner: `detectTool(finding)` infiere la herramienta por `rule_id` namespace (`python:` / `python.lang` / `web:` / `java:` / `typescript:` / `javascript:` / `gitlab.bandit.` → SonarQube; `B\d{3}` → Bandit; `/` en rule_id → Semgrep; etc.). Fallback al campo `finding.tool`. SonarQube=azul, Bandit=amarillo, Semgrep=celeste, ESLint=rojo, Pylint=verde, desconocido=gris. ✅
 - Panel Custom con DAST deshabilitado (Proximamente) y Quality habilitable; crea ScanProfile real con `quality_tool=pylint` para Python o `quality_tool=eslint` para Angular/TypeScript.
 - Tabla de hallazgos con paginacion (PAGE_SIZE=20), badge de severidad inline (CRIT/HIGH/MED/LOW pill rojo/naranja/amarillo/azul).
 - Filtros chip funcionales: Todos / Critical / High / Breach — resetean a pagina 1. ✅
@@ -301,7 +308,7 @@ tests/test_github_path.py             (4 tests)
 tests/test_odc_adapter.py             (5 tests)
 tests/test_pip_audit_adapter.py       (5 tests)
 tests/test_quality_adapters.py        (7 tests)
-tests/test_safe_patching_python.py    (6 tests)  ← nuevo
+tests/test_safe_patching_python.py    (6 tests)
 tests/test_scan_profile.py            (11 tests)
 tests/test_semantic_patching.py       (11 tests)
 tests/test_semgrep_adapter.py         (4 tests)
@@ -335,7 +342,9 @@ Reglas permanentes:
 
 1. DAST runner sigue como placeholder — retorna [].
 2. Validacion Angular/Java es heuristica (brace-counting), no parser real.
-3. Java Quality local sigue pendiente; SonarQube requiere proyecto previamente analizado para devolver findings.
+3. Java Quality local sigue pendiente; SonarQube requiere sonar-scanner CLI instalado para analizar y poblar findings (0 issues hasta primer análisis CLI).
+7. sonar-scanner CLI instalado en ~/.local/bin/sonar-scanner v6.2.1. Primer análisis real ejecutado: 125 issues importados. sonar-project.properties en raíz del repo. Para dispararlo desde el endpoint POST /api/scan/sonar se requiere reiniciar el servidor (fallback path ya codificado en run_sonar_scan).
+8. GET /api/ping — binario `ping` no estaba en python:3.12-slim. Fix: iputils-ping añadido al Dockerfile + FileNotFoundError → HTTP 503 graceful en el endpoint (requerirá `docker compose build api && docker compose up -d api` para que el rebuild aplique).
 4. workspace/ puede contener uploads temporales; no versionar.
 5. ensure_sqlite_schema() es SQLite-only; desactivar para PostgreSQL.
 6. El contexto del archivo usa Finding.line_start; si el scanner reporta una línea incorrecta el contexto puede mostrar código diferente al snippet real.
@@ -345,7 +354,14 @@ Reglas permanentes:
 ## Proximos Pasos Recomendados
 
 Inmediato (proxima sesion):
-1. DAST adapter real con OWASP ZAP o validacion post-patch `tsc --noEmit` / Maven-Java.
+1. ✅ sonar-scanner CLI instalado y primer análisis real ejecutado (125 issues).
+2. ✅ build_pr_body() con formato estructurado (🔒 Security Fix, Herramienta, Problema, Fix aplicado, Referencias CWE).
+3. ✅ Badge de origen en dashboard — detectTool(finding) por rule_id namespace; SonarQube/Bandit/Semgrep/ESLint/Pylint coloreados.
+4. ✅ Ping 500 corregido — iputils-ping en Dockerfile + FileNotFoundError graceful (HTTP 503) + timeout 15s.
+5. `docker compose build api && docker compose up -d api` — rebuild para que iputils-ping entre en el contenedor.
+6. Reiniciar servidor uvicorn para que POST /api/scan/sonar active CLI automáticamente (scan_submitted: true).
+7. DAST adapter real con OWASP ZAP o validacion post-patch `tsc --noEmit` / Maven-Java.
+8. Generalizar POST /api/scan para aceptar target_path parametrizable.
 
 Phase 2 ya implementado ✅:
 - normalize_file_path_for_github(): rutas absolutas workspace→relativas para GitHub API.
