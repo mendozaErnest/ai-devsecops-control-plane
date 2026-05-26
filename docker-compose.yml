@@ -11,6 +11,8 @@ services:
       - .env
     environment:
       OLLAMA_HOST: http://ollama:11434
+      ZAP_API_URL: http://zap:8080
+      SONARQUBE_URL: http://sonarqube:9000
     ports:
       - "8000:8000"
     depends_on:
@@ -53,5 +55,37 @@ services:
     environment:
       - OLLAMA_HOST=http://ollama:11434
 
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    profiles: ["dast"]
+    command:
+      - zap.sh
+      - -daemon
+      - -host
+      - 0.0.0.0
+      - -port
+      - "8080"
+      - -config
+      - api.disablekey=true
+      - -config
+      - api.addrs.addr.name=.*
+      - -config
+      - api.addrs.addr.regex=true
+    ports:
+      - "8081:8080"
+
+  sonarqube:
+    image: sonarqube:community
+    profiles: ["quality"]
+    ports:
+      - "9000:9000"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+
 volumes:
   ollama_data:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:

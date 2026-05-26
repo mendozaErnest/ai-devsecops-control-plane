@@ -81,6 +81,7 @@
 ### Phase 3 — Quality First (2026-05-26)
 - [x] Pylint quality adapter for Python: JSON parsing, HIGH/MEDIUM/LOW mapping, missing-binary handling
 - [x] ESLint quality adapter for Angular/TypeScript: local `node_modules/.bin/eslint` or `npx --no-install eslint`, JSON parsing, missing-binary handling
+- [x] SonarQube Community REST adapter: imports unresolved issues via `SONARQUBE_URL`, `SONARQUBE_TOKEN`, optional `SONARQUBE_PROJECT_KEY`
 - [x] `ScanOrchestrator._run_quality`: routes `quality_tool=pylint|eslint`, reports tool errors without crashing the scan
 - [x] Dashboard custom profile: Code Quality selectable; creates a real ScanProfile with `quality_enabled` + `quality_tool`
 - [x] Tests: adapter normalization/missing binary + orchestrator Quality success/error paths
@@ -96,7 +97,7 @@
 ### Phase 3 — Quality + DAST
 - [ ] DAST adapter real (OWASP ZAP)
 - [x] Quality adapter ligero (Pylint / ESLint)
-- [ ] Quality adapter SonarQube Community
+- [x] Quality adapter SonarQube Community
 - [ ] Post-patch validation: `tsc --noEmit` (Angular), `javac`/Maven (Java)
 - [x] Diff view with LCS for line-level precision — `renderDiffView` v9: `max-height:calc(85vh-200px)` scroll (no DOM parent manipulation), `CONTEXT=20`, pad rows `#161b22` (visible neutral), aligned delete/insert rows, real line numbers, `···` separators, snippet fallback
 - [ ] Multi-finding PR (batch remediation in one branch)

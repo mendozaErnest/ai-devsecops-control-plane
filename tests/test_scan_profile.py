@@ -131,6 +131,29 @@ def test_orchestrator_quality_runs_when_enabled():
     assert result.errors == []
 
 
+def test_orchestrator_sonarqube_quality_runs_when_enabled():
+    profile = ScanProfile(
+        name="Sonar Quality",
+        sast_enabled=False,
+        dast_enabled=False,
+        quality_enabled=True,
+        quality_tool="sonarqube",
+    )
+
+    mock_finding = MagicMock()
+    mock_finding.fingerprint = "sonar-fp"
+
+    with patch("src.scanners.sonarqube_adapter.SonarQubeAdapter") as MockSonar:
+        MockSonar.return_value.execute_scan.return_value = [mock_finding]
+        MockSonar.return_value.error = None
+        orchestrator = ScanOrchestrator()
+        result = orchestrator.run(profile, "/some/path", "python")
+
+    assert len(result.findings) == 1
+    assert "quality" in result.tools_run
+    assert result.errors == []
+
+
 def test_orchestrator_quality_missing_tool_is_reported_without_crashing():
     profile = ScanProfile(
         name="Python Quality",
@@ -229,6 +252,12 @@ def test_api_get_profiles(test_client):
     assert len(profiles) >= 4
     names = {p["name"] for p in profiles}
     assert "Python SAST" in names
+
+
+def test_api_health(test_client):
+    response = test_client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
 
 
 def test_api_create_profile(test_client):

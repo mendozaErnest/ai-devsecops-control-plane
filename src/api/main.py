@@ -96,6 +96,11 @@ async def index():
     return FileResponse(DASHBOARD_INDEX)
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 @app.get("/api/profiles")
 async def list_profiles():
     with Session(engine) as session:
@@ -193,6 +198,36 @@ def validate_scan_target(target_path: str) -> str:
         )
 
     return str(resolved_path)
+
+
+def is_allowed_scan_path(path: Path) -> bool:
+    resolved_path = path.resolve()
+    return any(
+        resolved_path == root or resolved_path.is_relative_to(root)
+        for root in get_allowed_scan_roots()
+    )
+
+
+def resolve_finding_file_path(file_path: str) -> Path:
+    raw_path = Path(file_path).expanduser()
+    candidates: list[Path] = []
+
+    if raw_path.is_absolute():
+        candidates.append(raw_path)
+    else:
+        candidates.append(PROJECT_ROOT / raw_path)
+
+    parts = raw_path.parts
+    for marker in ("workspace", "src", "code", "tests", "docs", "helm"):
+        if marker in parts:
+            marker_index = parts.index(marker)
+            candidates.append(PROJECT_ROOT / Path(*parts[marker_index:]))
+
+    for candidate in candidates:
+        if candidate.exists() and is_allowed_scan_path(candidate):
+            return candidate.resolve()
+
+    return candidates[0]
 
 
 def normalize_technology(technology: str) -> str:
@@ -889,11 +924,17 @@ async def get_finding_file_content(finding_id: uuid.UUID):
         if not finding.file_path:
             raise HTTPException(status_code=404, detail="Finding has no file_path")
     try:
-        with open(finding.file_path, "r", encoding="utf-8", errors="replace") as f:
+        resolved_file_path = resolve_finding_file_path(finding.file_path)
+        if not resolved_file_path.exists():
+            raise FileNotFoundError(str(resolved_file_path))
+        if not is_allowed_scan_path(resolved_file_path):
+            raise HTTPException(status_code=403, detail="Finding file is outside the allowed scan roots")
+
+        with resolved_file_path.open("r", encoding="utf-8", errors="replace") as f:
             content = f.read()
         return {
             "content": content,
-            "file_path": finding.file_path,
+            "file_path": str(resolved_file_path),
             "line_number": finding.line_start if finding.line_start else 1,
         }
     except FileNotFoundError:

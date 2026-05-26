@@ -140,6 +140,7 @@ class ScanOrchestrator:
     ) -> list[Finding]:
         from src.scanners.eslint_adapter import EslintAdapter
         from src.scanners.pylint_adapter import PylintAdapter
+        from src.scanners.sonarqube_adapter import SonarQubeAdapter
 
         quality_tool = (profile.quality_tool or "").strip().lower()
         norm_tech = technology.strip().lower()
@@ -148,6 +149,8 @@ class ScanOrchestrator:
             adapter = PylintAdapter()
         elif quality_tool == "eslint" and norm_tech in {"angular", "typescript"}:
             adapter = EslintAdapter()
+        elif quality_tool == "sonarqube" and norm_tech in {"python", "angular", "typescript", "java"}:
+            adapter = SonarQubeAdapter()
         else:
             message = f"No Quality adapter for technology={technology} quality_tool={profile.quality_tool}"
             logger.warning(message)
