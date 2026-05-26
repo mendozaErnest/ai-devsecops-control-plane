@@ -27,9 +27,11 @@ from src.ai_engine.remediator import (
 )
 from src.integrations.github_client import (
     GitHubClientError,
+    close_open_pr_for_branch,
     create_check_run,
     create_security_pr,
     delete_security_branch,
+    get_existing_open_pr_for_branch,
     update_check_run,
 )
 from src.scanners.escaneo import persist_scan, run_scan
@@ -633,8 +635,28 @@ async def ai_status():
 
 @app.post("/api/remediate/{finding_id}")
 async def remediate_finding(finding_id: uuid.UUID):
-    status = await check_ollama_status()
+    with Session(engine) as session:
+        finding = session.get(Finding, finding_id)
+        if not finding:
+            raise HTTPException(status_code=404, detail="Finding not found")
 
+        # Cache hit: return existing remediation without calling Ollama
+        existing = session.exec(
+            select(Remediation)
+            .where(Remediation.finding_id == finding_id)
+            .order_by(Remediation.id.desc())
+        ).first()
+
+        if existing:
+            return {
+                "finding_id": str(finding_id),
+                "remediation_id": str(existing.id),
+                "patch": existing.patch_diff,
+                "cached": True,
+            }
+
+    # No prior remediation — validate Ollama before generating
+    status = await check_ollama_status()
     if not status.get("available"):
         raise HTTPException(
             status_code=503,
@@ -647,10 +669,6 @@ async def remediate_finding(finding_id: uuid.UUID):
 
     with Session(engine) as session:
         finding = session.get(Finding, finding_id)
-
-        if not finding:
-            raise HTTPException(status_code=404, detail="Finding not found")
-
         finding_details = build_finding_details(session, finding)
 
     patch = await generate_patch(finding_details)
@@ -671,9 +689,30 @@ async def remediate_finding(finding_id: uuid.UUID):
         session.refresh(remediation)
 
         return {
-            "finding_id": finding_id,
-            "remediation_id": remediation.id,
+            "finding_id": str(finding_id),
+            "remediation_id": str(remediation.id),
             "patch": patch,
+            "cached": False,
+        }
+
+
+@app.get("/api/remediate/{finding_id}/pr")
+async def get_remediation_pr(finding_id: uuid.UUID):
+    """Return persisted PR data for a finding, or 404 if none exists."""
+    with Session(engine) as session:
+        remediation = session.exec(
+            select(Remediation)
+            .where(Remediation.finding_id == finding_id)
+            .order_by(Remediation.id.desc())
+        ).first()
+
+        if not remediation or not remediation.pr_url:
+            raise HTTPException(status_code=404, detail="No PR found for this finding")
+
+        return {
+            "finding_id": str(finding_id),
+            "pr_url": remediation.pr_url,
+            "branch": remediation.pr_branch,
         }
 
 
@@ -686,27 +725,56 @@ async def create_remediation_pr(finding_id: uuid.UUID):
             raise HTTPException(status_code=404, detail="Finding not found")
 
         remediations = session.exec(
-            select(Remediation).where(Remediation.finding_id == finding_id)
+            select(Remediation)
+            .where(Remediation.finding_id == finding_id)
+            .order_by(Remediation.id.desc())
         ).all()
 
         if not remediations:
             raise HTTPException(status_code=404, detail="No remediation found for this finding")
 
-        remediation = remediations[-1]
+        remediation = remediations[0]
         finding_details = build_finding_details(session, finding)
         remediation_text = remediation.patch_diff
+
+    # Proactive check: return existing open PR without creating a duplicate
+    if remediation.pr_url and remediation.pr_branch:
+        try:
+            existing_pr = await get_existing_open_pr_for_branch(remediation.pr_branch)
+            if existing_pr:
+                return {
+                    "finding_id": str(finding_id),
+                    "remediation_id": str(remediation.id),
+                    "pr_url": remediation.pr_url,
+                    "branch": remediation.pr_branch,
+                    "number": existing_pr.get("number"),
+                    "cached": True,
+                }
+            # PR was closed/merged — fall through to create a new one
+        except Exception:
+            pass  # Silently continue if GitHub is unreachable
 
     try:
         pr = await create_security_pr(finding_details, remediation_text)
     except GitHubClientError as exc:
         raise HTTPException(status_code=502, detail=exc.to_dict()) from exc
 
+    # Persist PR data on the remediation row
+    with Session(engine) as session:
+        rem = session.get(Remediation, remediation.id)
+        if rem:
+            rem.pr_url = pr["url"]
+            rem.pr_branch = pr["branch"]
+            session.add(rem)
+            session.commit()
+
     return {
-        "finding_id": finding_id,
-        "remediation_id": remediation.id,
+        "finding_id": str(finding_id),
+        "remediation_id": str(remediation.id),
         "pr_url": pr["url"],
         "branch": pr["branch"],
         "number": pr.get("number"),
+        "cached": False,
     }
 
 
@@ -718,17 +786,38 @@ async def delete_remediation_pr_branch(finding_id: uuid.UUID):
         if not finding:
             raise HTTPException(status_code=404, detail="Finding not found")
 
-    branch_name = f"security-fix-{finding_id}"
+        remediations = session.exec(
+            select(Remediation)
+            .where(Remediation.finding_id == finding_id)
+            .order_by(Remediation.id.desc())
+        ).all()
+
+        persisted_branch = next((rem.pr_branch for rem in remediations if rem.pr_branch), None)
+
+    branch_name = persisted_branch or f"security-fix-{finding_id}"
 
     try:
+        close_result = await close_open_pr_for_branch(branch_name)
         result = await delete_security_branch(branch_name)
     except GitHubClientError as exc:
         raise HTTPException(status_code=502, detail=exc.to_dict()) from exc
 
+    with Session(engine) as session:
+        remediations = session.exec(
+            select(Remediation).where(Remediation.finding_id == finding_id)
+        ).all()
+        for remediation in remediations:
+            remediation.pr_url = None
+            remediation.pr_branch = None
+            session.add(remediation)
+        session.commit()
+
     return {
-        "finding_id": finding_id,
+        "finding_id": str(finding_id),
         "branch": result["branch"],
         "deleted": result["deleted"],
+        "pr_closed": close_result["closed"],
+        "pr_number": close_result["number"],
     }
 
 

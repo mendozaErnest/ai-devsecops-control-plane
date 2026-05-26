@@ -95,3 +95,11 @@ def ensure_sqlite_schema() -> None:
                 connection.execute(text("ALTER TABLE findings ADD COLUMN regression_count INTEGER NOT NULL DEFAULT 0"))
             if "sla_deadline" not in finding_columns:
                 connection.execute(text("ALTER TABLE findings ADD COLUMN sla_deadline DATETIME"))
+
+    if "remediations" in inspector.get_table_names():
+        rem_columns = {col["name"] for col in inspector.get_columns("remediations")}
+        with engine.begin() as connection:
+            if "pr_url" not in rem_columns:
+                connection.execute(text("ALTER TABLE remediations ADD COLUMN pr_url TEXT"))
+            if "pr_branch" not in rem_columns:
+                connection.execute(text("ALTER TABLE remediations ADD COLUMN pr_branch TEXT"))

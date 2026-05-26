@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-25 (Dashboard UX — paginación, filtros chip, iconos botones, HIGH rojo, toggle ES/EN desc, PDF márgenes)
+Ultima actualizacion: 2026-05-25 (Fix cacheado remediación, PR persistido y deduplicado, ícono PR button inline)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -270,6 +270,9 @@ src/dashboard/index.html capacidades actuales:
   - Panel descripcion con toggle ES↔EN: muestra traduccion del diccionario BANDIT_ES (~35 reglas cubiertas) o original ingles. Boton oculto si descripcion ES = EN (sin traduccion disponible). ✅
 - Tab Reportes con graficas Chart.js (by_severity, by_status, overdue).
 - PDF export: contenedor 377px (la mitad del contentW para scale=2), addImage con margen horizontal PDF_MARGIN=22px; footer con numero de pagina en margen. ✅
+- PDF márgenes top/bottom: PDF_TOP=14, PDF_BOT=22; footer en `pageH - PDF_BOT/2` — sin solapamiento en ninguna página. ✅
+- Botón Export relocalizado: eliminado del header global → sticky bar dentro de `#findings-report-view`; ícono PDF documento, rojo #c62828; i18n `btn-export-pdf` ES/EN. ✅
+- Spacing gráficas reporte: `#report-content` flex-column gap:10px; KPI grid margin:0; charts gap:10px; label .72rem / margin-bottom:6px. ✅
 - Indicador AI Engine Online/Offline.
 
 ---
@@ -334,6 +337,11 @@ Phase 2 ya implementado ✅:
 - Diff view split-screen dos columnas (Antes / Despues), responsive en mobile.
 - Diff Viewer v9: scroll via `max-height:calc(85vh - 200px)` explícito (elimina manipulación del padre DOM); CONTEXT=20 líneas; pad rows usan `#161b22` (gris visible) en vez de casi-negro, haciendo el espacio de alineamiento distinguible. ✅
 - Dashboard UX 2026-05-25: paginación tabla (20 items/página), filtros chip activos, iconos SVG en botones, HIGH→rojo, hero margins reducidos, toggle ES/EN descripción modal, PDF con márgenes. ✅
+- Dashboard UX V 2026-05-25: PDF top/bottom margins fix (PDF_TOP=14, PDF_BOT=22, footer centrado), botón Export → tab Reporte sticky bar (ícono doc PDF, rojo, i18n), spacing gráficas (flex gap:10px). ✅
+- PR button icon inline: white-space:nowrap + flex-shrink:0;display:block en SVG. ✅
+- Fix cacheado: POST /api/remediate/{id} retorna cached:true si ya existe remediación — sin llamar Ollama. ✅
+- PR persistido: Remediation.pr_url + pr_branch; GET /api/remediate/{id}/pr; POST detecta PR abierto y lo retorna (cached:true) sin duplicar. ✅
+- Dashboard: checkExistingPR() precarga el link al PR al abrir modal; feedback diferenciado cached/nuevo. ✅
 - ScanProfile cards con iconos SVG, descripciones reales de herramientas, tool badges y hover.
 - Mini-badges de severidad C/H/M/L en lista de proyectos; GET /api/projects incluye findings_summary.
 - Boton "▶ Escanear" en panel de findings. Header global sin boton redundante de scan.
@@ -345,6 +353,9 @@ Phase 2 ya implementado ✅:
 - PDF export via jsPDF + html2canvas + chart.toBase64Image() (portada, resumen, graficas, top-50 findings).
 - GET /api/projects + GET /api/projects/{id}: last_scan_tool y last_scan_at via subquery eficiente.
 - orchestrator._run_sast: instancia adapters directamente (sin os.environ). ✅
+- GET /api/remediate/{finding_id}/pr: retorna pr_url/branch o 404. ✅
+- POST /api/remediate/{finding_id}/pr: detecta PR abierto existente (get_existing_open_pr_for_branch), persiste pr_url+pr_branch en BD. ✅
+- Remediation model: campos pr_url y pr_branch (TEXT, nullable). SQLite migration en ensure_sqlite_schema(). ✅
 
 Tarea B ya implementado ✅:
 - tests/test_safe_patching_python.py: 6 tests cubriendo build_safe_patched_content() y helpers.

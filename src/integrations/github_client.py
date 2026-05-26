@@ -1502,10 +1502,61 @@ async def delete_security_branch(branch_name: str) -> dict:
         headers=build_headers(installation_token),
         timeout=GITHUB_TIMEOUT_SECONDS,
     ) as client:
-        await github_request(
-            client,
-            "DELETE",
-            f"/repos/{repo}/git/refs/heads/{urllib.parse.quote(safe_branch_name, safe='/')}",
-        )
+        try:
+            await github_request(
+                client,
+                "DELETE",
+                f"/repos/{repo}/git/refs/heads/{urllib.parse.quote(safe_branch_name, safe='/')}",
+            )
+        except GitHubClientError as exc:
+            error_text = str(exc)
+            if (
+                "failed with 404" in error_text
+                or ("failed with 422" in error_text and "Reference does not exist" in error_text)
+            ):
+                return {"branch": safe_branch_name, "deleted": False}
+            raise
 
     return {"branch": safe_branch_name, "deleted": True}
+
+
+async def close_open_pr_for_branch(branch_name: str) -> dict:
+    app_id, installation_id, repo, private_key_path, _base_branch = get_github_config()
+    installation_token = await get_installation_token(app_id, installation_id, private_key_path)
+    owner, _, _repo_name = repo.partition("/")
+    safe_branch_name = branch_name.removeprefix("refs/heads/")
+
+    async with httpx.AsyncClient(
+        base_url=GITHUB_API_URL,
+        headers=build_headers(installation_token),
+        timeout=GITHUB_TIMEOUT_SECONDS,
+    ) as client:
+        existing_pr = await get_existing_open_pr(client, repo, owner, safe_branch_name)
+        if not existing_pr:
+            return {"branch": safe_branch_name, "closed": False, "number": None}
+
+        number = existing_pr.get("number")
+        if not number:
+            return {"branch": safe_branch_name, "closed": False, "number": None}
+
+        await github_request(
+            client,
+            "PATCH",
+            f"/repos/{repo}/pulls/{number}",
+            {"state": "closed"},
+        )
+
+    return {"branch": safe_branch_name, "closed": True, "number": number}
+
+
+async def get_existing_open_pr_for_branch(branch_name: str) -> dict | None:
+    """
+    Wrapper around get_existing_open_pr that manages the httpx client internally.
+    Returns the open PR dict or None if not found.
+    Callers should handle exceptions — this function does not swallow them.
+    """
+    repo_full = os.getenv("GITHUB_REPO", "/")
+    owner, _, _ = repo_full.partition("/")
+
+    async with httpx.AsyncClient() as client:
+        return await get_existing_open_pr(client, repo_full, owner, branch_name)

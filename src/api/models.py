@@ -111,6 +111,8 @@ class Remediation(SQLModel, table=True):
     applied_at: datetime | None = None
     verified_at: datetime | None = None
     outcome: str
+    pr_url: str | None = Field(default=None)
+    pr_branch: str | None = Field(default=None)
 
     finding: Finding = Relationship(back_populates="remediations")
 
