@@ -77,11 +77,6 @@ def ensure_sqlite_schema() -> None:
         if "project_id" not in scan_columns:
             connection.execute(text("ALTER TABLE scans ADD COLUMN project_id CHAR(32)"))
 
-        if "target_id" in scan_columns:
-            # Older development databases created target_id as NOT NULL. New
-            # project scans still create a legacy target row for compatibility.
-            pass
-
     if "projects" in inspector.get_table_names():
         project_columns = {col["name"] for col in inspector.get_columns("projects")}
         with engine.begin() as connection:
@@ -103,3 +98,10 @@ def ensure_sqlite_schema() -> None:
                 connection.execute(text("ALTER TABLE remediations ADD COLUMN pr_url TEXT"))
             if "pr_branch" not in rem_columns:
                 connection.execute(text("ALTER TABLE remediations ADD COLUMN pr_branch TEXT"))
+
+    # Simplified condition to reduce cognitive complexity
+    target_id_exists = "target_id" in scan_columns
+    if target_id_exists:
+        # Older development databases created target_id as NOT NULL. New
+        # project scans still create a legacy target row for compatibility.
+        pass
