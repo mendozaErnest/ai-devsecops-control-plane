@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 
 import requests
 import yaml
+from defusedxml import ElementTree as ET
 
 
 # Vulnerability: hardcoded password.
@@ -151,7 +152,7 @@ def read_report(report_name):
 
 
 def parse_invoice_xml(xml_payload):
-    # Vulnerability: xml.etree parsing of untrusted XML can enable XML attacks.
+    # Mitigation: Using defusedxml to prevent XML External Entity (XXE) attacks.
     return ET.fromstring(xml_payload)
 
 
