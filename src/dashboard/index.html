@@ -2105,7 +2105,77 @@
 
             if (showNum) lineNum++;
           });
+function buildColumn(rows, startLineNum, headerSign, headerLabel, headerSignColor, borderColor) {
+  const col = document.createElement("div");
+  col.style.cssText = `flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;border-right:1px solid ${borderColor};overflow:hidden;`;
 
+  const hdr = document.createElement("div");
+  hdr.style.cssText = `padding:5px 12px;background:#161b22;color:var(--muted);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid ${borderColor};display:flex;align-items:center;gap:6px;flex-shrink:0;`;
+
+  const headerSignSpan = document.createElement("span");
+  headerSignSpan.style.cssText = `color:${headerSignColor};font-size:.9rem;`;
+  headerSignSpan.textContent = headerSign;
+  hdr.appendChild(headerSignSpan);
+
+  const headerLabelSpan = document.createElement("span");
+  headerLabelSpan.textContent = headerLabel;
+  hdr.appendChild(headerLabelSpan);
+
+  col.appendChild(hdr);
+
+  const scroll = document.createElement("div");
+  scroll.style.cssText = `overflow-x:auto;overflow-y:auto;max-height:calc(85vh - 200px);background:#0d1117;`;
+
+  const table = document.createElement("table");
+  table.style.cssText = `border-collapse:collapse;min-width:100%;width:max-content;font-family:'Courier New',monospace;font-size:.8rem;line-height:1.7;`;
+
+  let lineNum = startLineNum;
+  rows.forEach(({line, type}) => {
+    const style = getStyle(type);
+    const isPad = type === "pad";
+    const isGap = type === "gap";
+    const showNum = !isPad && !isGap;
+
+    const tr = document.createElement("tr");
+    tr.style.cssText = `background:${style.rowBg};`;
+
+    const tdNum = document.createElement("td");
+    tdNum.style.cssText = `min-width:42px;padding:0 8px;color:${style.numFg};font-size:.7rem;user-select:none;text-align:right;white-space:nowrap;position:sticky;left:0;background:${style.numBg};z-index:1;border-right:1px solid rgba(255,255,255,0.04);`;
+    tdNum.textContent = showNum ? lineNum : "";
+
+    const tdSign = document.createElement("td");
+    tdSign.style.cssText = `min-width:18px;padding:0 4px;color:${getColor(type)};font-weight:700;white-space:nowrap;`;
+    tdSign.textContent = style.signCh;
+
+    const tdCode = document.createElement("td");
+    tdCode.style.cssText = `color:${style.codeFg};padding:0 16px 0 2px;white-space:pre;`;
+    tdCode.textContent = isGap ? "···" : (isPad ? "" : line);
+
+    tr.append(tdNum, tdSign, tdCode);
+    table.appendChild(tr);
+
+    if (showNum) lineNum++;
+  });
+
+  scroll.appendChild(table);
+  col.appendChild(scroll);
+  return col;
+
+  function getStyle(type) {
+    return STYLE[type] || STYLE.equal;
+  }
+
+  function getColor(type) {
+    switch (type) {
+      case "delete":
+        return "#cd7070";
+      case "insert":
+        return "#5ca870";
+      default:
+        return "#484f58";
+    }
+  }
+}
           scroll.appendChild(table);
           col.appendChild(scroll);
           return col;
