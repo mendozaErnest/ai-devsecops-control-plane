@@ -87,7 +87,7 @@ def insecure_temporary_file():
 
 def run_shell_command(user_input):
     # shell=True with user input enables command injection.
-    return subprocess.call("echo " + user_input, shell=True)
+    return subprocess.call(["echo", user_input], shell=False)
 
 
 def run_process_with_untrusted_args(user_input):
