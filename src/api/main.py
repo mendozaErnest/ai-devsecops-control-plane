@@ -36,6 +36,7 @@ from src.integrations.github_client import (
 )
 from src.scanners.escaneo import persist_scan, run_scan
 from src.scanners.orchestrator import ScanOrchestrator
+from typing import Annotated
 
 
 app = FastAPI()
@@ -515,7 +516,7 @@ async def get_project(project_id: uuid.UUID):
 
 
 @app.get("/api/projects/{project_id}/findings")
-async def get_project_findings_endpoint(project_id: uuid.UUID):
+async def get_project_findings_endpoint(project_id: Annotated[uuid.UUID, Depends()]):
     with Session(engine) as session:
         project = session.get(Project, project_id)
 
