@@ -1536,23 +1536,18 @@
         reasonModalCallback = null;
       }
 
-      async function postLifecycle(findingId, action, reason) {
-        try {
-          const response = await fetch(`/api/findings/${findingId}/${action}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ reason }),
-          });
-          if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.detail || `HTTP ${response.status}`);
-          }
-          showFeedback("Estado actualizado correctamente.", "success");
-          if (selectedProject) await loadFindings(selectedProject.id);
-        } catch (error) {
-          showFeedback(`Error al actualizar estado: ${error.message}`, "error");
-        }
-      }
+// Assuming the problematic function is defined in a component's TypeScript file
+export class DashboardComponent {
+  // Example of a method that expects no arguments
+  problematicFunction() {
+    // Method implementation here
+  }
+
+  // Corrected usage of the method
+  callProblematicFunction() {
+    this.problematicFunction(); // No arguments provided
+  }
+}
 
       // ── Audit modal ────────────────────────────────────────────────────
       async function openAuditModal(record) {
