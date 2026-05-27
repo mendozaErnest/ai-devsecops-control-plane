@@ -13,6 +13,8 @@ import httpx
 import jwt
 
 
+APPLICATION_VND_GITHUB_JSON = "application/vnd.github+json"
+
 GITHUB_API_URL = "https://api.github.com"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GITHUB_TIMEOUT_SECONDS = 45
@@ -101,7 +103,7 @@ def get_github_config() -> tuple[str, str, str, Path, str]:
 def build_headers(token: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
+        "Accept": APPLICATION_VND_GITHUB_JSON,
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "AI-DevSecOps-Control-Plane",
     }
@@ -1463,7 +1465,7 @@ async def create_check_run(
 
     async with httpx.AsyncClient(
         base_url=GITHUB_API_URL,
-        headers={**build_headers(installation_token), "Accept": "application/vnd.github+json"},
+        headers={**build_headers(installation_token), "Accept": APPLICATION_VND_GITHUB_JSON},
         timeout=GITHUB_TIMEOUT_SECONDS,
     ) as client:
         return await github_request(
@@ -1501,7 +1503,7 @@ async def update_check_run(
 
     async with httpx.AsyncClient(
         base_url=GITHUB_API_URL,
-        headers={**build_headers(installation_token), "Accept": "application/vnd.github+json"},
+        headers={**build_headers(installation_token), "Accept": APPLICATION_VND_GITHUB_JSON},
         timeout=GITHUB_TIMEOUT_SECONDS,
     ) as client:
         return await github_request(
