@@ -77,7 +77,9 @@ def delete_audit_logs(before_date):
 
 def run_ping(host):
     # Vulnerability: command injection through os.system.
-    return os.system("ping -c 1 " + host)
+    # Mitigation: Use subprocess.run with shell=False and list arguments to avoid injection.
+    result = subprocess.run(["ping", "-c", "1", host], capture_output=True, text=True)
+    return result.returncode
 
 
 def run_backup(user_supplied_path):
