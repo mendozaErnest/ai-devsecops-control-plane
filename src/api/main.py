@@ -38,6 +38,8 @@ from src.scanners.escaneo import persist_scan, run_scan
 from src.scanners.orchestrator import ScanOrchestrator
 
 
+PROJECT_NOT_FOUND = "Project not found"
+
 app = FastAPI()
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -504,7 +506,7 @@ async def get_project(project_id: uuid.UUID):
         project = session.get(Project, project_id)
 
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
         last_scans = get_last_scans_for_projects(session, [project_id])
         return project_to_response(
@@ -520,7 +522,7 @@ async def get_project_findings_endpoint(project_id: uuid.UUID):
         project = session.get(Project, project_id)
 
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
         findings = get_project_findings(session, project.id)
         remediations = session.exec(select(Remediation)).all()
@@ -545,7 +547,7 @@ async def scan_project_endpoint(project_id: uuid.UUID):
         project = session.get(Project, project_id)
 
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
         target_path = validate_scan_target(project.target_path)
         project.target_path = target_path
@@ -1019,7 +1021,7 @@ async def get_project_report(project_id: uuid.UUID):
         project = session.get(Project, project_id)
 
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
         findings = get_project_findings(session, project.id)
 
