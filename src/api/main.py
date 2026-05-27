@@ -3,7 +3,9 @@ import asyncio
 import hashlib
 import hmac
 import ipaddress
+import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -13,6 +15,7 @@ from urllib.parse import urlparse
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -24,14 +27,35 @@ from src.ai_engine.remediator import (
     build_prompt,
     check_ollama_status,
     generate_patch,
+    infer_technology_from_finding,
 )
 from src.integrations.github_client import (
     GitHubClientError,
+    build_python_b324_remediation_text,
+    build_python_b324_weak_hash_patch,
+    build_python_s1192_constant_patch,
+    build_python_s1192_remediation_text,
+    build_safe_patched_content,
     close_open_pr_for_branch,
     create_check_run,
+    create_proposal_pr,
     create_security_pr,
     delete_security_branch,
+    extract_code_block_for_technology,
+    find_braced_block_range,
+    find_enclosing_python_function_node,
+    get_source_segment,
     get_existing_open_pr_for_branch,
+    get_pr_diff,
+    is_deterministic_python_rule,
+    is_python_duplicate_literal_rule,
+    is_python_weak_hash_rule,
+    is_safe_to_apply,
+    looks_like_python_only_prose,
+    normalize_patch_technology_for_finding,
+    remediation_text_matches_python_b324,
+    remediation_text_matches_python_s1192,
+    ts_line_looks_like_method_signature,
     update_check_run,
 )
 from src.scanners.escaneo import persist_scan, run_scan
@@ -39,10 +63,14 @@ from src.scanners.orchestrator import ScanOrchestrator
 
 
 app = FastAPI()
+_logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DASHBOARD_INDEX = PROJECT_ROOT / "src" / "dashboard" / "index.html"
+DASHBOARD_STATIC = PROJECT_ROOT / "src" / "dashboard"
 WORKSPACE_ROOT = PROJECT_ROOT / "workspace" / "uploads"
+
+app.mount("/static", StaticFiles(directory=str(DASHBOARD_STATIC)), name="static")
 
 
 class ScanRequest(BaseModel):
@@ -145,8 +173,7 @@ async def update_profile(profile_id: int, body: ScanProfileUpdate):
 async def get_findings():
     with Session(engine) as session:
         findings = session.exec(select(Finding)).all()
-        remediations = session.exec(select(Remediation)).all()
-        remediated_finding_ids = {remediation.finding_id for remediation in remediations}
+        remediated_finding_ids = latest_valid_remediation_ids(session, findings)
 
         return [
             {
@@ -331,8 +358,182 @@ def get_finding_technology(session: Session, finding: Finding) -> str:
     return "angular" if technology == "typescript" else technology
 
 
-def build_finding_details(session: Session, finding: Finding) -> dict:
+def read_finding_source_file(file_path: str | None) -> str | None:
+    if not file_path:
+        return None
+
+    try:
+        resolved_file_path = resolve_finding_file_path(file_path)
+        if not resolved_file_path.exists() or not is_allowed_scan_path(resolved_file_path):
+            return None
+
+        return resolved_file_path.read_text(encoding="utf-8", errors="replace")
+    except Exception as exc:
+        _logger.warning("read_finding_source_file: could not read %s: %s", file_path, exc)
+        return None
+
+
+def enrich_python_finding_context(details: dict) -> dict:
+    if normalize_patch_technology_for_finding(details) != "python":
+        return details
+
+    source = read_finding_source_file(str(details.get("file_path") or ""))
+    if not source:
+        return details
+
+    try:
+        function_node = find_enclosing_python_function_node(source, details.get("line_start"))
+    except GitHubClientError as exc:
+        _logger.warning(
+            "enrich_python_finding_context: could not parse %s: %s",
+            details.get("file_path"),
+            exc,
+        )
+        return details
+
+    if not function_node:
+        return details
+
+    function_source = get_source_segment(source, function_node)
+    if not function_source:
+        return details
+
     return {
+        **details,
+        "expected_function": function_node.name,
+        "expected_function_source": function_source,
+        "code_snippet": function_source,
+    }
+
+
+# Patterns for standalone JS/TS function declarations (class methods are handled
+# by the existing ts_line_looks_like_method_signature helper from github_client).
+_JS_FUNC_PATTERNS = [
+    # function name(...) { / async function name(...) {
+    re.compile(r"^\s*(?:async\s+)?function\s+(\w+)\s*\("),
+    # const/let/var name = function(...) {
+    re.compile(r"^\s*(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?function\s*[\w$]*\s*\("),
+    # const/let/var name = (...) => {
+    re.compile(r"^\s*(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\([^)]*\)\s*=>"),
+    # const/let/var name = async singleArg => {
+    re.compile(r"^\s*(?:const|let|var)\s+(\w+)\s*=\s*async\s+\w+\s*=>"),
+]
+
+
+def find_enclosing_js_function(source: str, line_number: object) -> tuple[str | None, str | None]:
+    """Return (function_name, function_source) for the JS/TS function that contains
+    the given 1-based line number.
+
+    Handles:
+    - Standalone ``function name()`` declarations
+    - ``const name = function()`` / ``const name = () =>`` expressions
+    - TypeScript class methods (via ``ts_line_looks_like_method_signature``)
+
+    Returns ``(None, None)`` when extraction fails.
+    """
+    if not source or not line_number:
+        return None, None
+
+    try:
+        line_num = int(line_number)
+    except (TypeError, ValueError):
+        return None, None
+
+    lines = source.splitlines()
+    if line_num < 1 or line_num > len(lines):
+        return None, None
+
+    target_idx = line_num - 1  # 0-based
+
+    best_start: int | None = None
+    best_name: str | None = None
+
+    for i in range(target_idx, -1, -1):
+        line = lines[i]
+
+        # Try standalone function patterns first (more specific)
+        for pat in _JS_FUNC_PATTERNS:
+            m = pat.match(line)
+            if m:
+                best_start = i
+                best_name = m.group(1)
+                break
+
+        if best_start is not None:
+            break
+
+        # Fallback: TypeScript class method signature
+        if ts_line_looks_like_method_signature(line):
+            best_start = i
+            m = re.search(r"(?:async\s+)?(\w+)\s*\(", line)
+            best_name = m.group(1) if m else None
+            break
+
+    if best_start is None:
+        return None, None
+
+    block_range = find_braced_block_range(lines, best_start)
+    if block_range is None:
+        return None, None
+
+    # find_braced_block_range returns 1-based (start_inclusive, end_inclusive)
+    block_start, block_end = block_range
+    func_source = "\n".join(lines[block_start - 1 : block_end])
+    return best_name, func_source
+
+
+def enrich_js_finding_context(details: dict) -> dict:
+    """Attach the full enclosing JS/TS function to an Angular/JS finding.
+
+    Mirrors ``enrich_python_finding_context`` but for TypeScript / JavaScript /
+    inline-JS-in-HTML files.  The extracted function text replaces the (often
+    sparse) ``code_snippet`` stored by the scanner, giving Ollama enough context
+    to generate a real fix instead of a placeholder.
+
+    Returns the dict unchanged when:
+    - technology is not "angular"
+    - source file cannot be read
+    - no enclosing function is found
+    """
+    if normalize_patch_technology_for_finding(details) != "angular":
+        return details
+
+    source = read_finding_source_file(str(details.get("file_path") or ""))
+    if not source:
+        return details
+
+    try:
+        func_name, func_source = find_enclosing_js_function(source, details.get("line_start"))
+    except Exception as exc:
+        _logger.warning(
+            "enrich_js_finding_context: extraction failed for %s: %s",
+            details.get("file_path"),
+            exc,
+        )
+        return details
+
+    if not func_source:
+        return details
+
+    return {
+        **details,
+        "expected_function": func_name or "",
+        "expected_function_source": func_source,
+        "code_snippet": func_source,
+    }
+
+
+def build_finding_details(session: Session, finding: Finding) -> dict:
+    # Prefer rule_id / file_path inference over project technology.
+    # This fixes the case where a Python project has SonarQube/Semgrep findings
+    # in .js / .html / .java files: those findings should use the JS or Java
+    # prompt and patch strategy, not the Python one.
+    project_technology = get_finding_technology(session, finding)
+    effective_technology = (
+        infer_technology_from_finding(finding.rule_id or "", finding.file_path or "")
+        or project_technology
+    )
+    details = {
         "id": str(finding.id),
         "rule_id": finding.rule_id,
         "title": finding.title,
@@ -343,8 +544,138 @@ def build_finding_details(session: Session, finding: Finding) -> dict:
         "line_start": finding.line_start,
         "line_end": finding.line_end,
         "code_snippet": finding.code_snippet,
-        "technology": get_finding_technology(session, finding),
+        "technology": effective_technology,
     }
+    details = enrich_python_finding_context(details)
+    details = enrich_js_finding_context(details)
+    return details
+
+
+def remediation_matches_finding_technology(remediation_text: str, finding_details: dict) -> bool:
+    if is_python_duplicate_literal_rule(finding_details):
+        return remediation_text_matches_python_s1192(remediation_text or "", finding_details)
+
+    if is_python_weak_hash_rule(finding_details):
+        return remediation_text_matches_python_b324(remediation_text or "", finding_details)
+
+    return validate_remediation_patch(remediation_text or "", finding_details)[0]
+
+
+def build_deterministic_remediation_text(finding_details: dict) -> str | None:
+    if not is_deterministic_python_rule(finding_details):
+        return None
+
+    try:
+        resolved_file_path = resolve_finding_file_path(str(finding_details.get("file_path") or ""))
+        if not resolved_file_path.exists() or not is_allowed_scan_path(resolved_file_path):
+            return None
+
+        original_content = resolved_file_path.read_text(encoding="utf-8", errors="replace")
+        if is_python_duplicate_literal_rule(finding_details):
+            _, details = build_python_s1192_constant_patch(original_content, finding_details)
+            return build_python_s1192_remediation_text(details)
+
+        if is_python_weak_hash_rule(finding_details):
+            _, details = build_python_b324_weak_hash_patch(original_content, finding_details)
+            return build_python_b324_remediation_text(details)
+    except Exception as exc:
+        _logger.warning(
+            "build_deterministic_remediation_text: could not build deterministic remediation "
+            "for finding %s: %s",
+            finding_details.get("id"),
+            exc,
+        )
+        return None
+
+    return None
+
+
+def validate_remediation_patch(remediation_text: str, finding_details: dict) -> tuple[bool, str]:
+    technology = normalize_patch_technology_for_finding(finding_details)
+    file_path = str(finding_details.get("file_path") or "")
+    patch_content = extract_code_block_for_technology(remediation_text or "", technology, file_path)
+
+    if not patch_content:
+        return False, (
+            f"La remediación no contiene un bloque de código {technology} válido para `{file_path}`."
+        )
+
+    if not finding_details.get("line_start"):
+        return True, "language-only validation"
+
+    original_content = read_finding_source_file(file_path)
+    if not original_content:
+        return False, (
+            f"No pude leer el archivo fuente `{file_path}` para validar la remediación antes de guardarla."
+        )
+
+    try:
+        patched_content = build_safe_patched_content(
+            original_content,
+            patch_content,
+            finding_details,
+        )
+        safe, reason = is_safe_to_apply(original_content, patched_content)
+        if not safe:
+            return False, reason
+    except GitHubClientError as exc:
+        return False, exc.user_message
+    except Exception as exc:
+        return False, str(exc)
+
+    return True, "ok"
+
+
+def cached_remediation_is_reusable(patch_diff: str, finding_details: dict) -> bool:
+    """Lightweight cache check: verify the stored patch contains a valid code block.
+
+    Unlike ``validate_remediation_patch``, this function does NOT read the local
+    source file or re-apply the patch.  Local edits to source files must never
+    invalidate a previously-validated remediation — the user's complaint was that
+    each ``POST /api/remediate`` call produced a *different* Ollama-generated fix
+    because a locally-modified file caused the cache check to fail and triggered a
+    new LLM call.
+    """
+    if is_python_duplicate_literal_rule(finding_details):
+        return remediation_text_matches_python_s1192(patch_diff or "", finding_details)
+    if is_python_weak_hash_rule(finding_details):
+        return remediation_text_matches_python_b324(patch_diff or "", finding_details)
+    technology = normalize_patch_technology_for_finding(finding_details)
+    file_path = str(finding_details.get("file_path") or "")
+    patch_content = extract_code_block_for_technology(patch_diff or "", technology, file_path)
+    if not patch_content:
+        return False
+    if looks_like_python_only_prose(patch_content):
+        return False
+    return True
+
+
+def latest_valid_remediation_ids(session: Session, findings: list[Finding]) -> set[uuid.UUID]:
+    finding_ids = {finding.id for finding in findings}
+    if not finding_ids:
+        return set()
+
+    remediations = session.exec(
+        select(Remediation)
+        .where(Remediation.finding_id.in_(finding_ids))
+        .order_by(Remediation.id.desc())
+    ).all()
+    latest_by_finding: dict[uuid.UUID, Remediation] = {}
+
+    for remediation in remediations:
+        latest_by_finding.setdefault(remediation.finding_id, remediation)
+
+    valid_ids: set[uuid.UUID] = set()
+    for finding in findings:
+        remediation = latest_by_finding.get(finding.id)
+        if not remediation:
+            continue
+
+        finding_details = build_finding_details(session, finding)
+        if remediation_matches_finding_technology(remediation.patch_diff, finding_details):
+            valid_ids.add(finding.id)
+
+    return valid_ids
 
 
 def safe_project_name(name: str | None, fallback: str) -> str:
@@ -523,8 +854,7 @@ async def get_project_findings_endpoint(project_id: uuid.UUID):
             raise HTTPException(status_code=404, detail="Project not found")
 
         findings = get_project_findings(session, project.id)
-        remediations = session.exec(select(Remediation)).all()
-        remediated_finding_ids = {remediation.finding_id for remediation in remediations}
+        remediated_finding_ids = latest_valid_remediation_ids(session, findings)
 
         return [
             {
@@ -745,19 +1075,57 @@ async def remediate_finding(finding_id: uuid.UUID):
         if not finding:
             raise HTTPException(status_code=404, detail="Finding not found")
 
-        # Cache hit: return existing remediation without calling Ollama
+        finding_details = build_finding_details(session, finding)
+
+        # Cache hit: return existing remediation without calling Ollama.
+        # Use cached_remediation_is_reusable (does NOT re-read local source file)
+        # so that a locally-edited file never invalidates a valid cached patch.
         existing = session.exec(
             select(Remediation)
             .where(Remediation.finding_id == finding_id)
             .order_by(Remediation.id.desc())
         ).first()
 
-        if existing:
+        if existing and cached_remediation_is_reusable(existing.patch_diff, finding_details):
             return {
                 "finding_id": str(finding_id),
                 "remediation_id": str(existing.id),
                 "patch": existing.patch_diff,
                 "cached": True,
+            }
+
+        if existing:
+            _logger.warning(
+                "remediate_finding: ignoring stale remediation %s for finding %s; "
+                "patch does not match inferred technology %s",
+                existing.id,
+                finding_id,
+                normalize_patch_technology_for_finding(finding_details),
+            )
+
+    deterministic_patch = build_deterministic_remediation_text(finding_details)
+    if deterministic_patch:
+        rule_id = str(finding_details.get("rule_id") or "deterministic")
+        with Session(engine) as session:
+            remediation = Remediation(
+                finding_id=finding_id,
+                strategy="deterministic-rule-patch",
+                model_used=f"rule/{rule_id}",
+                prompt_used=f"deterministic remediation for {rule_id}",
+                patch_diff=deterministic_patch,
+                applied_at=None,
+                verified_at=None,
+                outcome="suggested",
+            )
+            session.add(remediation)
+            session.commit()
+            session.refresh(remediation)
+
+            return {
+                "finding_id": str(finding_id),
+                "remediation_id": str(remediation.id),
+                "patch": deterministic_patch,
+                "cached": False,
             }
 
     # No prior remediation — validate Ollama before generating
@@ -772,11 +1140,18 @@ async def remediate_finding(finding_id: uuid.UUID):
             },
         )
 
-    with Session(engine) as session:
-        finding = session.get(Finding, finding_id)
-        finding_details = build_finding_details(session, finding)
-
     patch = await generate_patch(finding_details)
+    valid_patch, validation_reason = validate_remediation_patch(patch, finding_details)
+
+    # Always save and return the patch so the modal opens.
+    # When validation fails we mark it as "manual_review" and surface a
+    # validation_warning field — the frontend shows the patch with a warning
+    # banner and the PR creation flow will fall back to a proposal-only PR.
+    patch_outcome = "suggested" if valid_patch else "manual_review"
+    _logger.info(
+        "remediate_finding: patch for finding %s outcome=%s valid=%s reason=%s",
+        finding_id, patch_outcome, valid_patch, validation_reason,
+    )
 
     with Session(engine) as session:
         remediation = Remediation(
@@ -787,38 +1162,146 @@ async def remediate_finding(finding_id: uuid.UUID):
             patch_diff=patch,
             applied_at=None,
             verified_at=None,
-            outcome="suggested",
+            outcome=patch_outcome,
         )
         session.add(remediation)
         session.commit()
         session.refresh(remediation)
 
-        return {
+        response: dict = {
             "finding_id": str(finding_id),
             "remediation_id": str(remediation.id),
             "patch": patch,
             "cached": False,
         }
+        if not valid_patch:
+            response["validation_warning"] = validation_reason
+        return response
 
 
 @app.get("/api/remediate/{finding_id}/pr")
 async def get_remediation_pr(finding_id: uuid.UUID):
     """Return persisted PR data for a finding, or 404 if none exists."""
     with Session(engine) as session:
+        finding = session.get(Finding, finding_id)
+        if not finding:
+            raise HTTPException(status_code=404, detail="Finding not found")
+
         remediation = session.exec(
             select(Remediation)
             .where(Remediation.finding_id == finding_id)
+            .where(Remediation.pr_url != None)  # noqa: E711
             .order_by(Remediation.id.desc())
         ).first()
 
         if not remediation or not remediation.pr_url:
             raise HTTPException(status_code=404, detail="No PR found for this finding")
 
+        finding_details = build_finding_details(session, finding)
+        if not remediation_matches_finding_technology(remediation.patch_diff, finding_details):
+            raise HTTPException(
+                status_code=404,
+                detail="Stored PR remediation is stale; regenerate before showing it as applied",
+            )
+
+        pr_type = (
+            "proposal"
+            if (remediation.pr_branch or "").startswith("security-proposal-")
+            else "code_fix"
+        )
+
         return {
             "finding_id": str(finding_id),
             "pr_url": remediation.pr_url,
             "branch": remediation.pr_branch,
+            "pr_type": pr_type,
         }
+
+
+@app.get("/api/findings/{finding_id}/pr-diff")
+async def get_finding_pr_diff(finding_id: uuid.UUID):
+    """Return the real unified diff of the GitHub PR associated with a finding."""
+    with Session(engine) as session:
+        finding = session.get(Finding, finding_id)
+        if not finding:
+            raise HTTPException(status_code=404, detail="Finding not found")
+
+        remediation = session.exec(
+            select(Remediation)
+            .where(Remediation.finding_id == finding_id)
+            .where(Remediation.pr_url != None)  # noqa: E711
+            .order_by(Remediation.id.desc())
+        ).first()
+
+        if not remediation:
+            return {"diff": None, "message": "Este finding no tiene PR asociado"}
+
+        finding_details = build_finding_details(session, finding)
+        if not remediation_matches_finding_technology(remediation.patch_diff, finding_details):
+            return {
+                "diff": None,
+                "message": "El PR asociado proviene de una remediación obsoleta; regenera el fix.",
+            }
+
+        pr_url = remediation.pr_url
+
+    diff_data = await get_pr_diff(pr_url)
+    if not diff_data:
+        return {"diff": None, "message": "No se pudo obtener el diff del PR"}
+
+    return diff_data
+
+
+@app.get("/api/remediate/{finding_id}/preview-diff")
+async def get_remediation_preview_diff(finding_id: uuid.UUID):
+    """Return the exact before/after file contents that a remediation PR would commit.
+
+    Applies ``build_safe_patched_content`` to the LOCAL source file using the stored
+    patch, so the dashboard can render an accurate diff preview *before* any PR is
+    created — matching what the PR will actually contain.
+    """
+    with Session(engine) as session:
+        finding = session.get(Finding, finding_id)
+        if not finding:
+            raise HTTPException(status_code=404, detail="Finding not found")
+
+        finding_details = build_finding_details(session, finding)
+
+        existing = session.exec(
+            select(Remediation)
+            .where(Remediation.finding_id == finding_id)
+            .order_by(Remediation.id.desc())
+        ).first()
+
+    if not existing:
+        raise HTTPException(status_code=404, detail="No remediation found")
+
+    file_path = str(finding_details.get("file_path") or "")
+    technology = normalize_patch_technology_for_finding(finding_details)
+
+    original_content = read_finding_source_file(file_path)
+    if not original_content:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Source file not accessible locally: {file_path}",
+        )
+
+    patch_content = extract_code_block_for_technology(existing.patch_diff, technology, file_path)
+    if not patch_content:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No valid {technology} code block found in remediation",
+        )
+
+    try:
+        patched_content = build_safe_patched_content(original_content, patch_content, finding_details)
+    except GitHubClientError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot compute preview: {exc.user_message}",
+        ) from exc
+
+    return {"original": original_content, "patched": patched_content}
 
 
 @app.post("/api/remediate/{finding_id}/pr")
@@ -842,8 +1325,33 @@ async def create_remediation_pr(finding_id: uuid.UUID):
         finding_details = build_finding_details(session, finding)
         remediation_text = remediation.patch_diff
 
+    deterministic_rule = is_deterministic_python_rule(finding_details)
+    is_manual_review = remediation.outcome == "manual_review"
+
+    # A "manual_review" patch never passed full validation — skip the language
+    # check and go straight to proposal PR creation so the modal can still work.
+    # A genuine language/technology mismatch (stale patch) still gets a 409.
+    if (
+        not deterministic_rule
+        and not is_manual_review
+        and not remediation_matches_finding_technology(remediation_text, finding_details)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "stale_remediation_language_mismatch",
+                "message": (
+                    "La remediación guardada no coincide con la tecnología actual del finding. "
+                    "Regenera la remediación antes de abrir el PR."
+                ),
+                "technology": normalize_patch_technology_for_finding(finding_details),
+                "file_path": finding_details.get("file_path"),
+                "rule_id": finding_details.get("rule_id"),
+            },
+        )
+
     # Proactive check: return existing open PR without creating a duplicate
-    if remediation.pr_url and remediation.pr_branch:
+    if remediation.pr_url and remediation.pr_branch and not deterministic_rule:
         try:
             existing_pr = await get_existing_open_pr_for_branch(remediation.pr_branch)
             if existing_pr:
@@ -853,16 +1361,54 @@ async def create_remediation_pr(finding_id: uuid.UUID):
                     "pr_url": remediation.pr_url,
                     "branch": remediation.pr_branch,
                     "number": existing_pr.get("number"),
+                    "pr_type": "proposal"
+                    if remediation.pr_branch.startswith("security-proposal-")
+                    else "code_fix",
                     "cached": True,
                 }
             # PR was closed/merged — fall through to create a new one
         except Exception:
             pass  # Silently continue if GitHub is unreachable
 
-    try:
-        pr = await create_security_pr(finding_details, remediation_text)
-    except GitHubClientError as exc:
-        raise HTTPException(status_code=502, detail=exc.to_dict()) from exc
+    # Attempt to create a real code-fix PR.  If the safety guardrails reject the
+    # patch (stub detected, functions deleted, etc.) we fall back to a proposal-
+    # only PR that contains just a Markdown file — no source code is modified.
+    # "manual_review" patches never passed full validation so they go straight
+    # to a proposal PR without attempting a source-code commit.
+    pr_type = "code_fix"
+    safety_reason: str | None = None
+    if is_manual_review:
+        safety_reason = (
+            "El parche generado por la IA requiere revisión manual antes de aplicarse "
+            "(no pasó la validación automática del parche)."
+        )
+        _logger.info(
+            "create_remediation_pr: manual_review outcome for finding %s — creating proposal PR",
+            finding_id,
+        )
+        try:
+            pr = await create_proposal_pr(finding_details, remediation_text, safety_reason)
+            pr_type = "proposal"
+        except GitHubClientError as prop_exc:
+            raise HTTPException(status_code=502, detail=prop_exc.to_dict()) from prop_exc
+    else:
+        try:
+            pr = await create_security_pr(finding_details, remediation_text)
+            pr_type = pr.get("pr_type", "code_fix")
+        except GitHubClientError as exc:
+            if exc.code != "safety_check_failed":
+                raise HTTPException(status_code=502, detail=exc.to_dict()) from exc
+            # Safety check failed → create a proposal-only PR instead of touching code
+            safety_reason = exc.user_message
+            _logger.warning(
+                "create_remediation_pr: safety check failed for finding %s — %s",
+                finding_id, safety_reason,
+            )
+            try:
+                pr = await create_proposal_pr(finding_details, remediation_text, safety_reason)
+                pr_type = "proposal"
+            except GitHubClientError as prop_exc:
+                raise HTTPException(status_code=502, detail=prop_exc.to_dict()) from prop_exc
 
     # Persist PR data on the remediation row
     with Session(engine) as session:
@@ -870,17 +1416,29 @@ async def create_remediation_pr(finding_id: uuid.UUID):
         if rem:
             rem.pr_url = pr["url"]
             rem.pr_branch = pr["branch"]
+            applied_remediation_text = pr.get("applied_remediation_text")
+            if applied_remediation_text:
+                rem.patch_diff = applied_remediation_text
             session.add(rem)
             session.commit()
 
-    return {
-        "finding_id": str(finding_id),
+    response_data: dict = {
+        "finding_id":     str(finding_id),
         "remediation_id": str(remediation.id),
-        "pr_url": pr["url"],
-        "branch": pr["branch"],
-        "number": pr.get("number"),
-        "cached": False,
+        "pr_url":         pr["url"],
+        "branch":         pr["branch"],
+        "number":         pr.get("number"),
+        "pr_type":        pr_type,
+        "cached":         False,
     }
+    anchor_warning = pr.get("anchor_warning")
+    if anchor_warning:
+        response_data["warning"] = anchor_warning
+        response_data["status"]  = "created_with_warning"
+    if safety_reason:
+        response_data["warning"] = safety_reason
+        response_data["status"]  = "created_proposal"
+    return response_data
 
 
 @app.delete("/api/remediate/{finding_id}/pr")

@@ -16,6 +16,10 @@ import jwt
 GITHUB_API_URL = "https://api.github.com"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GITHUB_TIMEOUT_SECONDS = 45
+PATCH_CSS_EXTENSIONS = (".css", ".scss", ".sass", ".less")
+PATCH_HTML_EXTENSIONS = (".html", ".htm", ".jinja", ".j2")
+PATCH_JS_EXTENSIONS = (".js", ".ts", ".jsx", ".tsx", ".vue", ".mjs", ".cjs")
+PATCH_JAVA_EXTENSIONS = (".java", ".kt", ".kts", ".groovy", ".scala")
 
 _log = logging.getLogger(__name__)
 
@@ -340,18 +344,55 @@ def extract_python_code_block(remediation_text: str) -> str | None:
 def normalize_patch_technology(value: object) -> str:
     technology = str(value or "python").strip().lower()
 
-    if technology == "typescript":
+    if technology in {"typescript", "javascript"}:
         return "angular"
 
-    if technology in {"python", "angular", "java"}:
+    if technology in {"python", "angular", "java", "css", "html"}:
         return technology
 
     return "python"
 
 
+def normalize_patch_technology_for_finding(finding_details: dict) -> str:
+    technology = normalize_patch_technology(finding_details.get("technology"))
+    rule_id = str(finding_details.get("rule_id") or "").strip().lower()
+    file_path = str(finding_details.get("file_path") or "").strip().lower()
+
+    if rule_id.startswith(("css:", "web:css")):
+        return "css"
+    if rule_id.startswith(("html.", "html:", "web:html")):
+        return "html"
+    if rule_id.startswith(("javascript:", "typescript:", "jsts.")):
+        return "angular"
+    if rule_id.startswith(("java:", "kotlin:", "squid:", "semgrep.java.", "java.lang.", "java.spring.")):
+        return "java"
+
+    if technology != "python":
+        return technology
+
+    if any(file_path.endswith(ext) for ext in PATCH_CSS_EXTENSIONS):
+        return "css"
+    if any(file_path.endswith(ext) for ext in PATCH_HTML_EXTENSIONS):
+        return "html"
+    if any(file_path.endswith(ext) for ext in PATCH_JS_EXTENSIONS):
+        return "angular"
+    if any(file_path.endswith(ext) for ext in PATCH_JAVA_EXTENSIONS):
+        return "java"
+
+    return technology
+
+
 def code_fence_label_for_technology(technology: str, file_path: str = "") -> str:
+    file_path = file_path.lower()
+
     if technology == "angular":
-        return "html" if file_path.lower().endswith(".html") else "typescript"
+        if file_path.endswith((".html", ".htm")):
+            return "html"
+        if file_path.endswith((".js", ".jsx", ".mjs", ".cjs")):
+            return "javascript"
+        return "typescript"
+    if technology in {"css", "html"}:
+        return technology
 
     return technology
 
@@ -373,8 +414,10 @@ def clean_generic_candidate(code: str) -> str:
 
 def extract_generic_code_block(remediation_text: str, technology: str, file_path: str = "") -> str | None:
     labels_by_technology = {
-        "angular": ("typescript", "ts", "html", "angular"),
+        "angular": ("typescript", "ts", "javascript", "js", "html", "angular"),
         "java": ("java",),
+        "css": ("css", "scss", "sass", "less"),
+        "html": ("html", "htm"),
     }
     labels = labels_by_technology.get(technology, (technology,))
     fenced_blocks = re.findall(
@@ -400,6 +443,40 @@ def extract_generic_code_block(remediation_text: str, technology: str, file_path
             return cleaned
 
     return None
+
+
+def looks_like_python_function_patch(code: str) -> bool:
+    return bool(re.search(r"(?m)^\s*(?:async\s+def|def)\s+[A-Za-z_]\w*\s*\(", code))
+
+
+def looks_like_python_only_prose(code: str) -> bool:
+    lowered = code.strip().lower()
+    return (
+        "no python code is needed" in lowered
+        or "no python code required" in lowered
+        or lowered.startswith("# no python")
+    )
+
+
+def extract_code_block_for_technology(
+    remediation_text: str,
+    technology: str,
+    file_path: str = "",
+) -> str | None:
+    technology = normalize_patch_technology(technology)
+
+    if technology == "python":
+        return extract_python_code_block(remediation_text)
+
+    patch_content = extract_generic_code_block(remediation_text, technology, file_path)
+
+    if not patch_content:
+        return None
+
+    if looks_like_python_function_patch(patch_content) or looks_like_python_only_prose(patch_content):
+        return None
+
+    return patch_content
 
 
 def has_balanced_delimiters(code: str, *, track_strings: bool = True) -> bool:
@@ -869,6 +946,542 @@ def insert_missing_imports(original_content: str, imports: list[str]) -> str:
     return "".join(original_lines[:insertion_line] + [import_block] + original_lines[insertion_line:])
 
 
+def is_python_duplicate_literal_rule(finding_details: dict) -> bool:
+    rule_id = str(finding_details.get("rule_id") or "").lower()
+    return normalize_patch_technology_for_finding(finding_details) == "python" and rule_id.endswith("s1192")
+
+
+def is_python_weak_hash_rule(finding_details: dict) -> bool:
+    rule_id = str(finding_details.get("rule_id") or "").upper()
+    return normalize_patch_technology_for_finding(finding_details) == "python" and rule_id == "B324"
+
+
+def is_deterministic_python_rule(finding_details: dict) -> bool:
+    return is_python_duplicate_literal_rule(finding_details) or is_python_weak_hash_rule(finding_details)
+
+
+def extract_python_duplicate_literal(finding_details: dict) -> str | None:
+    description = str(finding_details.get("description") or "")
+    match = re.search(r"literal\s+([\"'])(.+?)\1", description)
+
+    if not match:
+        return None
+
+    quoted = f"{match.group(1)}{match.group(2)}{match.group(1)}"
+
+    try:
+        value = ast.literal_eval(quoted)
+    except (SyntaxError, ValueError):
+        value = match.group(2)
+
+    return value if isinstance(value, str) and value else None
+
+
+def python_constant_name_for_literal(literal: str) -> str:
+    words = re.findall(r"[A-Za-z0-9]+", literal)
+    if not words:
+        return "DUPLICATED_LITERAL"
+
+    constant_name = "_".join(words[:8]).upper()
+    if constant_name[0].isdigit():
+        constant_name = f"LITERAL_{constant_name}"
+
+    return constant_name
+
+
+def python_string_literal(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def python_module_names(source: str) -> set[str]:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    names.add(target.id)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+
+    return names
+
+
+def choose_python_constant_name(source: str, literal: str) -> str:
+    base_name = python_constant_name_for_literal(literal)
+    names = python_module_names(source)
+
+    if base_name not in names:
+        return base_name
+
+    for suffix in ("MESSAGE", "TEXT", "VALUE"):
+        candidate = f"{base_name}_{suffix}"
+        if candidate not in names:
+            return candidate
+
+    index = 2
+    while f"{base_name}_{index}" in names:
+        index += 1
+
+    return f"{base_name}_{index}"
+
+
+def find_existing_python_constant_for_literal(source: str, literal: str) -> str | None:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+
+    for node in tree.body:
+        targets: list[ast.expr] = []
+        value: ast.expr | None = None
+
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+
+        if not isinstance(value, ast.Constant) or value.value != literal:
+            continue
+
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id.isupper():
+                return target.id
+
+    return None
+
+
+def byte_col_to_char_col(line: str, byte_col: int) -> int:
+    return len(line.encode("utf-8")[:byte_col].decode("utf-8", errors="ignore"))
+
+
+def count_python_string_literal(source: str, literal: str) -> int:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return 0
+
+    return sum(
+        1
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and node.value == literal
+    )
+
+
+def parent_map_for_tree(tree: ast.AST) -> dict[ast.AST, ast.AST]:
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+    return parents
+
+
+def is_docstring_literal(node: ast.Constant, parents: dict[ast.AST, ast.AST]) -> bool:
+    parent = parents.get(node)
+    grandparent = parents.get(parent) if parent is not None else None
+
+    if not isinstance(parent, ast.Expr):
+        return False
+
+    if not isinstance(grandparent, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+        return False
+
+    return bool(grandparent.body and grandparent.body[0] is parent)
+
+
+def is_constant_definition_value(
+    node: ast.Constant,
+    parents: dict[ast.AST, ast.AST],
+    constant_name: str,
+) -> bool:
+    parent = parents.get(node)
+    if isinstance(parent, ast.Assign) and parent.value is node:
+        return any(isinstance(target, ast.Name) and target.id == constant_name for target in parent.targets)
+
+    return (
+        isinstance(parent, ast.AnnAssign)
+        and parent.value is node
+        and isinstance(parent.target, ast.Name)
+        and parent.target.id == constant_name
+    )
+
+
+def replace_python_string_literals(source: str, literal: str, constant_name: str) -> tuple[str, int]:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        raise GitHubClientError("Original GitHub source file is not valid Python.") from exc
+
+    parents = parent_map_for_tree(tree)
+    replacements: list[tuple[int, int, int, int]] = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant) or node.value != literal:
+            continue
+
+        if is_docstring_literal(node, parents):
+            continue
+
+        if is_constant_definition_value(node, parents, constant_name):
+            continue
+
+        start_line = getattr(node, "lineno", None)
+        start_col = getattr(node, "col_offset", None)
+        end_line = getattr(node, "end_lineno", None)
+        end_col = getattr(node, "end_col_offset", None)
+
+        if None in (start_line, start_col, end_line, end_col) or start_line != end_line:
+            raise GitHubClientError(
+                "Duplicate string literal spans multiple lines; refusing deterministic S1192 patch.",
+                code="deterministic_patch_unsupported_literal",
+                user_message=(
+                    "El literal duplicado ocupa varias líneas. "
+                    "Se requiere revisión manual para evitar un reemplazo incorrecto."
+                ),
+                retryable=False,
+            )
+
+        replacements.append((start_line, start_col, end_line, end_col))
+
+    if len(replacements) < 2:
+        raise GitHubClientError(
+            "S1192 deterministic patch requires at least two replaceable string literal occurrences.",
+            code="deterministic_patch_not_applicable",
+            user_message=(
+                "No encontré suficientes ocurrencias reemplazables del literal duplicado. "
+                "Se requiere revisión manual."
+            ),
+            retryable=False,
+            details={"literal": literal, "constant_name": constant_name},
+        )
+
+    lines = source.splitlines(keepends=True)
+    for start_line, start_col, _end_line, end_col in sorted(replacements, reverse=True):
+        line = lines[start_line - 1]
+        char_start = byte_col_to_char_col(line, start_col)
+        char_end = byte_col_to_char_col(line, end_col)
+        lines[start_line - 1] = f"{line[:char_start]}{constant_name}{line[char_end:]}"
+
+    return "".join(lines), len(replacements)
+
+
+def insert_python_module_constant(source: str, constant_name: str, literal: str) -> str:
+    original_lines = source.splitlines(keepends=True)
+    insert_at = find_import_insertion_line(source)
+
+    while insert_at < len(original_lines) and not original_lines[insert_at].strip():
+        insert_at += 1
+
+    constant_block = f"{constant_name} = {python_string_literal(literal)}\n\n"
+    return "".join(original_lines[:insert_at] + [constant_block] + original_lines[insert_at:])
+
+
+def build_python_s1192_constant_patch(original_content: str, finding_details: dict) -> tuple[str, dict]:
+    if not is_python_duplicate_literal_rule(finding_details):
+        raise GitHubClientError(
+            "Deterministic S1192 patch requested for a non-S1192 finding.",
+            code="deterministic_patch_not_applicable",
+            retryable=False,
+        )
+
+    literal = extract_python_duplicate_literal(finding_details)
+    if not literal:
+        raise GitHubClientError(
+            "Could not extract duplicate literal from S1192 finding description.",
+            code="deterministic_patch_literal_not_found",
+            user_message=(
+                "No pude extraer el literal duplicado desde la descripción del finding S1192. "
+                "Se requiere revisión manual."
+            ),
+            retryable=False,
+        )
+
+    original_literal_count = count_python_string_literal(original_content, literal)
+    existing_constant_name = find_existing_python_constant_for_literal(original_content, literal)
+    constant_name = existing_constant_name or choose_python_constant_name(original_content, literal)
+
+    candidate, replacement_count = replace_python_string_literals(
+        original_content,
+        literal,
+        constant_name,
+    )
+
+    if existing_constant_name is None:
+        candidate = insert_python_module_constant(candidate, constant_name, literal)
+
+    try:
+        ast.parse(candidate)
+    except SyntaxError as exc:
+        raise GitHubClientError(
+            "Deterministic S1192 patch produced invalid Python. Refusing to commit.",
+            code="deterministic_patch_invalid_python",
+            user_message=(
+                "El parche determinístico para S1192 produjo Python inválido. "
+                f"{syntax_error_summary(exc)}."
+            ),
+            retryable=False,
+            details={"syntax_error": syntax_error_details(exc)},
+        ) from exc
+
+    final_literal_count = count_python_string_literal(candidate, literal)
+    if final_literal_count >= original_literal_count:
+        raise GitHubClientError(
+            "Deterministic S1192 patch did not reduce duplicate literal occurrences.",
+            code="deterministic_patch_no_effect",
+            user_message=(
+                "El parche determinístico no redujo las ocurrencias del literal duplicado. "
+                "Se requiere revisión manual."
+            ),
+            retryable=False,
+            details={
+                "literal": literal,
+                "original_literal_count": original_literal_count,
+                "final_literal_count": final_literal_count,
+            },
+        )
+
+    return candidate, {
+        "literal": literal,
+        "constant_name": constant_name,
+        "replacement_count": replacement_count,
+        "original_literal_count": original_literal_count,
+        "final_literal_count": final_literal_count,
+        "inserted_constant": existing_constant_name is None,
+    }
+
+
+def build_python_s1192_remediation_text(details: dict) -> str:
+    literal = str(details["literal"])
+    constant_name = str(details["constant_name"])
+    replacement_count = int(details["replacement_count"])
+
+    return f"""Deterministic remediation for python:S1192.
+
+The duplicate literal is promoted to a module-level constant and all exact string-literal occurrences are replaced.
+
+```python
+{constant_name} = {python_string_literal(literal)}
+# Replaced {replacement_count} duplicated occurrences with {constant_name}.
+```
+"""
+
+
+def remediation_text_matches_python_s1192(remediation_text: str, finding_details: dict) -> bool:
+    if not is_python_duplicate_literal_rule(finding_details):
+        return False
+
+    literal = extract_python_duplicate_literal(finding_details)
+    if not literal:
+        return False
+
+    patch_content = extract_code_block_for_technology(
+        remediation_text,
+        "python",
+        str(finding_details.get("file_path") or ""),
+    )
+
+    if not patch_content:
+        return False
+
+    constant_name = python_constant_name_for_literal(literal)
+    has_function = bool(re.search(r"^\s*(?:async\s+def|def)\s+\w+\s*\(", patch_content, re.MULTILINE))
+    return constant_name in patch_content and python_string_literal(literal) in patch_content and not has_function
+
+
+def find_enclosing_python_function_node(
+    original_content: str,
+    line_start: object,
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    line_number = coerce_line_number(line_start)
+    if line_number is None:
+        return None
+
+    try:
+        tree = ast.parse(original_content)
+    except SyntaxError as exc:
+        raise GitHubClientError("Original GitHub source file is not valid Python.") from exc
+
+    candidates: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+
+        node_start = getattr(node, "lineno", None)
+        node_end = getattr(node, "end_lineno", None)
+        if node_start is None or node_end is None:
+            continue
+
+        if node_start <= line_number <= node_end:
+            candidates.append(node)
+
+    if not candidates:
+        return None
+
+    return min(candidates, key=lambda node: getattr(node, "end_lineno") - getattr(node, "lineno"))
+
+
+def first_runtime_arg_name(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
+    args = list(node.args.posonlyargs) + list(node.args.args)
+
+    for arg in args:
+        if arg.arg not in {"self", "cls"}:
+            return arg.arg
+
+    return None
+
+
+def detect_weak_hash_algorithm(function_source: str, finding_details: dict) -> str | None:
+    haystack = f"{function_source}\n{finding_details.get('description', '')}".lower()
+
+    if "hashlib.sha1" in haystack or "sha1" in haystack:
+        return "sha1"
+
+    if "hashlib.md5" in haystack or "md5" in haystack:
+        return "md5"
+
+    return None
+
+
+def build_python_b324_weak_hash_patch(original_content: str, finding_details: dict) -> tuple[str, dict]:
+    if not is_python_weak_hash_rule(finding_details):
+        raise GitHubClientError(
+            "Deterministic B324 patch requested for a non-B324 finding.",
+            code="deterministic_patch_not_applicable",
+            retryable=False,
+        )
+
+    function_node = find_enclosing_python_function_node(original_content, finding_details.get("line_start"))
+    if function_node is None:
+        raise GitHubClientError(
+            "Could not locate the Python function containing the B324 finding.",
+            code="deterministic_patch_target_not_found",
+            user_message=(
+                "No pude ubicar la función que contiene el hash débil. "
+                "Se requiere revisión manual."
+            ),
+            retryable=False,
+        )
+
+    function_source = get_source_segment(original_content, function_node)
+    weak_algorithm = detect_weak_hash_algorithm(function_source, finding_details)
+    value_arg = first_runtime_arg_name(function_node)
+
+    if weak_algorithm is None or value_arg is None:
+        raise GitHubClientError(
+            "Could not infer enough context to replace the weak hash deterministically.",
+            code="deterministic_patch_not_applicable",
+            user_message=(
+                "No pude inferir el algoritmo débil o el argumento a proteger. "
+                "Se requiere revisión manual."
+            ),
+            retryable=False,
+        )
+
+    original_lines = original_content.splitlines()
+    def_line = original_lines[function_node.lineno - 1].rstrip()
+    base_indent = " " * indentation_width(def_line)
+    body_indent = base_indent + " " * 4
+    function_patch = "\n".join(
+        [
+            def_line.strip() if not base_indent else def_line,
+            f"{body_indent}# Use PBKDF2-HMAC with a per-value salt instead of insecure {weak_algorithm.upper()}.",
+            f"{body_indent}salt = secrets.token_bytes(16)",
+            (
+                f"{body_indent}digest = hashlib.pbkdf2_hmac("
+                f'"sha256", {value_arg}.encode("utf-8"), salt, 600_000)'
+            ),
+            f'{body_indent}return f"{{salt.hex()}}:{{digest.hex()}}"',
+        ]
+    )
+
+    candidate = replace_line_range(
+        original_content,
+        function_patch,
+        function_node.lineno,
+        function_node.end_lineno,
+    )
+    candidate = insert_missing_imports(candidate, ["import hashlib", "import secrets"])
+
+    try:
+        ast.parse(candidate)
+    except SyntaxError as exc:
+        raise GitHubClientError(
+            "Deterministic B324 patch produced invalid Python. Refusing to commit.",
+            code="deterministic_patch_invalid_python",
+            user_message=(
+                "El parche determinístico para B324 produjo Python inválido. "
+                f"{syntax_error_summary(exc)}."
+            ),
+            retryable=False,
+            details={"syntax_error": syntax_error_details(exc)},
+        ) from exc
+
+    patched_function = function_patch
+    if f"hashlib.{weak_algorithm}" in patched_function or "pbkdf2_hmac" not in patched_function:
+        raise GitHubClientError(
+            "Deterministic B324 patch did not remove the weak hash from the target function.",
+            code="deterministic_patch_no_effect",
+            user_message=(
+                "El parche determinístico no eliminó el hash débil de la función afectada. "
+                "Se requiere revisión manual."
+            ),
+            retryable=False,
+        )
+
+    return candidate, {
+        "function_name": function_node.name,
+        "value_arg": value_arg,
+        "weak_algorithm": weak_algorithm,
+        "function_patch": function_patch,
+    }
+
+
+def build_python_b324_remediation_text(details: dict) -> str:
+    weak_algorithm = str(details["weak_algorithm"]).upper()
+    function_patch = str(details["function_patch"])
+
+    return f"""Deterministic remediation for Bandit B324.
+
+The affected function keeps its original name and signature, replacing insecure {weak_algorithm} with PBKDF2-HMAC and a per-value salt.
+
+```python
+import secrets
+
+{function_patch}
+```
+"""
+
+
+def remediation_text_matches_python_b324(remediation_text: str, finding_details: dict) -> bool:
+    if not is_python_weak_hash_rule(finding_details):
+        return False
+
+    patch_content = extract_code_block_for_technology(
+        remediation_text,
+        "python",
+        str(finding_details.get("file_path") or ""),
+    )
+    if not patch_content:
+        return False
+
+    patch_function = get_function_name_from_patch(patch_content)
+    expected_function = str(finding_details.get("expected_function") or "")
+    if expected_function and patch_function != expected_function:
+        return False
+
+    has_weak_hash = bool(re.search(r"hashlib\.(?:md5|sha1)\s*\(", patch_content))
+    return patch_function is not None and not has_weak_hash and "pbkdf2_hmac" in patch_content
+
+
 def decode_github_file_content(encoded_content: str) -> str:
     compact_content = encoded_content.replace("\n", "")
 
@@ -934,6 +1547,19 @@ def get_function_name_from_patch(patch_content: str) -> str | None:
     return None
 
 
+def get_python_function_names(source: str) -> set[str]:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+
+    return {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+
 def coerce_line_number(value: object) -> int | None:
     if value is None:
         return None
@@ -944,7 +1570,7 @@ def coerce_line_number(value: object) -> int | None:
         return None
 
 
-def find_enclosing_function_range(original_content: str, line_start: object) -> tuple[int, int] | None:
+def find_enclosing_python_function(original_content: str, line_start: object) -> tuple[str, int, int] | None:
     line_start = coerce_line_number(line_start)
 
     if line_start is None:
@@ -955,7 +1581,7 @@ def find_enclosing_function_range(original_content: str, line_start: object) -> 
     except SyntaxError as exc:
         raise GitHubClientError("Original GitHub source file is not valid Python.") from exc
 
-    candidates: list[ast.AST] = []
+    candidates: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
 
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -977,7 +1603,16 @@ def find_enclosing_function_range(original_content: str, line_start: object) -> 
         candidates,
         key=lambda node: getattr(node, "end_lineno") - getattr(node, "lineno"),
     )
-    return getattr(smallest, "lineno"), getattr(smallest, "end_lineno")
+    return smallest.name, getattr(smallest, "lineno"), getattr(smallest, "end_lineno")
+
+
+def find_enclosing_function_range(original_content: str, line_start: object) -> tuple[int, int] | None:
+    function_info = find_enclosing_python_function(original_content, line_start)
+
+    if not function_info:
+        return None
+
+    return function_info[1], function_info[2]
 
 
 def find_function_range_by_name(original_content: str, function_name: str) -> tuple[int, int] | None:
@@ -1093,11 +1728,47 @@ def build_safe_python_patched_content(
             },
         )
 
-    if should_replace_full_file(original_content, patch_content):
+    line_start = finding_details.get("line_start")
+    enclosing_function = find_enclosing_python_function(original_content, line_start)
+    full_file_replacement = should_replace_full_file(original_content, patch_content)
+
+    if enclosing_function:
+        expected_function = enclosing_function[0]
+        patch_function_names = get_python_function_names(patch_content)
+        patch_matches_target = (
+            expected_function in patch_function_names
+            if full_file_replacement
+            else function_name == expected_function
+        )
+
+        if not patch_matches_target:
+            raise GitHubClientError(
+                "AI Python patch targets a different function than the finding line. "
+                "Refusing to replace the enclosing function with unrelated code.",
+                code="ai_patch_function_mismatch",
+                user_message=(
+                    "La remediación de IA intenta reemplazar "
+                    f"`{expected_function}` con `{function_name or 'código sin función equivalente'}`. "
+                    "No se empujaron cambios porque el parche no corresponde al finding."
+                ),
+                retryable=True,
+                details={
+                    "file_path": finding_details.get("file_path"),
+                    "line_start": line_start,
+                    "expected_function": expected_function,
+                    "patch_function": function_name,
+                    "patch_functions": sorted(patch_function_names),
+                },
+            )
+
+    if full_file_replacement:
         candidate = patch_content
     else:
-        line_start = finding_details.get("line_start")
-        function_range = find_function_range(original_content, line_start, function_patch)
+        function_range = (
+            (enclosing_function[1], enclosing_function[2])
+            if enclosing_function
+            else find_function_range(original_content, line_start, function_patch)
+        )
 
         if function_range is None:
             raise GitHubClientError(
@@ -1157,7 +1828,7 @@ def build_safe_patched_content(
     patch_content: str,
     finding_details: dict,
 ) -> str:
-    technology = normalize_patch_technology(finding_details.get("technology"))
+    technology = normalize_patch_technology_for_finding(finding_details)
 
     if technology == "python":
         return build_safe_python_patched_content(
@@ -1172,6 +1843,293 @@ def build_safe_patched_content(
         finding_details,
         technology,
     )
+
+
+def _apply_approximate_anchor(
+    original_content: str,
+    patch_content: str,
+    finding_details: dict,
+) -> tuple[str, str]:
+    """Fallback when semantic function detection fails (patch_target_not_found).
+
+    Tries three strategies in order, always returns (patched_content, warning_message).
+    Never raises — the caller must create the PR with the warning note.
+    Does NOT touch build_safe_patched_content — existing tests are unaffected.
+    """
+    line_start = coerce_line_number(finding_details.get("line_start")) or 1
+
+    try:
+        patch_imports, function_patch, _ = split_patch_imports_and_function(patch_content)
+    except GitHubClientError:
+        function_patch = None
+        patch_imports = []
+
+    # If no extractable function body, fall back to the raw patch text
+    if not function_patch or not function_patch.strip():
+        function_patch = patch_content.strip()
+        patch_imports = []
+
+    total = line_count(original_content)
+    fb_start = max(1, line_start)
+    fb_end = min(total, fb_start + line_count(function_patch))
+
+    # Strategy 1: replace the line range and validate with ast.parse
+    candidate = replace_line_range(original_content, function_patch, fb_start, fb_end)
+    if patch_imports:
+        try:
+            candidate = insert_missing_imports(candidate, patch_imports)
+        except Exception:
+            pass
+
+    if candidate.strip():
+        try:
+            ast.parse(candidate)
+            return candidate, (
+                f"⚠️ Nota: No se pudo anclar el fix al snippet exacto. "
+                f"El código fue insertado cerca de la línea {line_start}. Por favor revisa manualmente."
+            )
+        except SyntaxError:
+            pass
+
+    # Strategy 2: insert the patch as a commented block right after line_start
+    # (avoids breaking existing syntax while still surfacing the proposed change)
+    original_lines = original_content.splitlines(keepends=True)
+    insert_at = min(line_start, total)
+    comment_lines: list[str] = ["# === AI Security Fix (approximate anchor) ===\n"]
+    for cl in function_patch.splitlines():
+        comment_lines.append(f"# {cl}\n")
+    comment_lines.append("# === End of AI Security Fix ===\n")
+    candidate2 = "".join(original_lines[:insert_at] + comment_lines + original_lines[insert_at:])
+    if candidate2.strip():
+        try:
+            ast.parse(candidate2)
+            return candidate2, (
+                f"⚠️ Nota: No se pudo insertar el fix directamente en la línea {line_start}. "
+                "El código propuesto fue insertado como comentario — aplícalo manualmente."
+            )
+        except SyntaxError:
+            pass
+
+    # Strategy 3: force-use the Strategy 1 result without AST validation
+    # The PR description will warn the reviewer to check manually.
+    final = candidate if candidate.strip() else original_content
+    return final, (
+        f"⚠️ Nota: Fix insertado de forma aproximada cerca de la línea {line_start}. "
+        "El resultado puede requerir ajustes manuales antes del merge."
+    )
+
+
+def _extract_named_functions(source: str) -> set[str]:
+    """Return all named function/method names from Python and JavaScript/TypeScript source.
+
+    Matches:
+    - Python:               ``def funcName(``  /  ``async def funcName(``
+    - JS/TS declarations:   ``function funcName(``  /  ``async function funcName(``
+    """
+    names: set[str] = set()
+    # Python functions (def / async def)
+    names |= set(re.findall(r"\bdef\s+(\w+)\s*\(", source))
+    # JavaScript / TypeScript named function declarations (async or not)
+    names |= set(re.findall(r"\bfunction\s+(\w+)\s*\(", source))
+    return names
+
+
+def is_safe_to_apply(original_content: str, patched_content: str) -> tuple[bool, str]:
+    """Validate a patch before committing it to GitHub.
+
+    Returns (True, "ok") if the patch is safe to apply, or (False, reason)
+    if any guardrail is triggered.  Three checks are performed:
+
+    1. The patch must not remove more than 20 % of the original lines.
+    2. The patch must not contain generic placeholder signals injected by the LLM.
+    3. The patch must not delete any function that exists in the original file
+       (checked for both Python ``def`` and JavaScript/TypeScript ``function``).
+    """
+    original_lines = original_content.splitlines()
+    patched_lines  = patched_content.splitlines()
+
+    # 1 — Excessive line removal
+    lines_removed = len(original_lines) - len(patched_lines)
+    if original_lines and lines_removed > len(original_lines) * 0.20:
+        pct = int(lines_removed / len(original_lines) * 100)
+        return False, (
+            f"El patch eliminaría {lines_removed} líneas ({pct}% del archivo). "
+            "Requiere revisión manual antes de aplicarse."
+        )
+
+    # 2 — Generic LLM stub signals (introduced by the model, absent from original)
+    stub_signals = [
+        # Python stubs
+        "some_api_endpoint",
+        "some_dependency",
+        "some_type",
+        "# Function body remains unchanged",
+        "pass  # placeholder",
+        "hypothetical function",
+        "# Original code snippet",
+        "Original code snippet",
+        "# Patched code snippet",
+        "Function implementation",
+        # JavaScript/TypeScript stubs — common hallucination markers
+        "// Method implementation here",
+        "// Example of a method that",
+        "// Corrected usage of the method",
+        "// Assuming the problematic function",
+        "problematicFunction",
+        "callProblematic",
+        # Placeholder / refactoring stubs generated for Cognitive Complexity rules
+        "function refactoredFunction",
+        "refactoredFunction()",
+        "// Placeholder for the refactored function",
+        "// Implement the refactored logic",
+        "// TODO: implement",
+        "// TODO: refactor",
+        "// implement refactored",
+        "// insert refactored",
+    ]
+    for signal in stub_signals:
+        if signal in patched_content and signal not in original_content:
+            return False, (
+                f"El patch contiene código placeholder genérico: '{signal}'. "
+                "El modelo generó un stub en lugar de un fix real."
+            )
+
+    # 3 — Function deletion (Python + JavaScript/TypeScript named functions)
+    original_funcs = _extract_named_functions(original_content)
+    patched_funcs  = _extract_named_functions(patched_content)
+    deleted_funcs  = original_funcs - patched_funcs
+    if deleted_funcs:
+        names = ", ".join(sorted(deleted_funcs))
+        return False, (
+            f"El patch eliminaría funciones existentes: {names}. "
+            "No se puede aplicar automáticamente — requiere revisión manual."
+        )
+
+    return True, "ok"
+
+
+async def create_proposal_pr(
+    finding_details: dict,
+    remediation_text: str,
+    safety_reason: str,
+) -> dict:
+    """Create a PR that contains only a Markdown proposal in docs/remediations/.
+
+    No source-code file is modified.  This is used when ``is_safe_to_apply``
+    rejects the patch so the human reviewer can inspect the LLM output and
+    apply it manually.
+    """
+    app_id, installation_id, repo, private_key_path, base_branch = get_github_config()
+    installation_token = await get_installation_token(app_id, installation_id, private_key_path)
+
+    finding_id  = str(finding_details.get("id", "unknown"))
+    rule_id     = finding_details.get("rule_id", "UNKNOWN")
+    file_path   = finding_details.get("file_path", "UNKNOWN")
+    line_number = finding_details.get("line_start", "?")
+    branch_name   = f"security-proposal-{finding_id}"
+    proposal_path = f"docs/remediations/{finding_id}.md"
+
+    proposal_content = (
+        f"# Revisión manual requerida — {rule_id}\n\n"
+        f"**Archivo:** `{file_path}:{line_number}`  \n"
+        f"**Razón:** {safety_reason}\n\n"
+        "## Propuesta de Ollama\n\n"
+        f"{remediation_text}\n"
+    )
+
+    async with httpx.AsyncClient(
+        base_url=GITHUB_API_URL,
+        headers=build_headers(installation_token),
+        timeout=GITHUB_TIMEOUT_SECONDS,
+    ) as client:
+        base_ref = await github_request(
+            client,
+            "GET",
+            f"/repos/{repo}/git/ref/heads/{urllib.parse.quote(base_branch, safe='')}",
+        )
+        base_sha = base_ref["object"]["sha"]
+
+        await ensure_security_branch(client, repo, branch_name, base_sha)
+
+        # Get SHA of the proposal file if it already exists (needed for update)
+        encoded_path = urllib.parse.quote(proposal_path, safe="/")
+        existing_sha: str | None = None
+        try:
+            existing_file = await github_request(
+                client,
+                "GET",
+                f"/repos/{repo}/contents/{encoded_path}",
+                params={"ref": branch_name},
+            )
+            if isinstance(existing_file, dict):
+                existing_sha = existing_file.get("sha")
+        except GitHubClientError:
+            pass  # file does not exist yet — create it
+
+        put_payload: dict = {
+            "message": f"docs(security): add AI proposal for {rule_id} ({finding_id})",
+            "content": encode_content(proposal_content),
+            "branch":  branch_name,
+        }
+        if existing_sha:
+            put_payload["sha"] = existing_sha
+
+        await github_request(
+            client,
+            "PUT",
+            f"/repos/{repo}/contents/{encoded_path}",
+            put_payload,
+        )
+
+        owner    = repo.split("/", 1)[0]
+        pr_title = f"⚠️ Manual review: {rule_id} in {file_path}"
+        pr_body  = (
+            "## ⚠️ Revisión manual requerida\n\n"
+            f"**Regla:** `{rule_id}`  \n"
+            f"**Archivo:** `{file_path}:{line_number}`\n\n"
+            "### Por qué este PR no aplica el parche directamente\n\n"
+            f"{safety_reason}\n\n"
+            "### Qué hacer\n\n"
+            f"Revisa el archivo `{proposal_path}` en esta rama para ver la propuesta "
+            "completa de Ollama y aplícala manualmente si es correcta.\n\n"
+            "---\n"
+            "*Generado automáticamente por AI DevSecOps Control Plane — "
+            "requiere revisión humana antes del merge.*\n"
+        )
+
+        try:
+            pull_request = await github_request(
+                client,
+                "POST",
+                f"/repos/{repo}/pulls",
+                {
+                    "title": pr_title,
+                    "head":  branch_name,
+                    "base":  base_branch,
+                    "body":  pr_body,
+                    "maintainer_can_modify": True,
+                },
+            )
+        except GitHubClientError as exc:
+            existing_pr = await get_existing_open_pr(client, repo, owner, branch_name)
+            if not existing_pr:
+                raise exc
+            pull_request = existing_pr
+
+    if not pull_request.get("html_url"):
+        raise GitHubClientError(
+            "GitHub did not return a pull request URL for the proposal.",
+            code="proposal_pr_no_url",
+        )
+
+    return {
+        "branch":        branch_name,
+        "url":           pull_request["html_url"],
+        "number":        pull_request.get("number"),
+        "pr_type":       "proposal",
+        "safety_reason": safety_reason,
+        "anchor_warning": None,
+    }
 
 
 def is_existing_reference_error(exc: GitHubClientError) -> bool:
@@ -1244,7 +2202,7 @@ async def get_existing_open_pr(
 
 
 def build_pr_body(finding_details: dict, remediation_text: str) -> str:
-    technology = normalize_patch_technology(finding_details.get("technology"))
+    technology = normalize_patch_technology_for_finding(finding_details)
     fence_label = code_fence_label_for_technology(
         technology,
         str(finding_details.get("file_path", "")),
@@ -1260,11 +2218,7 @@ def build_pr_body(finding_details: dict, remediation_text: str) -> str:
     cwe_number = re.search(r"\d+", str(cwe_raw)).group() if re.search(r"\d+", str(cwe_raw)) else None
 
     # Extract the code block for the "Fix aplicado" section
-    patch_content = (
-        extract_python_code_block(remediation_text)
-        if technology == "python"
-        else extract_generic_code_block(remediation_text, technology, file_path)
-    )
+    patch_content = extract_code_block_for_technology(remediation_text, technology, file_path)
     if patch_content:
         fix_section = f"```{fence_label}\n{patch_content}\n```"
     else:
@@ -1321,14 +2275,13 @@ async def create_security_pr(finding_details: dict, remediation_text: str) -> di
     branch_name = f"security-fix-{finding_id}"
     rule_id = finding_details.get("rule_id", "UNKNOWN")
     file_path = normalize_file_path_for_github(finding_details.get("file_path", ""))
-    technology = normalize_patch_technology(finding_details.get("technology"))
-    patch_content = (
-        extract_python_code_block(remediation_text)
-        if technology == "python"
-        else extract_generic_code_block(remediation_text, technology, file_path)
-    )
+    technology = normalize_patch_technology_for_finding({**finding_details, "file_path": file_path})
+    patch_content = extract_code_block_for_technology(remediation_text, technology, file_path)
+    deterministic_details = {**finding_details, "file_path": file_path}
+    deterministic_s1192 = is_python_duplicate_literal_rule(deterministic_details)
+    deterministic_b324 = is_python_weak_hash_rule(deterministic_details)
 
-    if not patch_content:
+    if not patch_content and not (deterministic_s1192 or deterministic_b324):
         label = code_fence_label_for_technology(technology, file_path)
         raise GitHubClientError(
             f"AI remediation did not include a valid non-empty {technology} code block. "
@@ -1375,11 +2328,61 @@ async def create_security_pr(finding_details: dict, remediation_text: str) -> di
                 "Refusing to replace it."
             )
 
-        patched_content = build_safe_patched_content(
-            original_content,
-            patch_content,
-            finding_details,
-        )
+        anchor_warning: str | None = None
+        applied_remediation_text = remediation_text
+
+        if deterministic_s1192:
+            patched_content, deterministic_details = build_python_s1192_constant_patch(
+                original_content,
+                {**finding_details, "file_path": file_path},
+            )
+            applied_remediation_text = build_python_s1192_remediation_text(deterministic_details)
+        elif deterministic_b324:
+            patched_content, weak_hash_details = build_python_b324_weak_hash_patch(
+                original_content,
+                {**finding_details, "file_path": file_path},
+            )
+            applied_remediation_text = build_python_b324_remediation_text(weak_hash_details)
+        else:
+            try:
+                patched_content = build_safe_patched_content(
+                    original_content,
+                    patch_content,
+                    finding_details,
+                )
+            except GitHubClientError as patch_exc:
+                if patch_exc.code != "patch_target_not_found":
+                    raise
+                if technology == "python":
+                    raise
+                # Fallback: apply patch at approximate line range and create the PR with a warning
+                patched_content, anchor_warning = _apply_approximate_anchor(
+                    original_content, patch_content, finding_details
+                )
+                _log.warning(
+                    "create_security_pr: using approximate anchor for finding %s — %s",
+                    finding_id, anchor_warning,
+                )
+
+        # P3 safety check: validate the final patched content before committing.
+        # Catches LLM-generated stubs, function deletions, and excessive removals
+        # that slip past build_safe_patched_content (e.g. Python AST still parses
+        # a stub function).  If it fails, raise safety_check_failed so the caller
+        # can route to create_proposal_pr instead.
+        is_safe, safety_reason = is_safe_to_apply(original_content, patched_content)
+        if not is_safe:
+            _log.warning(
+                "create_security_pr: safety check failed for finding %s — %s",
+                finding_id, safety_reason,
+            )
+            raise GitHubClientError(
+                f"Safety check failed: {safety_reason}",
+                code="safety_check_failed",
+                user_message=safety_reason,
+                retryable=False,
+                details={"safety_reason": safety_reason, "finding_id": finding_id},
+            )
+
         source_sha = source_file["sha"]
 
         await github_request(
@@ -1403,16 +2406,19 @@ async def create_security_pr(finding_details: dict, remediation_text: str) -> di
             rule_id,
             file_path,
             finding_details,
-            remediation_text,
+            applied_remediation_text,
         )
 
     if not pull_request.get("html_url"):
         raise GitHubClientError("GitHub did not return a pull request URL.")
 
     return {
-        "branch": branch_name,
-        "url": pull_request["html_url"],
-        "number": pull_request.get("number"),
+        "branch":        branch_name,
+        "url":           pull_request["html_url"],
+        "number":        pull_request.get("number"),
+        "pr_type":       "code_fix",
+        "anchor_warning": anchor_warning,
+        "applied_remediation_text": applied_remediation_text,
     }
 
 
@@ -1575,8 +2581,61 @@ async def get_existing_open_pr_for_branch(branch_name: str) -> dict | None:
     Returns the open PR dict or None if not found.
     Callers should handle exceptions — this function does not swallow them.
     """
-    repo_full = os.getenv("GITHUB_REPO", "/")
+    app_id, installation_id, repo_full, private_key_path, _ = get_github_config()
+    installation_token = await get_installation_token(app_id, installation_id, private_key_path)
     owner, _, _ = repo_full.partition("/")
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(
+        base_url=GITHUB_API_URL,
+        headers=build_headers(installation_token),
+        timeout=GITHUB_TIMEOUT_SECONDS,
+    ) as client:
         return await get_existing_open_pr(client, repo_full, owner, branch_name)
+
+
+async def get_pr_diff(pr_url: str) -> dict | None:
+    """
+    Returns the unified diff of a GitHub PR as {"diff": str, "pr_number": str}.
+    Uses GitHub App installation token auth.
+    Returns None if the URL is invalid, the PR is inaccessible, or any error occurs.
+    """
+    if not pr_url or "github.com" not in pr_url:
+        return None
+
+    parts = pr_url.rstrip("/").split("/")
+    try:
+        pull_idx = parts.index("pull")
+        owner = parts[pull_idx - 2]
+        repo_name = parts[pull_idx - 1]
+        pr_number = parts[pull_idx + 1]
+    except (ValueError, IndexError):
+        _log.warning("get_pr_diff: cannot parse pr_url=%s", pr_url)
+        return None
+
+    repo = f"{owner}/{repo_name}"
+
+    try:
+        app_id, installation_id, _, private_key_path, _ = get_github_config()
+        installation_token = await get_installation_token(app_id, installation_id, private_key_path)
+
+        headers = {
+            "Authorization": f"Bearer {installation_token}",
+            "Accept": "application/vnd.github.v3.diff",
+            "User-Agent": "AI-DevSecOps-Control-Plane",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+
+        async with httpx.AsyncClient(timeout=GITHUB_TIMEOUT_SECONDS) as client:
+            response = await client.get(
+                f"{GITHUB_API_URL}/repos/{repo}/pulls/{pr_number}",
+                headers=headers,
+            )
+
+        if response.status_code == 200:
+            return {"diff": response.text, "pr_number": pr_number}
+
+        _log.warning("get_pr_diff: GitHub returned %s for %s", response.status_code, pr_url)
+    except Exception as exc:
+        _log.warning("get_pr_diff failed for %s: %s", pr_url, exc)
+
+    return None

@@ -19,7 +19,7 @@ OLLAMA_URL = f"{_OLLAMA_HOST}/api/generate"
 OLLAMA_TAGS_URL = f"{_OLLAMA_HOST}/api/tags"
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:14b")
 OLLAMA_HEALTH_TIMEOUT_SECONDS = 2
-SUPPORTED_TECHNOLOGIES = {"python", "angular", "typescript", "java"}
+SUPPORTED_TECHNOLOGIES = {"python", "angular", "typescript", "java", "css", "html"}
 ANGULAR_SECRET_KEYWORDS = (
     "apikey",
     "token",
@@ -35,17 +35,103 @@ ANGULAR_SECRET_PREFIXES = (
     "javascript.lang.security.audit.hardcoded",
 )
 
+CSS_EXTENSIONS = (".css", ".scss", ".sass", ".less")
+HTML_EXTENSIONS = (".html", ".htm", ".jinja", ".j2")
 
-def normalize_technology(value: object) -> str:
-    technology = str(value or "python").strip().lower()
+
+def normalize_technology(value: object, file_path: str = "") -> str:
+    technology = str(value or "").strip().lower()
 
     if technology == "typescript":
         return "angular"
+    if technology in {"python", "angular", "java", "css", "html"}:
+        return technology
 
-    if technology not in SUPPORTED_TECHNOLOGIES:
+    # rule_id namespaces: css:S*, web:css*, html.*, html:*, web:html*
+    # Rule namespaces win over extension so css:S4666 in an .html file remains CSS.
+    rule_lower = technology  # already lowercased
+    if rule_lower.startswith(("css:", "web:css")):
+        return "css"
+    if rule_lower.startswith(("html.", "html:", "web:html")):
+        return "html"
+
+    # Inferir por extensión de archivo cuando no hay valor explícito
+    fp = str(file_path or "").lower()
+    if any(fp.endswith(ext) for ext in CSS_EXTENSIONS):
+        return "css"
+    if any(fp.endswith(ext) for ext in HTML_EXTENSIONS):
+        return "html"
+
+    return "python"
+
+
+# ---------------------------------------------------------------------------
+# Technology inference from rule_id / file_path
+# ---------------------------------------------------------------------------
+# Bandit rules are B + 3 digits (B101, B501, etc.)
+_BANDIT_RULE_RE = re.compile(r"^B\d{3}$", re.IGNORECASE)
+
+# SonarQube JS/TS namespaces that should always use the Angular/JS prompt
+_JS_RULE_PREFIXES = ("javascript:", "typescript:", "jsts.")
+
+# CSS / HTML namespaces
+_CSS_RULE_PREFIXES = ("css:", "web:css")
+_HTML_RULE_PREFIXES = ("html.", "html:", "web:html")
+
+# SonarQube Java namespaces
+_JAVA_RULE_PREFIXES = ("java:", "kotlin:", "squid:")
+
+# File extensions that override project technology
+_JS_EXTENSIONS  = (".js", ".ts", ".jsx", ".tsx", ".vue", ".mjs", ".cjs")
+_JAVA_EXTENSIONS = (".java", ".kt", ".kts", ".groovy", ".scala")
+
+
+def infer_technology_from_finding(rule_id: str, file_path: str) -> str | None:
+    """Infer the actual *language* technology from rule_id namespace or file extension.
+
+    This is the source of truth for prompt selection and patch strategy.  It
+    takes precedence over ``project.technology`` so that, for example, a Python
+    project that also has SonarQube findings in ``.html``, ``.css``, ``.js`` or
+    ``.java`` files gets the matching prompt instead of the Python prompt.
+
+    Returns one of ``"python"``, ``"angular"``, ``"java"``, ``"css"``,
+    ``"html"`` — or ``None`` when the evidence is insufficient (caller should
+    fall back to project technology).
+    """
+    rule_lower  = (rule_id   or "").lower().strip()
+    path_lower  = (file_path or "").lower().strip()
+
+    # ── Infer from rule_id namespace (most authoritative signal) ──────────────
+    if any(rule_lower.startswith(p) for p in _CSS_RULE_PREFIXES):
+        return "css"
+    if any(rule_lower.startswith(p) for p in _HTML_RULE_PREFIXES):
+        return "html"
+    if any(rule_lower.startswith(p) for p in _JS_RULE_PREFIXES):
+        return "angular"
+    if rule_lower.startswith(("python:", "gitlab.bandit.")):
         return "python"
+    if rule_lower.startswith(("semgrep.python.", "python.lang.", "python.flask.", "python.django.")):
+        return "python"
+    if _BANDIT_RULE_RE.match(rule_id or ""):           # e.g. B501, B101
+        return "python"
+    if any(rule_lower.startswith(p) for p in _JAVA_RULE_PREFIXES):
+        return "java"
+    if rule_lower.startswith(("semgrep.java.", "java.lang.", "java.spring.")):
+        return "java"
 
-    return technology
+    # ── Infer from file extension ─────────────────────────────────────────────
+    if any(path_lower.endswith(ext) for ext in CSS_EXTENSIONS):
+        return "css"
+    if any(path_lower.endswith(ext) for ext in HTML_EXTENSIONS):
+        return "html"
+    if any(path_lower.endswith(ext) for ext in _JS_EXTENSIONS):
+        return "angular"
+    if path_lower.endswith(".py"):
+        return "python"
+    if any(path_lower.endswith(ext) for ext in _JAVA_EXTENSIONS):
+        return "java"
+
+    return None  # caller uses project technology as fallback
 
 
 def get_finding_technology(finding_id: object) -> str | None:
@@ -77,10 +163,24 @@ def get_finding_technology(finding_id: object) -> str | None:
 
 
 def enrich_finding_details(finding_details: dict) -> dict:
-    technology = finding_details.get("technology") or get_finding_technology(finding_details.get("id"))
+    # Priority 1: infer from rule_id / file_path (most specific signal)
+    inferred = infer_technology_from_finding(
+        finding_details.get("rule_id", ""),
+        finding_details.get("file_path", ""),
+    )
+    if inferred:
+        return {**finding_details, "technology": inferred}
+
+    # Priority 2: explicit technology already in the dict (from build_finding_details)
+    # Priority 3: look up via project (DB query)
+    technology = (
+        finding_details.get("technology")
+        or get_finding_technology(finding_details.get("id"))
+        or finding_details.get("rule_id", "")
+    )
     return {
         **finding_details,
-        "technology": normalize_technology(technology),
+        "technology": normalize_technology(technology, finding_details.get("file_path", "")),
     }
 
 
@@ -110,6 +210,11 @@ async def check_ollama_status() -> dict:
 
 
 def build_python_prompt(finding_details: dict) -> str:
+    expected_function = finding_details.get("expected_function") or "UNKNOWN"
+    expected_function_source = (
+        finding_details.get("expected_function_source")
+        or finding_details.get("code_snippet", "")
+    )
     return f"""
 You are an AI DevSecOps remediation engine. Generate one surgical Python patch
 for the following security finding.
@@ -122,6 +227,12 @@ Strict output contract:
   Python that can be parsed by Python tooling.
 - The fenced block must include the complete affected function, including its
   def or async def header and the full corrected function body.
+- Preserve the exact affected function name and signature. The affected function
+  is: {expected_function}.
+- Do not invent new functions, routes, decorators, fake database helpers, fake
+  models, sample endpoints, or placeholders.
+- Do not rename the affected function. If the function cannot be fixed safely
+  with the provided context, return the original affected function unchanged.
 - Use standard 4-space indentation inside the function.
 - Never return loose statements, partial snippets, commented-out examples, or
   explanation-only code.
@@ -142,6 +253,11 @@ Description: {finding_details.get("description", "")}
 Code context:
 ```python
 {finding_details.get("code_snippet", "")}
+```
+
+Affected function that must be preserved:
+```python
+{expected_function_source}
 ```
 
 Security context:
@@ -180,36 +296,104 @@ Devuelve el archivo TypeScript completo con los comentarios de CI/CD incluidos.
 
 
 def _base_angular_prompt(finding_details: dict) -> str:
+    expected_function = finding_details.get("expected_function") or ""
+    expected_function_source = finding_details.get("expected_function_source") or ""
+    code_snippet = finding_details.get("code_snippet", "")
+    rule_id = finding_details.get("rule_id", "UNKNOWN")
+    file_path = finding_details.get("file_path", "UNKNOWN")
+    rule_lower = str(rule_id).lower()
+
+    # Extra guidance for argument-count rules (S930) or JS rules in HTML files
+    is_js_rule_in_html = (
+        rule_lower.startswith(("javascript:", "typescript:", "jsts."))
+        and str(file_path).lower().endswith((".html", ".htm"))
+    )
+    s930_guidance = ""
+    if rule_lower == "javascript:s930" or "s930" in rule_lower:
+        s930_guidance = (
+            "\n- Esta regla indica que una funcion se llama con MAS argumentos de los"
+            " que declara. Correccion valida: (a) agrega el parametro faltante a la"
+            " firma de la funcion existente, o (b) elimina el argumento extra del"
+            " sitio de llamada. Elige la opcion que preserve la logica original."
+        )
+
+    # Guidance for Cognitive Complexity rules (S3776 and similar)
+    cognitive_complexity_guidance = ""
+    if "s3776" in rule_lower or "cognitive_complexity" in rule_lower:
+        cognitive_complexity_guidance = (
+            "\n- Esta regla reporta Complejidad Cognitiva excesiva en la funcion."
+            " DEBES devolver la funcion COMPLETA original con la logica refactorizada:"
+            " extrae subfunciones auxiliares, simplifica cadenas if/else o usa early"
+            " returns para reducir el anidamiento. NUNCA devuelvas un placeholder, un"
+            " comentario TODO ni una funcion llamada refactoredFunction. El nombre de"
+            " la funcion original debe preservarse exactamente."
+        )
+
+    function_hint = ""
+    if expected_function:
+        function_hint = (
+            f"\nNombre de la funcion afectada: {expected_function}\n"
+            "Debes preservar exactamente ese nombre y su logica; solo corrige el"
+            " problema especifico reportado."
+        )
+
+    html_js_hint = ""
+    if is_js_rule_in_html:
+        html_js_hint = (
+            "\n- El hallazgo apunta a JavaScript embebido dentro de un archivo HTML."
+            " Devuelve SOLO el fragmento JavaScript corregido dentro de un bloque"
+            " ```javascript```. No devuelvas markup HTML ni TypeScript externo."
+        )
+
+    # Include the full function source when available (from JS enrichment), so
+    # the model has the complete body to refactor — not just a 1-2 line snippet.
+    full_function_section = ""
+    if expected_function_source and expected_function_source != code_snippet:
+        full_function_section = (
+            f"\nFuncion completa que debe ser refactorizada:\n"
+            f"```javascript\n{expected_function_source}\n```"
+        )
+
     return f"""
 Eres un Arquitecto Senior de Frontend y Experto en Seguridad en Angular/TypeScript.
 Genera un parche quirurgico para el siguiente hallazgo de seguridad.
 
 Contrato estricto de salida:
 - Devuelve exactamente un bloque de codigo fenced, etiquetado como typescript,
-  html o angular segun el archivo afectado.
+  javascript, html o angular segun el archivo afectado.
 - No escribas prosa antes ni despues del bloque fenced.
-- El bloque debe contener exclusivamente TypeScript o HTML valido para Angular.
+- El bloque debe contener exclusivamente TypeScript, JavaScript o HTML valido.
 - BAJO NINGUNA CIRCUNSTANCIA mezcles lenguajes. No devuelvas Python, Java,
   Bash, diffs ni pseudocodigo.
 - Si el archivo es .ts, el parche final debe compilar como TypeScript de Angular.
-- Si el archivo es .html, el parche final debe ser plantilla Angular/HTML valida.
-- Incluye el reemplazo completo del metodo, binding, template fragment o bloque
-  afectado que corrige el hallazgo sin romper el contexto Angular.
+- Si el hallazgo apunta a JavaScript inline dentro de .html, devuelve solo el
+  fragmento JavaScript minimo corregido dentro de un bloque `javascript`.
+- Si el archivo es .html y el problema esta en markup/template, el parche final
+  debe ser plantilla Angular/HTML valida.
+- Incluye el reemplazo COMPLETO de la funcion o metodo afectado que corrige el
+  hallazgo sin romper el contexto. Nunca devuelvas solo una parte de la funcion.
 - No incluyas numeros de linea, marcadores de diff, prompts de shell ni texto
   Markdown fuera del bloque de codigo.
+- NUNCA crees una nueva clase TypeScript, un nuevo componente Angular ni un
+  ejemplo ilustrativo generico desconectado del codigo existente. El parche debe
+  ser aplicable directamente al archivo afectado sin contexto adicional.
+- NUNCA uses placeholders, comentarios TODO ni funciones stub como
+  refactoredFunction. Implementa el fix real con la logica completa.
+- No elimines funciones ni metodos que ya existan en el archivo. Si necesitas
+  modificar una funcion, incluye su version completa corregida.{s930_guidance}{cognitive_complexity_guidance}{html_js_hint}
 
-Rule ID: {finding_details.get("rule_id", "UNKNOWN")}
+Rule ID: {rule_id}
 Severity: {finding_details.get("severity", "UNKNOWN")}
 Confidence: {finding_details.get("confidence", "UNKNOWN")}
-File: {finding_details.get("file_path", "UNKNOWN")}
+File: {file_path}
 Lines: {finding_details.get("line_start", "UNKNOWN")} - {finding_details.get("line_end", "UNKNOWN")}
-Description: {finding_details.get("description", "")}
+Description: {finding_details.get("description", "")}{function_hint}
 
 Code context:
-```angular
-{finding_details.get("code_snippet", "")}
+```javascript
+{code_snippet}
 ```
-
+{full_function_section}
 Security context:
 - Evita inyectar HTML no confiable con innerHTML.
 - Usa interpolation, property binding y pipes seguros cuando sea posible.
@@ -269,6 +453,72 @@ Security context:
 """.strip()
 
 
+def build_css_prompt(finding_details: dict) -> str:
+    return f"""
+Eres un Ingeniero Frontend Senior especialista en CSS/SCSS y calidad de codigo.
+Genera un parche quirurgico para el siguiente hallazgo de analisis estatico.
+
+Contrato estricto de salida:
+- Devuelve exactamente un bloque de codigo fenced etiquetado `css`.
+- No escribas prosa, comentarios ni explicaciones fuera del bloque fenced.
+- El bloque debe contener CSS/SCSS valido y aplicable.
+- NUNCA devuelvas python, javascript, typescript, java ni pseudocodigo.
+- Incluye unicamente el fragmento CSS minimo corregido (el selector o regla afectada).
+- No incluyas numeros de linea ni marcadores de diff.
+
+Rule ID: {finding_details.get("rule_id", "UNKNOWN")}
+Severity: {finding_details.get("severity", "UNKNOWN")}
+File: {finding_details.get("file_path", "UNKNOWN")}
+Lines: {finding_details.get("line_start", "UNKNOWN")} - {finding_details.get("line_end", "UNKNOWN")}
+Description: {finding_details.get("description", "")}
+
+Code context:
+```css
+{finding_details.get("code_snippet", "")}
+```
+
+Guias de seguridad y calidad CSS:
+- Elimina selectores duplicados; consolida sus propiedades en la primera ocurrencia.
+- No uses `!important` a menos que ya este presente y sea necesario.
+- Manten la especificidad original del selector.
+- Si el problema es un selector duplicado, devuelve SOLO el bloque fusionado correcto,
+  eliminando el duplicado.
+""".strip()
+
+
+def build_html_prompt(finding_details: dict) -> str:
+    return f"""
+Eres un Ingeniero Frontend Senior especialista en HTML semantico, accesibilidad y seguridad web.
+Genera un parche quirurgico para el siguiente hallazgo de analisis estatico.
+
+Contrato estricto de salida:
+- Devuelve exactamente un bloque de codigo fenced etiquetado `html`.
+- No escribas prosa, comentarios ni explicaciones fuera del bloque fenced.
+- El bloque debe contener HTML5 valido.
+- NUNCA devuelvas python, javascript ni pseudocodigo.
+- Incluye unicamente el fragmento HTML minimo corregido.
+- No incluyas numeros de linea ni marcadores de diff.
+
+Rule ID: {finding_details.get("rule_id", "UNKNOWN")}
+Severity: {finding_details.get("severity", "UNKNOWN")}
+File: {finding_details.get("file_path", "UNKNOWN")}
+Lines: {finding_details.get("line_start", "UNKNOWN")} - {finding_details.get("line_end", "UNKNOWN")}
+Description: {finding_details.get("description", "")}
+
+Code context:
+```html
+{finding_details.get("code_snippet", "")}
+```
+
+Guias de seguridad HTML:
+- Agrega atributos `rel="noopener noreferrer"` en `<a target="_blank">`.
+- Usa `autocomplete="off"` / `autocomplete="new-password"` donde corresponda.
+- No uses atributos deprecated (e.g., `<font>`, `align=`, `border=` en table).
+- Para XSS: usa textContent en vez de innerHTML donde aplique.
+- Corrige el problema minimo reportado sin alterar estructura circundante.
+""".strip()
+
+
 def build_prompt(finding_details: dict) -> str:
     finding_details = enrich_finding_details(finding_details)
     technology = finding_details["technology"]
@@ -278,6 +528,12 @@ def build_prompt(finding_details: dict) -> str:
 
     if technology == "java":
         return build_java_prompt(finding_details)
+
+    if technology == "css":
+        return build_css_prompt(finding_details)
+
+    if technology == "html":
+        return build_html_prompt(finding_details)
 
     return build_python_prompt(finding_details)
 
@@ -302,7 +558,10 @@ def extract_python_signature(code: str) -> str | None:
 
 
 def build_safe_fallback_code(finding_details: dict) -> str:
-    technology = normalize_technology(finding_details.get("technology"))
+    technology = normalize_technology(
+        finding_details.get("technology") or finding_details.get("rule_id", ""),
+        finding_details.get("file_path", ""),
+    )
 
     if technology == "angular":
         code_snippet = strip_line_numbers(str(finding_details.get("code_snippet") or ""))
@@ -327,6 +586,22 @@ def build_safe_fallback_code(finding_details: dict) -> str:
             "\"Local AI remediation engine is unavailable; regenerate this Java patch before use.\""
             ");"
         )
+
+    if technology == "css":
+        code_snippet = strip_line_numbers(str(finding_details.get("code_snippet") or ""))
+
+        if code_snippet:
+            return code_snippet
+
+        return "/* AI remediation engine unavailable; regenerate before use. */"
+
+    if technology == "html":
+        code_snippet = strip_line_numbers(str(finding_details.get("code_snippet") or ""))
+
+        if code_snippet:
+            return code_snippet
+
+        return "<!-- AI remediation engine unavailable; regenerate before use. -->"
 
     code_snippet = strip_line_numbers(str(finding_details.get("code_snippet") or ""))
 

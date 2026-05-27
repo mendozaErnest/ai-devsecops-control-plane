@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-26 (badge origen detecta SonarQube por rule_id namespace; ping 500 corregido — iputils-ping en Dockerfile + FileNotFoundError handling)
+Ultima actualizacion: 2026-05-27 (Fix modal bugs: toDiffLines, JS enrichment, angular prompt S3776, 422→warning, JS stubs — 113 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -43,7 +43,7 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 
 - Backend: FastAPI + Uvicorn.
 - Base de datos: SQLModel sobre SQLite (PostgreSQL-ready via DATABASE_URL).
-- Dashboard: SPA estatica HTML/JavaScript/Tailwind servida desde GET /.
+- Dashboard: SPA estatica HTML/JavaScript/Tailwind servida desde GET /; JS/CSS en src/dashboard/js/ y src/dashboard/css/ montados en /static via FastAPI StaticFiles.
 - Scanners SAST: Bandit + Semgrep (Python), Semgrep (Angular/Java).
 - Scanners SCA: pip-audit (Python), OWASP Dependency Check (Java).
 - Scanners Quality: Pylint (Python), ESLint (Angular/TypeScript), SonarQube Community REST.
@@ -92,7 +92,16 @@ src/scanners/eslint_adapter.py        ← Angular/TypeScript Quality
 src/scanners/sonarqube_adapter.py     ← SonarQube Community Quality REST
 src/ai_engine/remediator.py
 src/integrations/github_client.py
-src/dashboard/index.html
+src/dashboard/index.html          ← HTML-only shell (no inline JS/CSS)
+src/dashboard/css/base.css        ← CSS variables, reset, animations
+src/dashboard/css/layout.css      ← nav, bento, cards, table
+src/dashboard/css/modal.css       ← modal, tabs, form panels
+src/dashboard/js/utils.js         ← i18n, helpers, tool badges
+src/dashboard/js/api.js           ← all fetch() calls centralised
+src/dashboard/js/diff.js          ← diff view rendering (LCS + GitHub)
+src/dashboard/js/modal.js         ← all modal lifecycle
+src/dashboard/js/dashboard.js     ← findings, scan, report, PDF
+src/dashboard/js/main.js          ← entry point, event wiring
 code/requirements.txt
 .github/workflows/devsecops-scan.yml  ← CI workflow
 docs/ai-current-project-context.md
@@ -189,6 +198,8 @@ para parchear BanditAdapter y CombinedScannerAdapter en su modulo de origen.
 - GET  /api/profiles/{id}                   → perfil por id
 - PUT  /api/profiles/{id}                   → actualiza perfil
 - GET  /api/findings/{finding_id}/file_content → contenido completo del archivo fuente
+- GET  /api/findings/{finding_id}/pr-diff  → diff real del PR de GitHub (via Remediation.pr_url)
+- GET  /api/remediate/{finding_id}/preview-diff → before/after exacto que el PR commitiría (build_safe_patched_content local)
 - GET  /api/reports/project/{id}            → reporte by_severity/status/top_rules
 - POST /api/scan/sonar                      → fetch SonarQube issues + persist (CLI optional)
 - POST /api/webhooks/github                 → webhook PR con HMAC-SHA256
@@ -251,6 +262,14 @@ Java:
 - find_java_method_range(content, line_start): brace-counting, incluye anotaciones @Override etc. Retorna (start, end) o None.
 - find_java_class_range(content, class_name): fallback por nombre de clase.
 
+CSS/HTML: ✅
+- normalize_patch_technology_for_finding(): reglas css:*/web:css* → "css"; html.*/html:*/web:html* → "html".
+- code_fence_label_for_technology("css") → "css"; code_fence_label_for_technology("html") → "html".
+- extract_generic_code_block(): labels_by_technology incluye css: ("css","scss","sass","less") y html: ("html","htm").
+- extract_code_block_for_technology(): rechaza bloque de función Python si el finding es CSS/HTML.
+- build_safe_patched_content(): CSS/HTML usa build_lightweight_patched_content() con guardrail de tamaño.
+- build_safe_fallback_code(): CSS → `/* AI unavailable */`; HTML → `<!-- AI unavailable -->`.
+
 Orden de fallback: semantico (metodo) → clase → rango de lineas.
 Guardrail de tamano: archivo > 30 lineas, resultado < 60% del original → rechazar.
 
@@ -260,7 +279,18 @@ Guardrail de tamano: archivo > 30 lineas, resultado < 60% del original → recha
 
 - build_python_prompt(finding): prompt Python con contrato estricto AST.
 - build_angular_prompt(finding): detecta si es secret (ANG-SECRET-* o snippet con apiKey/token/password) y agrega instruccion CI/CD. XSS no recibe esa instruccion.
+  - Incluye `expected_function_source` completa si fue enriquecida por `enrich_js_finding_context` (evita placeholders). ✅
+  - Guia especial para S3776/cognitive_complexity: exige refactoring real, prohíbe placeholder/refactoredFunction/TODO. ✅
+  - Prohíbe explícitamente placeholders en el contrato de salida: "NUNCA uses placeholders, comentarios TODO ni funciones stub". ✅
 - build_java_prompt(finding): contrato Java AppSec.
+- build_css_prompt(finding): prompt dedicado CSS/SCSS; contrato estricto "devuelve solo un bloque ```css```; NUNCA Python". Guias: eliminar selectores duplicados, sin !important innecesario. ✅
+- build_html_prompt(finding): prompt dedicado HTML5; guias de seguridad (rel=noopener, autocomplete, XSS). ✅
+
+Deteccion de CSS/HTML (normalize_technology + infer_technology_from_finding):
+  - Namespace rule_id: css:* / web:css* → "css"; html.* / html:* / web:html* → "html"
+  - Extension de archivo: .css/.scss/.sass/.less → "css"; .html/.htm/.jinja/.j2 → "html"
+  - Orden de precedencia: rule_id namespace > file extension > project technology.
+  - Ejemplo: css:S4666 en index.html → technology="css" → build_css_prompt ✅
 
 Deteccion de secrets en Angular:
   SECRET_PREFIXES = ('ANG-SECRET', 'SEMGREP-SECRET', ...)
@@ -270,13 +300,25 @@ Deteccion de secrets en Angular:
 
 ## Dashboard
 
+Dashboard refactored (2026-05-26) — index.html is now pure HTML; all JS and CSS extracted to separate modules:
+- src/dashboard/css/base.css: CSS variables, reset, animations, scrollbar styles
+- src/dashboard/css/layout.css: nav, bento grid, cards, table, findings list, pagination
+- src/dashboard/css/modal.css: modal overlays, tab buttons, form panels, severity badge overrides
+- src/dashboard/js/utils.js: i18n strings (ES/EN), applyI18n(), t(), setLang(), tool badge helpers
+- src/dashboard/js/api.js: all fetch() wrappers (loadProjects, loadFindings, createProject, createPR, etc.)
+- src/dashboard/js/diff.js: LCS-based renderDiffView(), GitHub unified-diff renderGitHubDiff(); renderPreviewDiff() para diff full-file exacto (usa original/patched del servidor); guard para snippet null/vacío; computeDiff y normalizeLines a scope módulo (sin duplicación S4144)
+- src/dashboard/js/modal.js: project modal wizard, remediation modal, branch-confirm modal, reason/audit modals
+- src/dashboard/js/dashboard.js: findings render + pagination, scan trigger, report/PDF export, chart rendering
+- src/dashboard/js/main.js: entry point — imports all modules, wires events, boot sequence
+- src/api/main.py: StaticFiles mount at /static → src/dashboard/ directory
+
 src/dashboard/index.html capacidades actuales:
 - Vista de proyectos con contador de findings + mini-badges de severidad C/H/M/L por proyecto.
   - Backend: GET /api/projects incluye findings_summary: {CRITICAL, HIGH, MEDIUM, LOW, total}.
 - Modal 2 pasos: Paso 1 = seleccion de ScanProfile (cards), Paso 2 = ZIP/clone.
   - Paso 1: cards con iconos SVG inline (Py azul, Angular rojo, Java ☕, Full Scan escudo, Custom engranaje), descripcion de herramientas y badge de stack. Hover resaltado via CSS .profile-card.
   - Paso 2: sub-selector GitHub / GitLab con SVG logos; placeholder del input de URL cambia segun seleccion (setCloneSource()).
-- Badge de origen del scanner: `detectTool(finding)` infiere la herramienta por `rule_id` namespace (`python:` / `python.lang` / `web:` / `java:` / `typescript:` / `javascript:` / `gitlab.bandit.` → SonarQube; `B\d{3}` → Bandit; `/` en rule_id → Semgrep; etc.). Fallback al campo `finding.tool`. SonarQube=azul, Bandit=amarillo, Semgrep=celeste, ESLint=rojo, Pylint=verde, desconocido=gris. ✅
+- Badge de origen del scanner: `detectTool(finding)` infiere la herramienta por `rule_id` namespace. SonarQube se detecta por formato `namespace:Snumber` (e.g. `python:S8415`). Dot-notation (`python.lang.*`, `gitlab.*`, `python.flask.*`) → Semgrep. `B\d{3}` → Bandit. Fallback al campo `finding.tool`. SonarQube=azul, Bandit=amarillo, Semgrep=celeste, ESLint=rojo, Pylint=verde. ✅
 - Panel Custom con DAST deshabilitado (Proximamente) y Quality habilitable; crea ScanProfile real con `quality_tool=pylint` para Python o `quality_tool=eslint` para Angular/TypeScript.
 - Tabla de hallazgos con paginacion (PAGE_SIZE=20), badge de severidad inline (CRIT/HIGH/MED/LOW pill rojo/naranja/amarillo/azul).
 - Filtros chip funcionales: Todos / Critical / High / Breach — resetean a pagina 1. ✅
@@ -287,6 +329,10 @@ src/dashboard/index.html capacidades actuales:
 - Auto-Fix → modal de remediacion → PR button (icono cohete SVG). ✅
   - Header con badge rule_id + path relativo corto (shortPath()).
   - Vista diff split-screen dos columnas: izquierda "Antes" (rojo, lineas −), derecha "Despues" (verde, lineas +). En mobile (< 640px) colapsa a columna unica via media query.
+  - Si el finding tiene PR en GitHub (Remediation.pr_url), el modal sobreescribe el diff de Ollama con el diff real del commit via GET /api/findings/{id}/pr-diff + renderGitHubDiff(). Badge verde confirmatorio. ✅
+  - renderGitHubDiff(): vista side-by-side completa — panel ANTES (archivo original, líneas eliminadas en rojo #3d1a1a) y panel DESPUÉS (archivo parcheado, líneas añadidas en verde #1a3d1a). Sin toggle. Scroll sincronizado (vertical + horizontal). Auto-scroll al primer cambio. ✅
+  - GET /api/findings/{id}/pr-diff: filtra WHERE pr_url IS NOT NULL — evita que una fila de remediación más reciente sin pr_url tape a la que sí lo tiene. ✅
+  - body scroll lock: document.body.style.overflow='hidden' al abrir modal, '' al cerrar — todos los caminos (X, backdrop click, ESC). ✅
   - Codigo propuesto se limpia de backtick fences antes de mostrar (cleanCodeFences()).
   - Panel descripcion con toggle ES↔EN: muestra traduccion del diccionario BANDIT_ES (~35 reglas cubiertas) o original ingles. Boton oculto si descripcion ES = EN (sin traduccion disponible). ✅
 - Tab Reportes con graficas Chart.js (by_severity, by_status, overdue).
@@ -301,18 +347,21 @@ src/dashboard/index.html capacidades actuales:
 ## Tests Actuales
 
 ```text
-tests/test_angular_prompt.py          (4 tests)
-tests/test_finding_upsert.py          (6 tests)
-tests/test_file_content_path.py       (2 tests)
-tests/test_github_path.py             (4 tests)
-tests/test_odc_adapter.py             (5 tests)
-tests/test_pip_audit_adapter.py       (5 tests)
-tests/test_quality_adapters.py        (7 tests)
-tests/test_safe_patching_python.py    (6 tests)
-tests/test_scan_profile.py            (11 tests)
-tests/test_semantic_patching.py       (11 tests)
-tests/test_semgrep_adapter.py         (4 tests)
-Total: 65 passed
+tests/test_angular_prompt.py               (4 tests)
+tests/test_finding_upsert.py               (6 tests)
+tests/test_file_content_path.py            (2 tests)
+tests/test_github_path.py                  (4 tests)
+tests/test_odc_adapter.py                  (5 tests)
+tests/test_pip_audit_adapter.py            (5 tests)
+tests/test_quality_adapters.py             (7 tests)
+tests/test_remediation_language_guards.py  (10 tests) ← +6: JS function deletion, _extract_named_functions, S930 prompt guards
+tests/test_remediator.py                   (3 tests)  ← CSS technology detection + prompt
+tests/test_safe_patching_python.py         (12 tests) ← S1192 constant + B324 weak-hash
+tests/test_scan_profile.py                 (11 tests)
+tests/test_semantic_patching.py            (11 tests)
+tests/test_semgrep_adapter.py              (4 tests)
+tests/test_technology_inference.py         (29 tests)
+Total: 113 passed  ← verificado tras modal bug fixes (2026-05-27)
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -348,6 +397,14 @@ Reglas permanentes:
 4. workspace/ puede contener uploads temporales; no versionar.
 5. ensure_sqlite_schema() es SQLite-only; desactivar para PostgreSQL.
 6. El contexto del archivo usa Finding.line_start; si el scanner reporta una línea incorrecta el contexto puede mostrar código diferente al snippet real.
+9. ✅ RESUELTO — CSS refactor introducía `.project-menu.open { display: none !important; }` en layout.css (línea 116), bloqueando el popover de proyectos. Corregido a `display: block !important;`.
+10. ✅ RESUELTO — Modal diff estado cacheado entre findings: epoch guard en modal.js invalida callbacks async de findings anteriores.
+11. ✅ RESUELTO — Panel ANTES mostraba texto de Ollama como código eliminado: renderDiffView ahora usa líneas reales del archivo para el panel ANTES cuando fileData está disponible.
+12. ✅ RESUELTO — `toDiffLines` era referenciado pero nunca definido en diff.js (line 67): fallaba silenciosamente y dejaba el área de diff completamente vacía. Corregido a `normalizeLines`.
+13. ✅ RESUELTO — Parches JS/SonarQube (ej. `javascript:S3776`) generaban placeholders porque el code_snippet era solo 1-2 líneas. Fix: `enrich_js_finding_context` en main.py extrae la función completa con `find_enclosing_js_function` (regex + brace-counting via `find_braced_block_range`).
+14. ✅ RESUELTO — Algunos modales no se abrían cuando `validate_remediation_patch` devolvía False (422): ahora el endpoint guarda el parche con `outcome="manual_review"` y devuelve 200 con `validation_warning`; el modal siempre abre y muestra el parche con banner de advertencia. PR creation con `manual_review` va directamente a `create_proposal_pr`.
+15. ✅ RESUELTO — Placeholders de refactoring JS (`function refactoredFunction`, `// Placeholder for the refactored function`, etc.) no eran detectados por `is_safe_to_apply`. Añadidos 8 nuevas señales de stub al guardrail.
+12. ✅ RESUELTO — Commits destructivos (PR #16 nunca mergeado): is_safe_to_apply() detecta stubs genéricos y funciones eliminadas; create_proposal_pr() crea PR solo con Markdown para revisión manual.
 
 ---
 
@@ -358,10 +415,25 @@ Inmediato (proxima sesion):
 2. ✅ build_pr_body() con formato estructurado (🔒 Security Fix, Herramienta, Problema, Fix aplicado, Referencias CWE).
 3. ✅ Badge de origen en dashboard — detectTool(finding) por rule_id namespace; SonarQube/Bandit/Semgrep/ESLint/Pylint coloreados.
 4. ✅ Ping 500 corregido — iputils-ping en Dockerfile + FileNotFoundError graceful (HTTP 503) + timeout 15s.
-5. `docker compose build api && docker compose up -d api` — rebuild para que iputils-ping entre en el contenedor.
-6. Reiniciar servidor uvicorn para que POST /api/scan/sonar active CLI automáticamente (scan_submitted: true).
-7. DAST adapter real con OWASP ZAP o validacion post-patch `tsc --noEmit` / Maven-Java.
-8. Generalizar POST /api/scan para aceptar target_path parametrizable.
+5. ✅ Bug1 modal ANTES: buildAntesRows sincroniza fi=h0 antes de procesar cada hunk; nunca usa c.content del diff como código.
+6. ✅ Bug2 PR creation: _apply_approximate_anchor con 3 estrategias (line-range+AST, comentario insertado, force-patch); siempre devuelve (candidate, warning) sin lanzar error. Endpoint devuelve 200+warning. Dashboard muestra link al PR + aviso amarillo (no error rojo).
+7. ✅ P1 modal: GET /api/findings/{id}/pr-diff filtra pr_url IS NOT NULL — finding XXE ahora muestra diff real del PR.
+8. ✅ P2 modal: body scroll lock (overflow:hidden) al abrir, unlock al cerrar — X, backdrop, ESC.
+9. ✅ P3 modal: scroll sync vertical + horizontal (scrollTop + scrollLeft) con requestAnimationFrame flag reset.
+10. ✅ Dashboard refactor: index.html → HTML-only; todo el JS/CSS extraído a módulos ES6 separados; StaticFiles mount en /static.
+11. ✅ Post-refactor bug fix: `layout.css` `.project-menu.open` corregido (`none` → `block`); `dashboard.js` wireDashboardEvents() tiene toggle del popover de proyectos (.repo click → toggle .open, click exterior → close, Escape → close); selectProject() cierra el popover al seleccionar.
+12. ✅ Fix tecnología: infer_technology_from_finding(rule_id, file_path) en remediator.py. Orden de precedencia: 1) namespace del rule_id (javascript:, python:, java:, B\d{3}, semgrep.*), 2) extensión del archivo (.html/.js/.ts → angular, .py → python, .java/.kt → java), 3) project.technology como fallback. Importado y usado en build_finding_details() de main.py. 29 tests nuevos en test_technology_inference.py. Corrige el bug donde un proyecto Python con findings SonarQube en archivos JS/HTML recibía prompt Python → Ollama generaba código Python para JS.
+13. ✅ Fix crítico P1: modal epoch guard en modal.js — _modalEpoch incrementa en cada apertura; IIFE async y checkExistingPR capturan epoch y abortan si ya no es el finding activo. diffView limpiado inmediatamente con "Cargando diff…" al abrir. hideRemediationModal también incrementa epoch.
+14. ✅ Fix crítico P2: renderDiffView en diff.js — panel ANTES siempre usa líneas reales del archivo (fileData.content) marcadas con tipo "hi" (tono azul). Nunca usa leftDiff (líneas LCS "eliminadas") que podían provenir del texto descriptivo de Ollama. Tipo "hi" añadido al objeto STYLE.
+15. ✅ Fix crítico P3: is_safe_to_apply() en github_client.py — valida 3 guardrails: >20% líneas eliminadas, señales de stub genérico, funciones eliminadas. create_proposal_pr() crea PR solo con docs/remediations/{id}.md sin tocar código. create_security_pr() llama is_safe_to_apply() y lanza safety_check_failed. Endpoint catch safety_check_failed → create_proposal_pr(); respuesta incluye pr_type ("code_fix"|"proposal"). Badge frontend ⚠/✓ en modal.
+16. ✅ CSS/HTML remediación: build_css_prompt() + build_html_prompt() con contrato estricto (solo bloque ```css``` / ```html```, nunca Python/JS). normalize_technology() y infer_technology_from_finding() reconocen css:*/web:css* y html.*/html:*/web:html*. github_client.py: normalize_patch_technology_for_finding, code_fence_label_for_technology y extract_generic_code_block actualizados. build_safe_fallback_code() con fallbacks CSS y HTML. Ejemplo resuelto: css:S4666 (selector duplicado .fb-error) → Ollama recibe prompt CSS → genera selector consolidado, no "# No Python code needed".
+17. ✅ Diff viewer guard (diff.js): renderDiffView ahora tiene guard explícito para snippet null/vacío. Si ambos son vacíos → mensaje "Sin código disponible". Si snippet vacío pero proposed existe → lado izquierdo muestra placeholder y lado derecho muestra proposed. Si snippet === proposed → forceReplacement=true → ops delete+insert explícitos (nunca queda solo lineas azules).
+18. ✅ Fix PR solution inconsistency (2026-05-27): `cached_remediation_is_reusable()` en main.py — cache check que NO re-lee archivo fuente local (archivo editado localmente ya no invalida la remediación cacheada → Ollama no se re-llama → el patch siempre es el mismo). `GET /api/remediate/{id}/preview-diff` aplica build_safe_patched_content en el archivo local y devuelve {original, patched}. `renderPreviewDiff()` en diff.js muestra diff full-file exacto con badge "✓ Vista previa exacta del PR". IIFE en modal.js usa Promise.allSettled para obtener fileData + previewData en paralelo; si preview disponible usa renderPreviewDiff, si no cae a renderDiffView. computeDiff y normalizeLines extraídos a scope módulo.
+19. ✅ is_safe_to_apply extendido a JS/TS: _extract_named_functions detecta `function funcName(` además de Python `def`. Stub signals JS agregados. Angular prompt fortalecido contra clase TypeScript inventada (S930).
+20. `docker compose build api && docker compose up -d api` — rebuild para que iputils-ping entre en el contenedor.
+21. Reiniciar servidor uvicorn para que POST /api/scan/sonar active CLI automáticamente (scan_submitted: true).
+22. DAST adapter real con OWASP ZAP o validacion post-patch `tsc --noEmit` / Maven-Java.
+23. Generalizar POST /api/scan para aceptar target_path parametrizable.
 
 Phase 2 ya implementado ✅:
 - normalize_file_path_for_github(): rutas absolutas workspace→relativas para GitHub API.

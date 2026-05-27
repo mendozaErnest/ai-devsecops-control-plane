@@ -1,0 +1,29 @@
+/* =========================================================
+   modal.css — Modal tabs, form panels, diff view, PR button
+   ========================================================= */
+
+/* ── Modal tabs (ZIP / Clone, GitHub / GitLab) ── */
+.tab-btn { padding: 6px 18px; border-radius: 20px; font-size:.8rem; font-weight:600; cursor:pointer; transition: background .15s; border:none; }
+.tab-active   { background: var(--accent); color:#fff; }
+.tab-inactive { background: var(--bg-hover); color: var(--muted); }
+.tab-inactive:hover { color: var(--text); }
+
+/* ── Wizard step panels (fade in/out) ── */
+.form-panel { transition: opacity .18s ease; }
+.form-panel.hidden-panel { opacity:0; height:0; overflow:hidden; pointer-events:none; }
+.form-panel.visible-panel { opacity:1; height:auto; pointer-events:auto; }
+
+/* ── Scan-profile card hover ── */
+.profile-card:not(.profile-card-active):hover { border-color:var(--accent) !important; background:rgba(47,129,247,.06) !important; }
+
+/* ── Diff split view: stack columns on narrow screens ── */
+@media (max-width:640px) { #diff-view { flex-direction:column !important; } }
+
+/* ── PR action container + button ── */
+#pr-action-container { display: flex; justify-content: flex-end; }
+#btn-pr {
+  display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: center;
+  gap: 8px !important; width: fit-content; white-space: nowrap; min-width: 232px;
+}
+#btn-pr svg { display: block !important; flex-shrink: 0 !important; min-width: 14px; }
+#btn-pr span { display: inline !important; line-height: 1 !important; white-space: nowrap; }
