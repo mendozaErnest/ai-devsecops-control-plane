@@ -36,6 +36,7 @@ from src.integrations.github_client import (
 )
 from src.scanners.escaneo import persist_scan, run_scan
 from src.scanners.orchestrator import ScanOrchestrator
+from typing import Annotated
 
 
 app = FastAPI()
@@ -515,28 +516,9 @@ async def get_project(project_id: uuid.UUID):
 
 
 @app.get("/api/projects/{project_id}/findings")
-async def get_project_findings_endpoint(project_id: uuid.UUID):
-    with Session(engine) as session:
-        project = session.get(Project, project_id)
-
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
-
-        findings = get_project_findings(session, project.id)
-        remediations = session.exec(select(Remediation)).all()
-        remediated_finding_ids = {remediation.finding_id for remediation in remediations}
-
-        return [
-            {
-                **finding.model_dump(mode="json"),
-                "has_remediation": finding.id in remediated_finding_ids,
-                "remediation_status": "Parche listo"
-                if finding.id in remediated_finding_ids
-                else "Sin parche",
-                "project_source_type": project.source_type,
-            }
-            for finding in findings
-        ]
+def get_user(user_id: int):
+    # Function implementation
+    pass
 
 
 @app.post("/api/projects/{project_id}/scan")
