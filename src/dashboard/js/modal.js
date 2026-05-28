@@ -6,9 +6,18 @@ import {
 import {
   generateRemediation, getRemediationPr, createPR, deletePRBranch,
   getPRDiff, getSourceFile, getAuditHistory, postLifecycleAction,
-  getProfiles, createProfile, getRemediationPreview,
+  getProfiles, getProjects, assignProjectProfile, createProfile, getRemediationPreview,
 } from "/static/js/api.js";
 import { renderDiffView, renderGitHubDiff, renderPreviewDiff } from "/static/js/diff.js";
+import {
+  SCAN_SLOT_ORDER, TECHNOLOGY_ITEMS, SCANNER_ITEMS,
+  addScannerToDraft, addTechnologyToDraft, applyValidation,
+  createEmptyProfileBuilderState, findScanner, findTechnology,
+  getAllSelectedScannerIds, getApiTechnologiesFromState, getPrimaryApiTechnology, loadSessionProfile,
+  isProjectCompatibleWithProfile, profileToDraft,
+  removeScannerFromDraft, removeTechnologyFromDraft, saveSessionProfile,
+  toScanProfilePayload,
+} from "/static/js/profile-builder-state.js";
 
 // ── DOM refs (modal-scoped) ──────────────────────────────────────────────────
 const remediationModal    = document.getElementById("remediation-modal");
@@ -52,6 +61,8 @@ const customPanel         = document.getElementById("custom-profile-panel");
 const wizardNextBtn       = document.getElementById("wizard-next-btn");
 const bcStep1             = document.getElementById("bc-step1");
 const bcStep2             = document.getElementById("bc-step2");
+const compatibleProjectsList = document.getElementById("compatible-projects-list");
+const compatibleProjectsStatus = document.getElementById("compatible-projects-status");
 
 // ── Module state ─────────────────────────────────────────────────────────────
 let currentRemediationFindingId;
@@ -62,6 +73,7 @@ let _usingGitHubDiff = false;
 let reasonModalCallback = null;
 let wizardProfiles = [];
 let wizardSelectedProfileId = null;
+let wizardProfileDraft = createEmptyProfileBuilderState();
 // P1 fix: epoch counter — incremented every time a new finding modal is opened.
 // All async callbacks capture their epoch at launch and abort if it no longer
 // matches _modalEpoch, preventing stale results from a previous finding from
@@ -70,8 +82,10 @@ let _modalEpoch = 0;
 
 // Callbacks wired by main.js after modules are loaded
 export let onProjectCreated = null;
+export let onExistingProjectSelected = null;
 
 export function setOnProjectCreated(cb) { onProjectCreated = cb; }
+export function setOnExistingProjectSelected(cb) { onExistingProjectSelected = cb; }
 
 // State getters needed by other modules
 export function getCurrentRemediationFindingId() { return currentRemediationFindingId; }
@@ -569,144 +583,388 @@ export async function loadWizardProfiles() {
 function renderProfileCards() {
   profileCards.innerHTML = "";
 
-  const PROFILE_META = {
-    "Python SAST": {
-      icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#1a3a5c"/><text x="18" y="25" font-family="monospace" font-size="15" font-weight="800" fill="#58a6ff" text-anchor="middle">Py</text></svg>`,
-      desc: "Bandit + Semgrep — detección de inyecciones, secrets y código inseguro",
-      badge: "Bandit + Semgrep", badgeBg: "rgba(88,166,255,.15)", badgeColor: "#58a6ff",
-    },
-    "Angular SAST": {
-      icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#3a1a1a"/><polygon points="18,5 30,10 27,26 18,31 9,26 6,10" fill="#dd0031" opacity="0.85"/><text x="18" y="24" font-family="sans-serif" font-size="13" font-weight="800" fill="white" text-anchor="middle">A</text></svg>`,
-      desc: "Semgrep para XSS, bindings inseguros y secrets en TypeScript",
-      badge: "Semgrep", badgeBg: "rgba(248,81,73,.15)", badgeColor: "#ff7b72",
-    },
-    "Java SAST": {
-      icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#3a2e1a"/><text x="18" y="24" font-family="Geist Mono, monospace" font-size="13" font-weight="800" fill="#d29922" text-anchor="middle">Jv</text></svg>`,
-      desc: "Semgrep — SQL injection, crypto débil y configuración TLS insegura",
-      badge: "Semgrep", badgeBg: "rgba(210,153,34,.15)", badgeColor: "#d29922",
-    },
-    "Full Scan": {
-      icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#1a3a2e"/><path d="M18 5L28 10v10c0 7-5.5 11-10 12-4.5-1-10-5-10-12V10L18 5z" fill="#3fb950" opacity="0.25" stroke="#3fb950" stroke-width="1.5"/><path d="M13 18l3.5 3.5L23 14" stroke="#3fb950" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-      desc: "SAST completo + DAST y Quality cuando los adapters estén instalados",
-      badge: "SAST + SCA", badgeBg: "rgba(63,185,80,.15)", badgeColor: "#3fb950",
-    },
-    "Angular + Quality": {
-      icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#3a1a2e"/><polygon points="18,5 30,10 27,26 18,31 9,26 6,10" fill="#dd0031" opacity="0.7"/><text x="18" y="23" font-family="sans-serif" font-size="11" font-weight="800" fill="white" text-anchor="middle">A★</text></svg>`,
-      desc: "Semgrep + análisis de calidad de código Angular/TypeScript",
-      badge: "Semgrep + Quality", badgeBg: "rgba(248,81,73,.15)", badgeColor: "#ff7b72",
-    },
-  };
+  wizardProfileDraft = applyValidation(wizardProfileDraft);
+  const selectedTechnologies = wizardProfileDraft.selectedTechnologies || [];
+  const selectedScanners = wizardProfileDraft.selectedScanners || {};
+  const savedProfile = wizardProfileDraft.savedSessionProfile;
 
-  function inferProfileMeta(profile) {
-    if (PROFILE_META[profile.name]) return PROFILE_META[profile.name];
+  const palette = document.createElement("aside");
+  palette.className = "builder-palette";
+  palette.appendChild(renderPaletteSection("Tecnologias", TECHNOLOGY_ITEMS, "technology"));
+  palette.appendChild(renderPaletteSection("Scanners", SCANNER_ITEMS, "scanner"));
 
-    const name = String(profile.name || "").toLowerCase();
-    const description = String(profile.description || "").toLowerCase();
-    const text = `${name} ${description}`;
+  const dropzone = document.createElement("section");
+  dropzone.className = "builder-dropzone";
+  dropzone.innerHTML = `
+    <div class="builder-technology-zone" data-drop-slot="technologies">
+      <div class="builder-zone-head">
+        <div>
+          <p class="builder-zone-title">Tecnologias del proyecto</p>
+          <p class="builder-zone-hint">Arrastra una o mas tecnologias</p>
+        </div>
+      </div>
+      <div class="builder-selected-row" data-selected-row="technologies"></div>
+    </div>
+    <div class="builder-slots">
+      ${SCAN_SLOT_ORDER.map((slot) => renderScannerSlotMarkup(slot)).join("")}
+    </div>
+    <div id="profile-builder-message" class="builder-message"></div>
+    <div class="builder-session-row">
+      <span>${savedProfile ? `Perfil en sesion: ${escapeHtml(savedProfile.name)}` : "El perfil valido se guardara para esta sesion."}</span>
+      <label>
+        <input id="builder-reuse-profile" type="checkbox" ${wizardProfileDraft.applySavedProfileToNextProjects ? "checked" : ""}>
+        Reusar en proyectos siguientes
+      </label>
+    </div>`;
 
-    if (text.includes("angular") || text.includes("typescript")) {
-      return {
-        ...PROFILE_META["Angular SAST"],
-        desc: profile.description || PROFILE_META["Angular SAST"].desc,
-        badge: profile.sast_tools || PROFILE_META["Angular SAST"].badge,
-      };
-    }
-    if (text.includes("java")) {
-      return {
-        ...PROFILE_META["Java SAST"],
-        desc: profile.description || PROFILE_META["Java SAST"].desc,
-        badge: profile.sast_tools || PROFILE_META["Java SAST"].badge,
-      };
-    }
-    if (text.includes("python")) {
-      return {
-        ...PROFILE_META["Python SAST"],
-        desc: profile.description || PROFILE_META["Python SAST"].desc,
-        badge: profile.sast_tools || PROFILE_META["Python SAST"].badge,
-      };
-    }
-    if (text.includes("full")) {
-      return {
-        ...PROFILE_META["Full Scan"],
-        desc: profile.description || PROFILE_META["Full Scan"].desc,
-        badge: profile.sast_tools || PROFILE_META["Full Scan"].badge,
-      };
-    }
+  profileCards.appendChild(palette);
+  profileCards.appendChild(dropzone);
 
-    return {
-      icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="var(--bg-hover)"/><circle cx="18" cy="18" r="3" fill="var(--muted)"/><path d="M18 8v4M18 24v4M8 18h4M24 18h4M11.5 11.5l2.8 2.8M21.7 21.7l2.8 2.8M11.5 24.5l2.8-2.8M21.7 14.3l2.8-2.8" stroke="var(--muted)" stroke-width="1.8" stroke-linecap="round"/></svg>`,
-      desc: profile.description || profile.sast_tools || "SAST",
-      badge: profile.sast_tools || "SAST",
-      badgeBg: "var(--bg-hover)",
-      badgeColor: "var(--muted)",
-    };
-  }
+  renderSelectedPills("technologies", selectedTechnologies, "technology");
+  SCAN_SLOT_ORDER.forEach((slot) => renderSelectedPills(slot, selectedScanners[slot] || [], "scanner"));
+  SCAN_SLOT_ORDER.forEach((slot) => {
+    const slotEl = profileCards.querySelector(`[data-drop-slot="${slot}"]`);
+    slotEl?.classList.toggle("covered", (selectedScanners[slot] || []).length > 0);
+  });
+  wireProfileBuilderDnD();
+  renderBuilderValidationMessage();
+  updateWizardNextButton();
+}
 
-  const profileOrder = {
-    "Python SAST": 1,
-    "Angular SAST": 2,
-    "Java SAST": 3,
-    "Full Scan": 4,
-    "Angular + Quality": 5,
-  };
+function renderPaletteSection(title, items, type) {
+  const section = document.createElement("div");
+  const titleEl = document.createElement("p");
+  titleEl.className = "builder-section-title";
+  titleEl.textContent = title;
 
-  const profileList = wizardProfiles.length
-    ? wizardProfiles
-    : [
-        { id: null, name: "Python SAST" }, { id: null, name: "Angular SAST" },
-        { id: null, name: "Java SAST" },   { id: null, name: "Full Scan" },
-      ];
+  const list = document.createElement("div");
+  list.className = "builder-pill-list";
 
-  [...profileList]
-    .sort((a, b) => {
-      const aOrder = profileOrder[a.name] || 100;
-      const bOrder = profileOrder[b.name] || 100;
-      if (aOrder !== bOrder) return aOrder - bOrder;
-      return String(a.name || "").localeCompare(String(b.name || ""));
-    })
-    .forEach((p) => {
-      const meta = inferProfileMeta(p);
-      const isSelected = wizardSelectedProfileId === p.id;
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "profile-card" + (isSelected ? " profile-card-active" : "");
-      card.dataset.profileId = p.id ?? "";
-      card.style.cssText =
-        `text-align:left;padding:14px;border-radius:8px;border:2px solid ${isSelected ? "var(--accent)" : "var(--border)"};` +
-        `background:${isSelected ? "rgba(47,129,247,.12)" : "var(--bg-surface)"};cursor:pointer;` +
-        "transition:border .15s,background .15s;min-height:135px;display:flex;flex-direction:column;gap:7px;";
-      card.innerHTML = `
-        ${meta.icon}
-        <p style="font-size:.82rem;font-weight:700;color:var(--text);margin:0;">${escapeHtml(p.name)}</p>
-        <p style="font-size:.72rem;color:var(--muted);line-height:1.4;flex:1;">${escapeHtml(meta.desc)}</p>
-        <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:.67rem;font-weight:700;background:${meta.badgeBg};color:${meta.badgeColor};">${escapeHtml(meta.badge)}</span>`;
-      card.addEventListener("click", () => {
-        wizardSelectedProfileId = p.id;
-        customPanel.style.display = "none";
-        renderProfileCards();
-      });
-      profileCards.appendChild(card);
-    });
+  items.forEach((item) => {
+    list.appendChild(renderDraggablePill(item, type));
+  });
 
-  const isCustom = wizardSelectedProfileId === "custom";
-  const customCard = document.createElement("button");
-  customCard.type = "button";
-  customCard.className = "profile-card" + (isCustom ? " profile-card-active" : "");
-  customCard.style.cssText =
-    `text-align:left;padding:14px;border-radius:8px;border:2px solid ${isCustom ? "var(--accent)" : "var(--border)"};` +
-    `background:${isCustom ? "rgba(47,129,247,.12)" : "var(--bg-surface)"};cursor:pointer;` +
-    "transition:border .15s,background .15s;min-height:135px;display:flex;flex-direction:column;gap:7px;";
-  customCard.innerHTML = `
-    <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="var(--bg-hover)"/><circle cx="18" cy="18" r="3" fill="var(--muted)"/><path d="M18 8v4M18 24v4M8 18h4M24 18h4M11.5 11.5l2.8 2.8M21.7 21.7l2.8 2.8M11.5 24.5l2.8-2.8M21.7 14.3l2.8-2.8" stroke="var(--muted)" stroke-width="1.8" stroke-linecap="round"/></svg>
-    <p style="font-size:.82rem;font-weight:700;color:var(--text);margin:0;">Personalizado</p>
-    <p style="font-size:.72rem;color:var(--muted);line-height:1.4;flex:1;">Configura herramientas SAST, DAST y Quality manualmente</p>
-    <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:.67rem;font-weight:700;background:var(--bg-hover);color:var(--muted);">Manual</span>`;
-  customCard.addEventListener("click", () => {
-    wizardSelectedProfileId = "custom";
-    customPanel.style.display = "";
+  section.appendChild(titleEl);
+  section.appendChild(list);
+  return section;
+}
+
+function renderDraggablePill(item, type) {
+  const pill = document.createElement("button");
+  pill.type = "button";
+  pill.className = "builder-pill";
+  pill.draggable = true;
+  pill.dataset.dragType = type;
+  pill.dataset.itemId = item.id;
+  pill.title = type === "technology"
+    ? `Agregar ${item.label} al perfil`
+    : `Agregar ${item.label} al bloque ${slotLabel(item.slot)}`;
+  pill.innerHTML = `
+    <span class="builder-pill-icon">${escapeHtml(item.iconLabel || item.label.slice(0, 2))}</span>
+    <span>${escapeHtml(item.label)}</span>`;
+  pill.addEventListener("click", () => {
+    replaceWizardProfileDraft(type === "technology"
+      ? addTechnologyToDraft(wizardProfileDraft, item.id)
+      : addScannerToDraft(wizardProfileDraft, item.id));
     renderProfileCards();
   });
-  profileCards.appendChild(customCard);
+  return pill;
+}
+
+function renderScannerSlotMarkup(slot) {
+  return `
+    <div class="builder-slot" data-drop-slot="${slot}">
+      <div class="builder-zone-head">
+        <div>
+          <p class="builder-zone-title">${escapeHtml(slotLabel(slot))}</p>
+          <p class="builder-zone-hint">${escapeHtml(slotHint(slot))}</p>
+        </div>
+      </div>
+      <div class="builder-selected-row" data-selected-row="${slot}"></div>
+    </div>`;
+}
+
+function renderSelectedPills(rowName, itemIds, type) {
+  const row = profileCards.querySelector(`[data-selected-row="${rowName}"]`);
+  if (!row) return;
+  row.innerHTML = "";
+
+  if (!itemIds.length) {
+    const empty = document.createElement("span");
+    empty.className = "builder-empty";
+    empty.textContent = rowName === "technologies" ? "Suelta tecnologias aqui" : "Suelta scanners aqui";
+    row.appendChild(empty);
+    return;
+  }
+
+  itemIds.forEach((id) => {
+    const item = type === "technology" ? findTechnology(id) : findScanner(id);
+    if (!item) return;
+
+    const pill = document.createElement("span");
+    pill.className = "builder-pill";
+    pill.draggable = false;
+    pill.innerHTML = `
+      <span class="builder-pill-icon">${escapeHtml(item.iconLabel || item.label.slice(0, 2))}</span>
+      <span>${escapeHtml(item.label)}</span>
+      <button type="button" class="builder-pill-remove" aria-label="Quitar ${escapeHtml(item.label)}">×</button>`;
+    pill.querySelector(".builder-pill-remove")?.addEventListener("click", () => {
+      replaceWizardProfileDraft(type === "technology"
+        ? removeTechnologyFromDraft(wizardProfileDraft, id)
+        : removeScannerFromDraft(wizardProfileDraft, id));
+      renderProfileCards();
+    });
+    row.appendChild(pill);
+  });
+}
+
+function wireProfileBuilderDnD() {
+  profileCards.querySelectorAll("[draggable='true']").forEach((pill) => {
+    pill.addEventListener("dragstart", (event) => {
+      const payload = {
+        type: pill.dataset.dragType,
+        id: pill.dataset.itemId,
+      };
+      event.dataTransfer.effectAllowed = "copy";
+      event.dataTransfer.setData("application/json", JSON.stringify(payload));
+      event.dataTransfer.setData("text/plain", payload.id);
+      pill.classList.add("dragging");
+    });
+    pill.addEventListener("dragend", () => pill.classList.remove("dragging"));
+  });
+
+  profileCards.querySelectorAll("[data-drop-slot]").forEach((zone) => {
+    zone.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      zone.classList.add("drag-over");
+    });
+    zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+    zone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      zone.classList.remove("drag-over");
+      handleProfileBuilderDrop(event, zone.dataset.dropSlot);
+    });
+  });
+
+  profileCards.querySelector("#builder-reuse-profile")?.addEventListener("change", (event) => {
+    wizardProfileDraft = {
+      ...wizardProfileDraft,
+      applySavedProfileToNextProjects: event.target.checked,
+    };
+  });
+}
+
+function handleProfileBuilderDrop(event, dropSlot) {
+  const payload = readDragPayload(event);
+  if (!payload) {
+    showBuilderRejected(dropSlot, "No se pudo leer el elemento arrastrado.");
+    return;
+  }
+
+  if (dropSlot === "technologies") {
+    if (payload.type !== "technology") {
+      showBuilderRejected(dropSlot, "Suelta tecnologias en esta zona.");
+      return;
+    }
+    replaceWizardProfileDraft(addTechnologyToDraft(wizardProfileDraft, payload.id));
+    renderProfileCards();
+    return;
+  }
+
+  if (payload.type !== "scanner") {
+    showBuilderRejected(dropSlot, "Suelta scanners en este bloque.");
+    return;
+  }
+
+  const scanner = findScanner(payload.id);
+  if (!scanner) {
+    showBuilderRejected(dropSlot, "Scanner desconocido.");
+    return;
+  }
+
+  if (scanner.slot !== dropSlot) {
+    showBuilderRejected(dropSlot, `${scanner.label} pertenece al bloque ${slotLabel(scanner.slot)}.`);
+    return;
+  }
+
+  const nextDraft = addScannerToDraft(wizardProfileDraft, payload.id);
+  const rejected = nextDraft.validation?.rejectedDrop;
+  replaceWizardProfileDraft(nextDraft);
+  renderProfileCards();
+  if (rejected) animateRejectedDrop(dropSlot);
+}
+
+function readDragPayload(event) {
+  try {
+    return JSON.parse(event.dataTransfer.getData("application/json"));
+  } catch {
+    return null;
+  }
+}
+
+function showBuilderRejected(dropSlot, message) {
+  wizardProfileDraft = {
+    ...applyValidation(wizardProfileDraft),
+    validation: {
+      ...applyValidation(wizardProfileDraft).validation,
+      rejectedDrop: { itemId: dropSlot, message },
+    },
+  };
+  renderProfileCards();
+  animateRejectedDrop(dropSlot);
+}
+
+function animateRejectedDrop(dropSlot) {
+  const zone = profileCards.querySelector(`[data-drop-slot="${dropSlot}"]`);
+  if (!zone) return;
+  zone.classList.add("drop-rejected");
+  window.setTimeout(() => zone.classList.remove("drop-rejected"), 260);
+}
+
+function replaceWizardProfileDraft(nextDraft, preserveSavedProfile = false) {
+  wizardProfileDraft = preserveSavedProfile
+    ? nextDraft
+    : {
+        ...nextDraft,
+        savedSessionProfile: null,
+        applySavedProfileToNextProjects: wizardProfileDraft.applySavedProfileToNextProjects,
+      };
+}
+
+function renderBuilderValidationMessage() {
+  const message = profileCards.querySelector("#profile-builder-message");
+  if (!message) return;
+
+  const validation = wizardProfileDraft.validation || {};
+  const rejectedMessage = validation.rejectedDrop?.message;
+  const firstError = validation.errors?.[0];
+  const firstWarning = validation.warnings?.[0];
+
+  if (rejectedMessage || firstError) {
+    message.className = "builder-message visible error";
+    message.textContent = rejectedMessage || firstError;
+    return;
+  }
+
+  if (firstWarning) {
+    message.className = "builder-message visible warning";
+    message.textContent = firstWarning;
+    return;
+  }
+
+  if (validation.isValid) {
+    const scanners = getAllSelectedScannerIds(wizardProfileDraft).map((id) => findScanner(id)?.label).filter(Boolean);
+    message.className = "builder-message visible success";
+    message.textContent = `Perfil valido: ${scanners.join(" + ")}`;
+    return;
+  }
+
+  message.className = "builder-message";
+  message.textContent = "";
+}
+
+function updateWizardNextButton() {
+  if (!wizardNextBtn) return;
+  const isValid = Boolean(wizardProfileDraft.validation?.isValid);
+  wizardNextBtn.disabled = !isValid;
+  wizardNextBtn.style.opacity = isValid ? "1" : ".52";
+  wizardNextBtn.style.cursor = isValid ? "pointer" : "not-allowed";
+}
+
+function slotLabel(slot) {
+  return {
+    sast: "SAST",
+    dast: "DAST",
+    sca: "SCA",
+    quality: "Quality",
+  }[slot] || slot;
+}
+
+function slotHint(slot) {
+  return {
+    sast: "Codigo fuente y reglas seguras",
+    dast: "Aplicacion en ejecucion",
+    sca: "Dependencias y librerias",
+    quality: "Calidad y mantenibilidad",
+  }[slot] || "Configura scanners";
+}
+
+function syncTechnologySelectsFromProfile() {
+  if (!wizardProfileDraft.selectedTechnologies?.length) return;
+  const apiTechnology = getPrimaryApiTechnology(wizardProfileDraft);
+  [document.getElementById("zip-technology"), document.getElementById("repo-technology")]
+    .filter(Boolean)
+    .forEach((select) => {
+      select.value = apiTechnology;
+    });
+}
+
+async function renderCompatibleProjects() {
+  if (!compatibleProjectsList) return;
+  compatibleProjectsList.innerHTML = `<div class="compatible-project-empty">Cargando proyectos...</div>`;
+  if (compatibleProjectsStatus) {
+    compatibleProjectsStatus.textContent = "Validando tecnologia contra el perfil seleccionado.";
+  }
+
+  try {
+    const allProjects = await getProjects();
+    const compatibleProjects = allProjects.filter((project) =>
+      isProjectCompatibleWithProfile(project, wizardProfileDraft)
+    );
+
+    compatibleProjectsList.innerHTML = "";
+    if (!compatibleProjects.length) {
+      compatibleProjectsList.innerHTML =
+        `<div class="compatible-project-empty">No hay proyectos compatibles todavia. Sube un ZIP o clona un repositorio.</div>`;
+      if (compatibleProjectsStatus) {
+        compatibleProjectsStatus.textContent = "No hay proyectos compatibles con este perfil.";
+      }
+      return;
+    }
+
+    if (compatibleProjectsStatus) {
+      compatibleProjectsStatus.textContent = `${compatibleProjects.length} proyecto(s) compatible(s) con este perfil.`;
+    }
+
+    compatibleProjects.forEach((project) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "compatible-project-card";
+      button.innerHTML = `
+        <strong>${escapeHtml(project.name)}</strong>
+        <span>${escapeHtml(project.technology)} · ${escapeHtml(project.source_type || "proyecto")}</span>
+        <span>${Number(project.finding_count || 0)} hallazgos registrados</span>`;
+      button.addEventListener("click", () => chooseCompatibleProject(project, button));
+      compatibleProjectsList.appendChild(button);
+    });
+  } catch (error) {
+    compatibleProjectsList.innerHTML =
+      `<div class="compatible-project-empty">No se pudieron cargar los proyectos.</div>`;
+    if (compatibleProjectsStatus) {
+      compatibleProjectsStatus.textContent = error.message || "Error al cargar proyectos.";
+    }
+  }
+}
+
+async function chooseCompatibleProject(project, button) {
+  try {
+    button.disabled = true;
+    button.style.opacity = ".65";
+    const profileId = await resolvedProfileIdForTechnology(project.technology);
+    const updatedProject = profileId !== null
+      ? await assignProjectProfile(project.id, profileId)
+      : project;
+    hideProjectModal();
+    if (onExistingProjectSelected) await onExistingProjectSelected(updatedProject);
+    showFeedback(`Proyecto seleccionado: ${project.name}`, "success");
+  } catch (error) {
+    button.disabled = false;
+    button.style.opacity = "";
+    showFeedback(
+      `No se pudo seleccionar el proyecto: ${formatApiError(error.detail, error.message)}`,
+      "error"
+    );
+  }
 }
 
 export function setModalTab(tab) {
@@ -719,75 +977,95 @@ export function setModalTab(tab) {
 
 export function setWizardStep(step) {
   const onStep1 = step === 1;
+  const skipProfileStep = wizardStep1?.dataset.skipProfile === "true";
+  if (!onStep1 && !skipProfileStep) {
+    wizardProfileDraft = applyValidation(wizardProfileDraft);
+    if (!wizardProfileDraft.validation.isValid) {
+      renderProfileCards();
+      return;
+    }
+    syncTechnologySelectsFromProfile();
+  }
   wizardStep1.style.display = onStep1 ? "" : "none";
   wizardStep2.style.display = onStep1 ? "none" : "";
   bcStep1.style.color = onStep1 ? "var(--accent)" : "var(--muted)";
   bcStep2.style.color = onStep1 ? "var(--muted)" : "var(--accent)";
   if (!onStep1) setModalTab("zip");
+  if (!onStep1) renderCompatibleProjects();
 }
 
 function resolvedProfileId() {
-  if (wizardSelectedProfileId === "custom" || wizardSelectedProfileId === null) return null;
-  return wizardSelectedProfileId;
-}
-
-function qualityToolForTechnology(technology) {
-  const selectedQualityTool = document.getElementById("custom-quality-tool")?.value || "auto";
-  if (selectedQualityTool === "sonarqube") return "sonarqube";
-  const normalized = String(technology || "").trim().toLowerCase();
-  if (normalized === "python") return "pylint";
-  if (normalized === "angular" || normalized === "typescript") return "eslint";
-  return null;
-}
-
-function sastToolsForTechnology(technology, selectedTools) {
-  const normalized = String(technology || "").trim().toLowerCase();
-  if (normalized !== "python" && selectedTools === "bandit") return "semgrep";
-  return selectedTools;
+  return wizardProfileDraft.savedSessionProfile?.id ?? null;
 }
 
 async function resolvedProfileIdForTechnology(technology) {
-  if (wizardSelectedProfileId !== "custom") return resolvedProfileId();
-
-  const selectedSastTools = document.querySelector('input[name="custom-sast-tools"]:checked')?.value || "semgrep";
-  const sastTools = sastToolsForTechnology(technology, selectedSastTools);
-  const wantsQuality = document.getElementById("custom-quality-enabled")?.checked || false;
-  const qualityTool = wantsQuality ? qualityToolForTechnology(technology) : null;
-
-  if (wantsQuality && !qualityTool) {
-    throw new Error("Code Quality por ahora está disponible para Python y Angular/TypeScript.");
+  const existingProfileId = resolvedProfileId();
+  if (existingProfileId) {
+    return existingProfileId;
   }
 
-  const payload = {
-    name: `Custom ${String(technology || "Project").toUpperCase()} ${wantsQuality ? "SAST + Quality" : "SAST"}`,
-    description: wantsQuality
-      ? "Perfil personalizado creado desde el dashboard con SAST y Quality."
-      : "Perfil personalizado creado desde el dashboard con SAST.",
-    sast_enabled: true,
-    sast_tools: sastTools,
-    dast_enabled: false,
-    quality_enabled: Boolean(qualityTool),
-    quality_tool: qualityTool,
-  };
+  const hasDraftProfile = Boolean(
+    wizardProfileDraft.selectedTechnologies?.length &&
+    getAllSelectedScannerIds(wizardProfileDraft).length
+  );
+  if (!hasDraftProfile) return null;
 
+  const selectedTechnology = String(technology || "").trim().toLowerCase();
+  const profileTechnologies = getApiTechnologiesFromState(wizardProfileDraft);
+  if (selectedTechnology && profileTechnologies.length && !profileTechnologies.includes(selectedTechnology)) {
+    throw new Error(`El perfil armado es para ${profileTechnologies.join(", ")}; ajusta la tecnologia del proyecto o vuelve a configurar el perfil.`);
+  }
+
+  const payload = toScanProfilePayload(wizardProfileDraft);
   const data = await createProfile(payload);
   wizardProfiles.push(data);
+  const savedSessionProfile = wizardProfileDraft.applySavedProfileToNextProjects
+    ? saveSessionProfile(data, wizardProfileDraft)
+    : null;
+  wizardProfileDraft = {
+    ...wizardProfileDraft,
+    savedSessionProfile,
+  };
   return data.id;
 }
 
-export function showProjectModal() {
+export function showProjectModal(profile = null) {
   if (wizardProfiles.length === 0) loadWizardProfiles();
-  if (wizardSelectedProfileId === null && wizardProfiles.length > 0) {
-    wizardSelectedProfileId = wizardProfiles[0].id;
-    renderProfileCards();
+  const savedProfile = loadSessionProfile();
+  if (profile) {
+    wizardProfileDraft = profileToDraft(profile);
+  } else if (savedProfile?.draft) {
+    wizardProfileDraft = {
+      ...applyValidation(savedProfile.draft),
+      savedSessionProfile: savedProfile,
+      applySavedProfileToNextProjects: true,
+    };
+  } else {
+    wizardProfileDraft = applyValidation(createEmptyProfileBuilderState());
   }
+  if (profile) {
+    wizardProfileDraft.savedSessionProfile = saveSessionProfile(profile, wizardProfileDraft);
+    wizardProfileDraft.applySavedProfileToNextProjects = true;
+  }
+  wizardSelectedProfileId = "builder";
+  wizardStep1.dataset.skipProfile = "true";
+  const backZip = document.getElementById("wizard-back-zip");
+  const backClone = document.getElementById("wizard-back-clone");
+  if (backZip) backZip.style.display = "none";
+  if (backClone) backClone.style.display = "none";
   projectModal.style.display = "flex";
-  setWizardStep(1);
+  syncTechnologySelectsFromProfile();
+  setWizardStep(2);
 }
 
 export function hideProjectModal() {
   projectModal.style.display = "none";
   wizardSelectedProfileId = null;
+  wizardStep1.dataset.skipProfile = "";
+  const backZip = document.getElementById("wizard-back-zip");
+  const backClone = document.getElementById("wizard-back-clone");
+  if (backZip) backZip.style.display = "";
+  if (backClone) backClone.style.display = "";
 }
 
 export function setCloneSource(source) {

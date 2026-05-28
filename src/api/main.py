@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -17,7 +18,7 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func
 from sqlmodel import Session, select
 
@@ -74,11 +75,29 @@ WORKSPACE_ROOT = PROJECT_ROOT / "workspace" / "uploads"
 app.mount("/static", StaticFiles(directory=str(DASHBOARD_STATIC)), name="static")
 
 
+def validate_target_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError(f"target_url must be http or https: {url}")
+    return url
+
+
 class ScanRequest(BaseModel):
     project_id: uuid.UUID | None = None
     target_path: str | None = None
+    target_url: str | None = None
     profile_id: int | None = None
     technology: str | None = None
+
+    @field_validator("target_url")
+    @classmethod
+    def validate_scan_target_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            return None
+        return validate_target_url(stripped)
 
 
 class CloneRepoRequest(BaseModel):
@@ -95,6 +114,7 @@ class FindingLifecycleRequest(BaseModel):
 class ScanProfileCreate(BaseModel):
     name: str
     description: str | None = None
+    technologies: str | None = None
     sast_enabled: bool = True
     sast_tools: str = "semgrep"
     sast_rulesets: str | None = None
@@ -107,6 +127,7 @@ class ScanProfileCreate(BaseModel):
 class ScanProfileUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
+    technologies: str | None = None
     sast_enabled: bool | None = None
     sast_tools: str | None = None
     sast_rulesets: str | None = None
@@ -114,6 +135,10 @@ class ScanProfileUpdate(BaseModel):
     dast_tool: str | None = None
     quality_enabled: bool | None = None
     quality_tool: str | None = None
+
+
+class ProjectProfileUpdate(BaseModel):
+    scan_profile_id: int | None = None
 
 
 @app.on_event("startup")
@@ -320,6 +345,62 @@ def normalize_technology(technology: str) -> str:
         raise HTTPException(status_code=400, detail="Unsupported technology value")
 
     return normalized
+
+
+def profile_api_technologies(profile: ScanProfile) -> set[str]:
+    raw_technologies = profile.technologies or ""
+    builder_to_api = {
+        "python": "python",
+        "django": "python",
+        "flask": "python",
+        "angular": "angular",
+        "typescript": "typescript",
+        "react": "typescript",
+        "java": "java",
+        "java-spring": "java",
+    }
+
+    try:
+        builder_ids = json.loads(raw_technologies) if raw_technologies else []
+    except json.JSONDecodeError:
+        builder_ids = []
+
+    api_technologies = {
+        builder_to_api[item]
+        for item in builder_ids
+        if item in builder_to_api
+    }
+    if api_technologies:
+        return api_technologies
+
+    name = (profile.name or "").lower()
+    if "python" in name:
+        return {"python"}
+    if "angular" in name:
+        return {"angular", "typescript"}
+    if "typescript" in name or "react" in name:
+        return {"typescript"}
+    if "java" in name:
+        return {"java"}
+
+    if profile.sast_tools == "bandit" or profile.quality_tool == "pylint":
+        return {"python"}
+    if profile.quality_tool == "eslint":
+        return {"angular", "typescript"}
+
+    return {"python", "angular", "typescript", "java"}
+
+
+def ensure_profile_matches_project(profile: ScanProfile, project: Project) -> None:
+    project_technology = normalize_technology(project.technology)
+    if project_technology not in profile_api_technologies(profile):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Profile '{profile.name}' is not compatible with "
+                f"project technology '{project_technology}'"
+            ),
+        )
 
 
 def get_last_scans_for_projects(
@@ -791,17 +872,21 @@ def create_project_record(
         return project
 
 
-async def scan_project(project: Project) -> dict:
+async def scan_project(project: Project, target_url: str | None = None) -> dict:
     if project.scan_profile_id is not None:
         with Session(engine) as session:
             profile = session.get(ScanProfile, project.scan_profile_id)
         if profile is not None:
-            return await _scan_with_profile(project, profile)
+            return await _scan_with_profile(project, profile, target_url)
 
     return await run_scan(project.target_path, project.technology, project.id)
 
 
-async def _scan_with_profile(project: Project, profile: ScanProfile) -> dict:
+async def _scan_with_profile(
+    project: Project,
+    profile: ScanProfile,
+    target_url: str | None = None,
+) -> dict:
     orchestrator = ScanOrchestrator()
     result = await asyncio.to_thread(
         orchestrator.run,
@@ -809,6 +894,7 @@ async def _scan_with_profile(project: Project, profile: ScanProfile) -> dict:
         project.target_path,
         project.technology,
         project.id,
+        target_url,
     )
 
     from src.scanners.escaneo import get_scanner_adapter
@@ -830,6 +916,7 @@ async def _scan_with_profile(project: Project, profile: ScanProfile) -> dict:
         "errors": result.errors,
         "technology": project.technology,
         "target_path": project.target_path,
+        "target_url": target_url,
         "project_id": str(project.id),
         "profile": profile.name,
     }
@@ -876,6 +963,34 @@ async def get_project(project_id: uuid.UUID):
         )
 
 
+@app.put("/api/projects/{project_id}/profile")
+async def update_project_profile(project_id: uuid.UUID, body: ProjectProfileUpdate):
+    with Session(engine) as session:
+        project = session.get(Project, project_id)
+
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        if body.scan_profile_id is None:
+            project.scan_profile_id = None
+        else:
+            profile = session.get(ScanProfile, body.scan_profile_id)
+            if not profile:
+                raise HTTPException(status_code=404, detail="ScanProfile not found")
+            ensure_profile_matches_project(profile, project)
+            project.scan_profile_id = profile.id
+
+        session.add(project)
+        session.commit()
+        session.refresh(project)
+        last_scans = get_last_scans_for_projects(session, [project.id])
+        return project_to_response(
+            project,
+            get_project_findings(session, project.id),
+            last_scans.get(project.id),
+        )
+
+
 @app.get("/api/projects/{project_id}/findings")
 async def get_project_findings_endpoint(project_id: uuid.UUID):
     with Session(engine) as session:
@@ -903,7 +1018,7 @@ async def get_project_findings_endpoint(project_id: uuid.UUID):
 
 
 @app.post("/api/projects/{project_id}/scan")
-async def scan_project_endpoint(project_id: uuid.UUID):
+async def scan_project_endpoint(project_id: uuid.UUID, request: ScanRequest | None = None):
     with Session(engine) as session:
         project = session.get(Project, project_id)
 
@@ -916,7 +1031,7 @@ async def scan_project_endpoint(project_id: uuid.UUID):
         session.commit()
         session.refresh(project)
 
-    return await scan_project(project)
+    return await scan_project(project, request.target_url if request else None)
 
 
 @app.post("/api/projects/upload-zip")
@@ -1067,8 +1182,8 @@ async def scan_code(request: ScanRequest | None = None):
                 with Session(engine) as session:
                     profile = session.get(ScanProfile, request.profile_id)
                 if profile:
-                    return await _scan_with_profile(project, profile)
-            return await scan_project(project)
+                    return await _scan_with_profile(project, profile, request.target_url)
+            return await scan_project(project, request.target_url)
         # project.target_path is null → fall through to dummy
 
     # Priority 3: fallback — retro-compat, no target provided

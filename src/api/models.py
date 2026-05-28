@@ -12,6 +12,7 @@ class ScanProfile(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     description: Optional[str] = None
+    technologies: Optional[str] = None  # JSON array of builder technology ids
 
     sast_enabled: bool = True
     sast_tools: str = "semgrep"       # "bandit" | "semgrep" | "both"
@@ -78,6 +79,7 @@ class Finding(SQLModel, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     scan_id: uuid.UUID = Field(foreign_key="scans.id")
+    tool: str | None = None
     rule_id: str
     title: str
     description: str

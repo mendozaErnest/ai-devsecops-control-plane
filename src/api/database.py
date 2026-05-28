@@ -16,24 +16,28 @@ _DEFAULT_PROFILES = [
     {
         "name": "Python SAST",
         "description": "Bandit + Semgrep dual-engine for Python projects",
+        "technologies": "[\"python\", \"django\", \"flask\"]",
         "sast_enabled": True,
         "sast_tools": "both",
     },
     {
         "name": "Angular SAST",
         "description": "Semgrep for Angular/TypeScript projects",
+        "technologies": "[\"angular\", \"typescript\"]",
         "sast_enabled": True,
         "sast_tools": "semgrep",
     },
     {
         "name": "Java SAST",
         "description": "Semgrep for Java projects",
+        "technologies": "[\"java\", \"java-spring\"]",
         "sast_enabled": True,
         "sast_tools": "semgrep",
     },
     {
         "name": "Full Scan",
         "description": "SAST enabled (DAST and Quality available when adapters are installed)",
+        "technologies": "[\"python\", \"django\", \"flask\", \"angular\", \"typescript\", \"java\", \"java-spring\"]",
         "sast_enabled": True,
         "sast_tools": "both",
         "dast_enabled": False,
@@ -47,7 +51,6 @@ def create_db_and_tables() -> None:
 
     SQLModel.metadata.create_all(engine)
     ensure_sqlite_schema()
-    seed_default_profiles()
 
 
 def seed_default_profiles() -> None:
@@ -90,9 +93,17 @@ def ensure_sqlite_schema() -> None:
             if "scan_profile_id" not in project_columns:
                 connection.execute(text("ALTER TABLE projects ADD COLUMN scan_profile_id INTEGER"))
 
+    if "scanprofile" in inspector.get_table_names():
+        profile_columns = {col["name"] for col in inspector.get_columns("scanprofile")}
+        with engine.begin() as connection:
+            if "technologies" not in profile_columns:
+                connection.execute(text("ALTER TABLE scanprofile ADD COLUMN technologies TEXT"))
+
     if "findings" in inspector.get_table_names():
         finding_columns = {col["name"] for col in inspector.get_columns("findings")}
         with engine.begin() as connection:
+            if "tool" not in finding_columns:
+                connection.execute(text("ALTER TABLE findings ADD COLUMN tool TEXT"))
             if "regression_count" not in finding_columns:
                 connection.execute(text("ALTER TABLE findings ADD COLUMN regression_count INTEGER NOT NULL DEFAULT 0"))
             if "sla_deadline" not in finding_columns:

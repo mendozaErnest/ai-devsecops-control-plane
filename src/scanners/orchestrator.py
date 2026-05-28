@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -18,7 +19,7 @@ def get_scanner_adapter(technology: str, sast_tools: str = ""):
     engine = sast_tools.strip().lower()
 
     if engine == "semgrep":
-        if norm_tech in {"python", "angular", "typescript", "java"}:
+        if norm_tech in {"python", "django", "flask", "angular", "typescript", "java", "java-spring"}:
             return SemgrepAdapter(norm_tech)
         return get_default_scanner_adapter(norm_tech)
 
@@ -28,7 +29,7 @@ def get_scanner_adapter(technology: str, sast_tools: str = ""):
     if engine == "both":
         if norm_tech == "python":
             return CombinedScannerAdapter([BanditAdapter(), SemgrepAdapter("python")])
-        if norm_tech in {"angular", "typescript", "java"}:
+        if norm_tech in {"angular", "typescript", "java", "java-spring"}:
             return SemgrepAdapter(norm_tech)
         return get_default_scanner_adapter(norm_tech)
 
@@ -55,6 +56,7 @@ class ScanOrchestrator:
         target_path: str,
         technology: str,
         project_id: uuid.UUID | None = None,
+        target_url: str | None = None,
     ) -> OrchestratorResult:
         futures_map: dict = {}
         errors: list[str] = []
@@ -66,9 +68,9 @@ class ScanOrchestrator:
                     self._run_sast, profile, target_path, technology
                 )] = "sast"
 
-            if profile.dast_enabled and profile.dast_tool:
+            if profile.dast_enabled:
                 futures_map[executor.submit(
-                    self._run_dast, profile, target_path
+                    self._run_dast, profile, target_url
                 )] = "dast"
 
             if profile.quality_enabled and profile.quality_tool:
@@ -109,14 +111,14 @@ class ScanOrchestrator:
 
         if sast_tools == "semgrep":
             adapter = (SemgrepAdapter(norm_tech)
-                       if norm_tech in {"python", "angular", "typescript", "java"}
+                       if norm_tech in {"python", "django", "flask", "angular", "typescript", "java", "java-spring"}
                        else get_default_scanner_adapter(norm_tech))
         elif sast_tools == "bandit":
             adapter = BanditAdapter()
         elif sast_tools == "both":
             if norm_tech == "python":
                 adapter = CombinedScannerAdapter([BanditAdapter(), SemgrepAdapter("python")])
-            elif norm_tech in {"angular", "typescript", "java"}:
+            elif norm_tech in {"angular", "typescript", "java", "java-spring"}:
                 adapter = SemgrepAdapter(norm_tech)
             else:
                 adapter = get_default_scanner_adapter(norm_tech)
@@ -128,9 +130,20 @@ class ScanOrchestrator:
             return []
         return adapter.execute_scan(target_path)
 
-    def _run_dast(self, profile: ScanProfile, target_path: str) -> list[Finding]:
-        logger.info("DAST runner: tool=%s not yet implemented", profile.dast_tool)
-        return []
+    def _run_dast(self, profile: ScanProfile, target_url: str | None) -> list[Finding]:
+        from src.scanners.zap_adapter import ZapAdapter
+
+        dast_tool = (profile.dast_tool or "zap").strip().lower()
+        if dast_tool != "zap":
+            logger.warning("No DAST adapter for tool=%s", profile.dast_tool)
+            return []
+
+        resolved_target_url = (target_url or os.getenv("DAST_DEFAULT_URL", "")).strip()
+        if not resolved_target_url:
+            logger.warning("DAST enabled but no target_url provided - skipping ZAP")
+            return []
+
+        return ZapAdapter().execute_scan(resolved_target_url)
 
     def _run_quality(
         self,

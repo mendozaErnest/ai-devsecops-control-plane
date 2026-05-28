@@ -164,7 +164,7 @@ def get_scanner_adapter(technology: str) -> BaseScannerAdapter | None:
         if normalized_technology == "python":
             return CombinedScannerAdapter([SemgrepAdapter("python"), PipAuditAdapter()])
 
-        if normalized_technology in {"angular", "typescript", "java"}:
+        if normalized_technology in {"django", "flask", "angular", "typescript", "java", "java-spring"}:
             return SemgrepAdapter(normalized_technology)
 
         return None
@@ -173,7 +173,7 @@ def get_scanner_adapter(technology: str) -> BaseScannerAdapter | None:
         if default_adapter is None:
             return None
 
-        if normalized_technology in {"python", "angular", "typescript", "java"}:
+        if normalized_technology in {"python", "django", "flask", "angular", "typescript", "java", "java-spring"}:
             return CombinedScannerAdapter([default_adapter, SemgrepAdapter(normalized_technology)])
 
         return default_adapter
@@ -239,6 +239,7 @@ def persist_scan(
                 prev_status = finding.status
                 is_regression = prev_status == FIXED_STATUS
                 finding.scan_id = scan.id
+                finding.tool = normalized_finding.tool or adapter.tool_name
                 finding.last_seen_at = now
                 finding.status = REGRESSION_STATUS if is_regression else OPEN_STATUS
                 finding.severity = normalized_finding.severity
@@ -260,6 +261,7 @@ def persist_scan(
             else:
                 finding = Finding(
                     scan_id=scan.id,
+                    tool=normalized_finding.tool or adapter.tool_name,
                     rule_id=normalized_finding.rule_id,
                     title=normalized_finding.title,
                     description=normalized_finding.description,

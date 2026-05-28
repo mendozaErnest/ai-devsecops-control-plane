@@ -16,9 +16,12 @@ SEMGREP_TIMEOUT_SECONDS = 120
 
 SEMGREP_RULESETS = {
     "python": ["p/bandit", "p/python", "p/owasp-top-ten"],
+    "django": ["p/bandit", "p/python", "p/owasp-top-ten", "p/django"],
+    "flask": ["p/bandit", "p/python", "p/owasp-top-ten", "p/flask"],
     "angular": ["p/javascript", "p/typescript", "p/owasp-top-ten"],
     "typescript": ["p/javascript", "p/typescript", "p/owasp-top-ten"],
     "java": ["p/java", "p/owasp-top-ten", "p/find-sec-bugs"],
+    "java-spring": ["p/java", "p/owasp-top-ten", "p/find-sec-bugs", "p/java-spring"],
 }
 
 SEVERITY_MAP = {
@@ -51,8 +54,9 @@ class SemgrepAdapter(BaseScannerAdapter):
         combined_results: list[dict] = []
         errors: list[dict] = []
         returncodes: list[int] = []
+        rulesets = self.get_rulesets_for_target(self.technology, target_path)
 
-        for ruleset in self.get_rulesets(self.technology):
+        for ruleset in rulesets:
             command = [
                 *semgrep_command,
                 "--config",
@@ -104,9 +108,9 @@ class SemgrepAdapter(BaseScannerAdapter):
         self.raw_output = {
             "results": combined_results,
             "errors": errors,
-            "rulesets": self.get_rulesets(self.technology),
+            "rulesets": rulesets,
             "metrics": {
-                "rulesets_requested": len(self.get_rulesets(self.technology)),
+                "rulesets_requested": len(rulesets),
                 "rulesets_completed": len(returncodes),
                 "total_findings": len(findings),
             },
@@ -129,6 +133,60 @@ class SemgrepAdapter(BaseScannerAdapter):
     def get_rulesets(self, technology: str) -> list[str]:
         return SEMGREP_RULESETS.get(self.normalize_technology(technology), [])
 
+    def get_rulesets_for_target(self, technology: str, target_path: str) -> list[str]:
+        detected_technology = self.detect_framework(technology, target_path)
+        return self.get_rulesets(detected_technology)
+
+    def detect_framework(self, technology: str, target_path: str) -> str:
+        normalized = self.normalize_technology(technology)
+        path = Path(target_path)
+        root = path if path.is_dir() else path.parent
+
+        if normalized == "python":
+            if (root / "manage.py").exists():
+                return "django"
+            if (root / "app.py").exists() or self._requirements_contain(root, "flask"):
+                return "flask"
+
+        if normalized == "java" and self._java_project_looks_like_spring(root):
+            return "java-spring"
+
+        return normalized
+
+    def _requirements_contain(self, root: Path, needle: str) -> bool:
+        candidates = [
+            root / "requirements.txt",
+            root / "requirements-dev.txt",
+            root / "pyproject.toml",
+            root / "Pipfile",
+        ]
+        for candidate in candidates:
+            if not candidate.exists() or not candidate.is_file():
+                continue
+            try:
+                if needle in candidate.read_text(encoding="utf-8", errors="ignore").lower():
+                    return True
+            except OSError:
+                continue
+        return False
+
+    def _java_project_looks_like_spring(self, root: Path) -> bool:
+        candidates = [
+            root / "pom.xml",
+            root / "build.gradle",
+            root / "build.gradle.kts",
+        ]
+        for candidate in candidates:
+            if not candidate.exists() or not candidate.is_file():
+                continue
+            try:
+                text = candidate.read_text(encoding="utf-8", errors="ignore").lower()
+            except OSError:
+                continue
+            if "spring-boot" in text or "org.springframework" in text:
+                return True
+        return False
+
     def normalize_result(self, result: dict) -> Finding:
         extra = result.get("extra") or {}
         metadata = extra.get("metadata") or {}
@@ -139,6 +197,7 @@ class SemgrepAdapter(BaseScannerAdapter):
 
         return Finding(
             scan_id=uuid.UUID(int=0),
+            tool="semgrep",
             rule_id=check_id,
             title=self.build_title(check_id, metadata),
             description=str(extra.get("message") or check_id),

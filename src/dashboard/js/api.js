@@ -12,10 +12,28 @@ export async function getProjectFindings(projectId) {
   return res.json();
 }
 
-export async function scanProject(projectId) {
-  const res = await fetch(`/api/projects/${projectId}/scan`, { method: "POST" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+export async function assignProjectProfile(projectId, profileId) {
+  const res = await fetch(`/api/projects/${projectId}/profile`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scan_profile_id: profileId ?? null }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(), { detail: data.detail, status: res.status, data });
+  return data;
+}
+
+export async function scanProject(projectId, targetUrl = null) {
+  const body = { project_id: projectId };
+  if (targetUrl) body.target_url = targetUrl;
+  const res = await fetch("/api/scan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(), { detail: data.detail, status: res.status, data });
+  return data;
 }
 
 export async function uploadZip(formData) {

@@ -62,11 +62,9 @@
         </div>
 
         <div class="links">
-          <a href="#" class="on" data-i18n="nav-overview">Overview</a>
-          <a href="#" data-i18n="nav-findings">Findings</a>
-          <a href="#" data-i18n="nav-pipeline">Pipeline</a>
-          <a href="#" data-i18n="nav-reports">Reports</a>
-          <a href="#" data-i18n="nav-settings">Settings</a>
+          <a href="#" class="on" data-app-view-link="configuration">Configuración</a>
+          <a href="#" data-app-view-link="projects">Proyectos escaneados</a>
+          <a href="#" data-app-view-link="reports">Reportes</a>
         </div>
         <div class="grow"></div>
 
@@ -86,6 +84,45 @@
 
       <section id="feedback" class="hidden" aria-live="polite"></section>
 
+      <section id="configuration-view" class="app-view profile-home-view">
+        <header class="profile-home-head">
+          <div>
+            <div class="lbl">Perfiles reutilizables · Configuración inicial</div>
+            <h1>Configura tu perfil de análisis</h1>
+            <p>Arrastra tecnologías y scanners para crear una configuración reusable en los siguientes proyectos.</p>
+          </div>
+          <div class="profile-home-actions">
+            <button type="button" id="go-projects-view" class="btn">Ver proyectos escaneados</button>
+            <button type="button" id="builder-new-project" class="btn primary">Agregar proyecto</button>
+          </div>
+        </header>
+
+        <main class="profile-home-grid">
+          <section class="profile-builder-panel" aria-labelledby="profile-builder-title">
+            <div class="profile-panel-head">
+              <div>
+                <h2 id="profile-builder-title">Nuevo perfil personalizado</h2>
+                <p>Una sola zona de scanners suma las capacidades del perfil: SAST, DAST, SCA y Quality.</p>
+              </div>
+              <button type="button" id="profile-builder-reset" class="btn">Limpiar</button>
+            </div>
+            <div id="home-profile-builder" class="profile-builder profile-builder-wide"></div>
+          </section>
+
+          <section class="saved-profiles-panel" aria-labelledby="saved-profiles-title">
+            <div class="profile-panel-head">
+              <div>
+                <h2 id="saved-profiles-title">Configuraciones guardadas</h2>
+                <p>Perfiles disponibles para aplicar a nuevos repositorios.</p>
+              </div>
+              <button type="button" id="refresh-profiles" class="btn">Actualizar</button>
+            </div>
+            <div id="saved-profiles-list" class="saved-profiles-list"></div>
+          </section>
+        </main>
+      </section>
+
+      <section id="projects-view" class="app-view" style="display:none;">
       <header class="head">
         <div>
           <div class="lbl"><span data-i18n="lbl-overview">Overview</span> · <span data-i18n="lbl-last-scan">Último escaneo</span> <span id="scan-status" data-i18n="not-executed">Sin ejecutar</span></div>
@@ -93,6 +130,7 @@
           <div class="scan-meta"><span class="dot"></span><span id="scan-adapter-status">Scanning · 3 of 4 adapters</span></div>
         </div>
         <div class="actions">
+          <div id="scan-stack-icons" class="scan-stack-icons" aria-label="Tecnologias y scanners activos"></div>
           <button type="button" id="panel-run-scan" class="btn primary">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
               <path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/>
@@ -202,6 +240,7 @@
                 <span id="chip-high" class="chip"><span data-i18n="sev-high">High</span> <span id="filter-high-count" class="n">0</span></span>
                 <span id="chip-breach" class="chip"><span data-i18n="filter-breach">Breach</span> <span id="filter-breach-count" class="n">0</span></span>
               </div>
+              <div id="scanner-filter-icons" class="scanner-filt" style="display:none;" aria-label="Filtrar por scanner"></div>
               <button type="button" id="export-pdf-btn"
                 style="display:none;flex-direction:row;align-items:center;gap:8px;
                        width:fit-content;white-space:nowrap;
@@ -261,12 +300,13 @@
           </div>
         </section>
       </main>
+      </section>
     </div>
 
     <!-- ══════════════ PROJECT MODAL — 2-step wizard ══════════════ -->
     <div id="project-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);padding:24px;"
       role="dialog" aria-modal="true" aria-labelledby="project-modal-title">
-      <section style="width:100%;max-width:540px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+      <section style="width:100%;max-width:760px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
 
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 20px;border-bottom:1px solid var(--border);">
           <div>
@@ -284,40 +324,9 @@
 
         <!-- STEP 1: Scan Profile selection -->
         <div id="wizard-step-1" style="padding:20px;">
-          <p style="font-size:.78rem;color:var(--muted);margin-bottom:14px;">Elige el perfil de análisis para este proyecto.</p>
-          <div id="profile-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;"></div>
-
-          <div id="custom-profile-panel" style="display:none;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:14px;">
-            <p style="font-size:.73rem;font-weight:700;color:var(--text);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em;">Opciones SAST</p>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-              <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--text);cursor:pointer;">
-                <input type="radio" name="custom-sast-tools" value="bandit" style="accent-color:var(--accent);">Bandit
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--text);cursor:pointer;">
-                <input type="radio" name="custom-sast-tools" value="semgrep" checked style="accent-color:var(--accent);">Semgrep
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--text);cursor:pointer;">
-                <input type="radio" name="custom-sast-tools" value="both" style="accent-color:var(--accent);">Ambos
-              </label>
-            </div>
-            <p style="font-size:.73rem;font-weight:700;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;">Otras herramientas</p>
-            <div style="display:flex;flex-direction:column;gap:6px;">
-              <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;cursor:not-allowed;opacity:.5;">
-                <input type="checkbox" disabled style="accent-color:var(--accent);">
-                DAST — OWASP ZAP
-                <span style="padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:700;background:rgba(47,129,247,.2);color:var(--accent);margin-left:auto;">Próximamente</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--text);cursor:pointer;">
-                <input id="custom-quality-enabled" type="checkbox" style="accent-color:var(--accent);">
-                Code Quality
-                <span style="padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:700;background:rgba(63,185,80,.16);color:var(--ok);margin-left:auto;">Disponible</span>
-              </label>
-              <select id="custom-quality-tool" style="width:100%;padding:8px 10px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);font-size:.78rem;">
-                <option value="auto">Auto — Pylint / ESLint</option>
-                <option value="sonarqube">SonarQube Community</option>
-              </select>
-            </div>
-          </div>
+          <p style="font-size:.78rem;color:var(--muted);margin-bottom:14px;">Arrastra tecnologías y scanners para armar un perfil de análisis personalizado.</p>
+          <div id="profile-cards" class="profile-builder"></div>
+          <div id="custom-profile-panel" style="display:none;"></div>
 
           <button type="button" id="wizard-next-btn"
             style="width:100%;padding:9px;border-radius:6px;background:var(--accent);color:#fff;font-size:.83rem;font-weight:700;border:none;cursor:pointer;transition:background .15s;">
@@ -327,6 +336,16 @@
 
         <!-- STEP 2: Add project (ZIP / Clone) -->
         <div id="wizard-step-2" style="display:none;">
+          <section class="compatible-projects-panel">
+            <div class="compatible-projects-head">
+              <div>
+                <h3>Proyectos subidos compatibles</h3>
+                <p id="compatible-projects-status">Selecciona un proyecto existente o agrega uno nuevo.</p>
+              </div>
+            </div>
+            <div id="compatible-projects-list" class="compatible-projects-list"></div>
+          </section>
+
           <div style="display:flex;gap:8px;padding:16px 20px 0;">
             <button type="button" id="tab-zip" class="tab-btn tab-active">📦 <span data-i18n="upload-zip">Subir ZIP</span></button>
             <button type="button" id="tab-clone" class="tab-btn tab-inactive">🔗 <span data-i18n="clone-repo">Clonar Repo</span></button>
@@ -338,6 +357,7 @@
               <select id="zip-technology" style="width:100%;padding:8px 12px;font-size:.83rem;">
                 <option value="python">Python</option>
                 <option value="angular">Angular</option>
+                <option value="typescript">TypeScript</option>
                 <option value="java">Java</option>
               </select>
               <input id="zip-file" type="file" accept=".zip" style="width:100%;padding:8px 12px;font-size:.83rem;">
@@ -368,6 +388,7 @@
               <select id="repo-technology" style="width:100%;padding:8px 12px;font-size:.83rem;">
                 <option value="python">Python</option>
                 <option value="angular">Angular</option>
+                <option value="typescript">TypeScript</option>
                 <option value="java">Java</option>
               </select>
               <div style="display:flex;gap:8px;">

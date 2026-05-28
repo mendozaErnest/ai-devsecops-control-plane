@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-27 (generalizar target_path: ScanRequest flexible, POST /api/scan resuelve project_id→workspace, validación de ruta segura, triggerScan en api.js, SCAN_ALLOWED_ROOTS en .env.example — 117 tests)
+Ultima actualizacion: 2026-05-28 (scanner filter icons en findings bar — reemplaza texto "python·repo", filtros clicables por herramienta (All/Bandit/Semgrep/etc), routing back/forward con History API — 124 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -51,7 +51,7 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - SLA deadlines: CRITICAL=3d, HIGH=7d, MEDIUM=30d, LOW=90d.
 - IA local: Ollama, modelo por defecto qwen2.5-coder:14b.
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (117 tests).
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (124 tests).
 
 Dependencias en code/requirements.txt:
 

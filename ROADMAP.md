@@ -263,6 +263,7 @@
 - [x] 113 tests passing — no regression
 
 ### Phase 2 — SLA Tracking Visibility (2026-05-27)
+
 - [x] `main.py` `_SLA_EXEMPT_STATUSES`: constant set `{"accepted_risk", "false_positive", "fixed"}` — lifecycle-exempt from active SLA
 - [x] `main.py` `get_sla_status(finding, now)`: returns `"ok"` / `"warning"` (deadline ≤3 days away) / `"breached"` (past deadline) / `"exempt"` / `"unknown"` (null deadline); timezone-naive `sla_deadline` normalized with `.replace(tzinfo=timezone.utc)` before comparison
 - [x] `main.py` `GET /api/findings`: accepts `?sla_status=` query param; includes `sla_status` + `sla_deadline` in each finding dict
@@ -271,3 +272,15 @@
 - [x] `dashboard.js` helpers: `effectiveSlaStatus()`, `_buildSlaFoot(breached, warning)`, `_countSlaStatuses(records)`, `_pct(n, total)`, `_updateRadialArcs(counts, total)` — extracted to reduce S3776 cognitive complexity from 23 → ~14 (below pre-existing baseline of 17)
 - [x] `dashboard.js` `updateCounters()`: KPI footer shows `🔴 N vencidos` and `⚠ N por vencer` when > 0; populates `#sla-breaches` and `#sla-foot` elements
 - [x] 113 tests passing — no regression
+
+### Phase 3 — Dashboard UX: Scanner Filter Icons + Routing (2026-05-28)
+- [x] `dashboard.js` `renderScannerFilterIcons()`: detects all scanners present in loaded findings via `detectTool()`; renders scanner chips (All + one per tool) in `#scanner-filter-icons`; hidden when only 1 scanner
+- [x] `dashboard.js` `setActiveScannerFilter(key)`: updates `activeScannerFilter`, rebuilds `filteredFindings`, re-renders page + refreshes chip active states
+- [x] `dashboard.js` `getFilteredSorted()`: applies `activeScannerFilter` before severity filter — scanner and severity filters compose independently
+- [x] `dashboard.js` `loadFindings()`: resets `activeScannerFilter = "all"` on project change; calls `renderScannerFilterIcons()`; `tableStatus` shows count only (removed "python · repo" text)
+- [x] `index.html`: added `<div id="scanner-filter-icons" class="scanner-filt">` between severity chips and export button
+- [x] `layout.css`: `.scanner-filt` (flex container with left-border separator) + `.scan-chip` base + per-tool color variants (semgrep blue, bandit amber, sonarqube sky, eslint purple, pylint green, zap red, pip-audit lightblue, odc orange) + `.on` active state with matching glow
+- [x] `main.js` `showAppView(view, push)`: pushes `history.pushState({ view })` on each navigation — browser back/forward now works
+- [x] `main.js` `popstate` listener: calls `showAppView(e.state.view, false)` to restore view without double-pushing
+- [x] `main.js` boot: reads hash on load (`#configuration` | `#projects` | `#reports`); uses `history.replaceState` for initial entry
+- [x] 124 tests passing — no regression

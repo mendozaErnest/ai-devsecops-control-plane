@@ -11,6 +11,7 @@ import {
 } from "/static/js/utils.js";
 import {
   getProjects, getProjectFindings, scanProject, getAiStatus, generateRemediation, getReport,
+  getProfiles,
 } from "/static/js/api.js";
 import {
   showRemediationModal, openReasonModal, openAuditModal, postLifecycle,
@@ -18,7 +19,9 @@ import {
 } from "/static/js/modal.js";
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
+const scannerFilterEl     = document.getElementById("scanner-filter-icons");
 const panelRunScanButton  = document.getElementById("panel-run-scan");
+const scanStackIcons      = document.getElementById("scan-stack-icons");
 const topNav              = document.querySelector(".nav");
 const refreshButton       = document.getElementById("refresh-findings");
 const projectsList        = document.getElementById("projects-list");
@@ -60,13 +63,28 @@ export let selectedProject = null;
 export let projects = [];
 export let aiStatus = { available: false, reason: "Checking AI engine" };
 export let currentFindings = [];
+let scanProfiles = [];
+let scanProfilesLoaded = false;
 
 let activeFilter = "all";
+let activeScannerFilter = "all";
 let currentPage  = 1;
 const PAGE_SIZE  = 20;
 let filteredFindings = [];
 let activeView = "findings";
 let chartSeverity = null, chartStatus = null, chartRules = null;
+
+const TOOL_CHIP_META = {
+  semgrep:     { label: "Semgrep",    short: "Se"  },
+  bandit:      { label: "Bandit",     short: "Ba"  },
+  sonarqube:   { label: "SonarQube",  short: "SQ"  },
+  eslint:      { label: "ESLint",     short: "ES"  },
+  pylint:      { label: "Pylint",     short: "PyL" },
+  zap:         { label: "OWASP ZAP",  short: "ZAP" },
+  "pip-audit": { label: "pip-audit",  short: "pip" },
+  odc:         { label: "ODC",        short: "DC"  },
+  unknown:     { label: "Scanner",    short: "?"   },
+};
 
 // ── Floating nav ──────────────────────────────────────────────────────────────
 export function updateFloatingNav() {
@@ -329,6 +347,7 @@ function buildActionButtons(record) {
 
 function getFilteredSorted(records, filter) {
   let result = [...records];
+  if (activeScannerFilter !== "all") result = result.filter((r) => detectTool(r) === activeScannerFilter);
   if (filter === "critical") result = result.filter((r) => String(r.severity || "").toUpperCase() === "CRITICAL");
   else if (filter === "high") result = result.filter((r) => String(r.severity || "").toUpperCase() === "HIGH");
   else if (filter === "breach") result = result.filter((r) => r.sla_deadline && new Date(r.sla_deadline) < new Date());
@@ -338,6 +357,51 @@ function getFilteredSorted(records, filter) {
     (order[String(b.severity || "").toUpperCase()] ?? 4)
   );
   return result;
+}
+
+function renderScannerFilterIcons() {
+  if (!scannerFilterEl) return;
+  scannerFilterEl.innerHTML = "";
+
+  const toolCounts = {};
+  currentFindings.forEach((f) => {
+    const tool = detectTool(f);
+    toolCounts[tool] = (toolCounts[tool] || 0) + 1;
+  });
+
+  const tools = Object.keys(toolCounts);
+  if (tools.length < 2) {
+    scannerFilterEl.style.display = "none";
+    return;
+  }
+  scannerFilterEl.style.display = "";
+
+  const allChip = document.createElement("button");
+  allChip.type = "button";
+  allChip.className = `scan-chip all-scan${activeScannerFilter === "all" ? " on" : ""}`;
+  allChip.title = "Todos los scanners";
+  allChip.innerHTML = `<span>All</span><span class="sn">${currentFindings.length}</span>`;
+  allChip.addEventListener("click", () => setActiveScannerFilter("all"));
+  scannerFilterEl.appendChild(allChip);
+
+  tools.forEach((tool) => {
+    const meta = TOOL_CHIP_META[tool] || TOOL_CHIP_META.unknown;
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = `scan-chip ${tool}${activeScannerFilter === tool ? " on" : ""}`;
+    chip.title = meta.label;
+    chip.innerHTML = `<span>${escapeHtml(meta.short)}</span><span class="sn">${toolCounts[tool]}</span>`;
+    chip.addEventListener("click", () => setActiveScannerFilter(tool));
+    scannerFilterEl.appendChild(chip);
+  });
+}
+
+function setActiveScannerFilter(key) {
+  activeScannerFilter = key;
+  currentPage = 1;
+  filteredFindings = getFilteredSorted(currentFindings, activeFilter);
+  renderPage();
+  renderScannerFilterIcons();
 }
 
 function renderPage() {
@@ -558,15 +622,20 @@ export async function loadFindings() {
   try {
     const records = await getProjectFindings(selectedProject.id);
     currentFindings = records;
+    activeScannerFilter = "all";
+    updateScanStackIcons();
+    renderScannerFilterIcons();
     renderRows(records);
     if (tableStatus) {
-      tableStatus.textContent = `${records.length} ${t("findings-loaded")} · ${selectedProject.technology} · ${selectedProject.source_type}`;
+      tableStatus.textContent = `${records.length} ${t("findings-loaded")}`;
     }
   } catch {
     currentFindings = [];
+    activeScannerFilter = "all";
     updateCounters([]);
     renderMessage("No se pudieron cargar los hallazgos.");
     if (tableStatus) tableStatus.textContent = "Error al cargar hallazgos";
+    if (scannerFilterEl) scannerFilterEl.style.display = "none";
   } finally {
     if (refreshButton) refreshButton.disabled = false;
   }
@@ -576,9 +645,11 @@ export async function loadProjects(selectFirst = true) {
   if (!ensureServerContext()) return;
   try {
     projects = await getProjects();
+    await ensureScanProfilesLoaded(true);
     if (selectedProject) selectedProject = projects.find((p) => p.id === selectedProject.id) || null;
     if (!selectedProject && selectFirst && projects.length > 0) selectedProject = projects[0];
     renderProjects();
+    updateScanStackIcons();
     if (selectedProject) await loadFindings();
     else { updateCounters([]); renderMessage("Selecciona o crea un proyecto para ver hallazgos."); }
   } catch (error) {
@@ -591,6 +662,8 @@ export async function selectProject(project) {
   selectedProject = project;
   projectsPopover?.classList.remove("open"); // close popover on selection
   renderProjects();
+  await ensureScanProfilesLoaded();
+  updateScanStackIcons();
   await loadFindings();
   if (activeView === "report") loadReport(project.id);
 }
@@ -604,6 +677,107 @@ export async function loadAiStatus() {
   }
   renderAiStatusBadge();
   if (currentFindings.length > 0) renderRows(currentFindings);
+}
+
+async function ensureScanProfilesLoaded(force = false) {
+  if (scanProfilesLoaded && !force) return;
+  try {
+    scanProfiles = await getProfiles();
+  } catch {
+    scanProfiles = [];
+  }
+  scanProfilesLoaded = true;
+}
+
+function selectedProjectProfile() {
+  if (!selectedProject || selectedProject.scan_profile_id == null) return null;
+  return scanProfiles.find((profile) => profile.id === selectedProject.scan_profile_id) || null;
+}
+
+const STACK_ICON_META = {
+  python: { label: "Python", mark: "Py", tone: "python" },
+  angular: { label: "Angular", mark: "A", tone: "angular" },
+  typescript: { label: "TypeScript", mark: "TS", tone: "typescript" },
+  java: { label: "Java", mark: "Jv", tone: "java" },
+  semgrep: { label: "Semgrep", mark: "Se", tone: "sast" },
+  bandit: { label: "Bandit", mark: "Ba", tone: "sast" },
+  zap: { label: "OWASP ZAP", mark: "ZAP", tone: "dast" },
+  pylint: { label: "Pylint", mark: "PyL", tone: "quality" },
+  eslint: { label: "ESLint", mark: "ES", tone: "quality" },
+  sonarqube: { label: "SonarQube", mark: "SQ", tone: "quality" },
+  "pip-audit": { label: "pip-audit", mark: "pip", tone: "sca" },
+  odc: { label: "OWASP Dependency-Check", mark: "DC", tone: "sca" },
+};
+
+function addStackItem(items, key, source = "scan") {
+  const meta = STACK_ICON_META[key];
+  if (!meta || items.some((item) => item.key === key)) return;
+  items.push({ key, source, ...meta });
+}
+
+function normalizeToolKey(value) {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("semgrep")) return "semgrep";
+  if (text.includes("bandit")) return "bandit";
+  if (text.includes("zap")) return "zap";
+  if (text.includes("pylint")) return "pylint";
+  if (text.includes("eslint")) return "eslint";
+  if (text.includes("sonar")) return "sonarqube";
+  if (text.includes("pip")) return "pip-audit";
+  if (text.includes("dependency") || text.includes("odc")) return "odc";
+  return "";
+}
+
+function buildScanStackItems() {
+  const items = [];
+  if (!selectedProject) return items;
+
+  addStackItem(items, String(selectedProject.technology || "").toLowerCase(), "tech");
+
+  const profile = selectedProjectProfile();
+  if (profile?.sast_enabled) {
+    if (profile.sast_tools === "both") {
+      addStackItem(items, "semgrep", "sast");
+      addStackItem(items, "bandit", "sast");
+    } else {
+      addStackItem(items, normalizeToolKey(profile.sast_tools || "semgrep"), "sast");
+    }
+  }
+  if (profile?.dast_enabled) addStackItem(items, normalizeToolKey(profile.dast_tool || "zap"), "dast");
+  if (profile?.quality_enabled) addStackItem(items, normalizeToolKey(profile.quality_tool), "quality");
+
+  addStackItem(items, normalizeToolKey(selectedProject.last_scan_tool), "scan");
+  currentFindings.forEach((finding) => {
+    addStackItem(items, normalizeToolKey(finding.tool || detectTool(finding)), "finding");
+  });
+
+  return items;
+}
+
+function updateScanStackIcons() {
+  if (!scanStackIcons) return;
+  const items = buildScanStackItems();
+  scanStackIcons.innerHTML = "";
+
+  if (!selectedProject) {
+    scanStackIcons.innerHTML = `<span class="scan-stack-empty">Sin proyecto</span>`;
+    return;
+  }
+
+  if (!items.length) {
+    scanStackIcons.innerHTML = `<span class="scan-stack-empty">Sin scans</span>`;
+    return;
+  }
+
+  items.forEach((item) => {
+    const badge = document.createElement("span");
+    badge.className = `scan-stack-chip ${item.tone}`;
+    badge.title = `${item.label} · ${item.source}`;
+    badge.innerHTML = `
+      <span class="scan-stack-mark">${escapeHtml(item.mark)}</span>
+      <span class="scan-stack-label">${escapeHtml(item.label)}</span>`;
+    scanStackIcons.appendChild(badge);
+  });
 }
 
 // ── Scan ──────────────────────────────────────────────────────────────────────
@@ -621,7 +795,12 @@ export async function runScan() {
   showFeedback("Escaneo en curso. El scanner está analizando el código.", "info");
 
   try {
-    const result = await scanProject(selectedProject.id);
+    await ensureScanProfilesLoaded();
+    updateDastTargetUrlInput();
+    const targetUrl = dastTargetUrlInput?.style.display !== "none"
+      ? dastTargetUrlInput.value.trim()
+      : "";
+    const result = await scanProject(selectedProject.id, targetUrl || null);
     if (!result.success) throw new Error(result.error || "Scan failed");
     const finishedAt = new Date().toLocaleTimeString();
     if (scanStatus) scanStatus.textContent = `${result.saved_findings} guardados`;
@@ -1019,7 +1198,7 @@ export function wireDashboardEvents() {
     if (project) await selectProject(project);
   });
 
-  document.querySelectorAll(".nav .links a").forEach((link, idx) => {
+  document.querySelectorAll(".nav .links a[data-dashboard-view-link]").forEach((link, idx) => {
     link.addEventListener("click", (e) => {
       e.preventDefault();
       setView(idx === 3 ? "report" : "findings");
