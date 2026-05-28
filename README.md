@@ -6,6 +6,7 @@
 ![Python](https://img.shields.io/badge/Python-3.11-blue?style=flat&logo=python)
 ![Ollama](https://img.shields.io/badge/LLM-Ollama%20local-black?style=flat)
 ![Bandit](https://img.shields.io/badge/SAST-Bandit%20%2B%20Semgrep-orange?style=flat)
+![Tests](https://img.shields.io/badge/tests-117%20passing-brightgreen?style=flat)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat)
 
 ---
@@ -14,17 +15,18 @@
 
 AI DevSecOps Control Plane is a **local, self-hosted** platform that automates the full application security lifecycle:
 
-1. Register source code projects (local path, ZIP upload, or Git clone).
-2. Scan them with SAST adapters per technology.
-3. Store normalized findings in a local database.
-4. Generate AI-powered remediations using a **local LLM via Ollama** — no code ever leaves your infrastructure.
-5. Open real, reviewable GitHub Pull Requests with the patched code.
+1. Register source code projects (ZIP upload or Git clone).
+2. Configure a **Scan Profile** (choose SAST / SCA / Quality / DAST engines).
+3. Run scans — the `ScanOrchestrator` executes all selected tools in parallel.
+4. Store normalized findings with **SLA deadlines** and a full **audit trail**.
+5. Generate AI-powered remediations using a **local LLM via Ollama** — no code ever leaves your infrastructure.
+6. Open real, reviewable GitHub Pull Requests with the patched code.
 
 ---
 
 ## Why Local AI?
 
-Most commercial alternatives (Snyk, GitHub Copilot Autofix, SonarCloud) send your source code to external APIs to generate remediations. For banks, fintech, healthcare, and government — where sending code to third-party APIs is a regulatory or contractual blocker — **local inference is not a technical detail, it is the value proposition**.
+Most commercial alternatives (Snyk, GitHub Copilot Autofix, SonarCloud) send your source code to external APIs to generate remediations. For regulated industries — banking, fintech, healthcare, government — where sending code to third-party APIs is a regulatory or contractual blocker, **local inference is not a technical detail, it is the value proposition**.
 
 This platform runs the LLM on your own hardware via Ollama. The network boundary is your machine.
 
@@ -35,30 +37,44 @@ This platform runs the LLM on your own hardware via Ollama. The network boundary
 | Layer | Technology |
 |---|---|
 | Backend | FastAPI + Uvicorn |
-| Database | SQLModel over SQLite (PostgreSQL-ready) |
+| Database | SQLModel over SQLite (PostgreSQL-ready via `DATABASE_URL`) |
 | SAST — Python | Bandit + Semgrep (`p/bandit`, `p/python`, `p/owasp-top-ten`) |
-| SCA — Python | pip-audit (CVE + GHSA) |
+| SCA — Python | pip-audit (CVE + GHSA from PyPI advisory DB) |
 | SAST — Angular/TS | Semgrep (`p/javascript`, `p/typescript`, `p/owasp-top-ten`) |
 | SAST — Java | Semgrep (`p/java`, `p/owasp-top-ten`, `p/find-sec-bugs`) |
-| SCA — Java | OWASP Dependency Check |
-| Scan profiles | `ScanProfile` model + `ScanOrchestrator` (ThreadPoolExecutor) |
-| Local LLM | Ollama → `qwen2.5-coder:14b` |
+| SCA — Java | OWASP Dependency Check (NVD-backed CVE) |
+| Quality — Python | Pylint (JSON output, HIGH/MEDIUM/LOW severity mapping) |
+| Quality — Angular | ESLint (local `node_modules/.bin/eslint` or `npx`) |
+| Quality — Any | SonarQube Community REST (Bearer token, issues import) |
+| Scan profiles | `ScanProfile` + `ScanOrchestrator` (ThreadPoolExecutor) |
+| Finding lifecycle | open / fixed / regression / accepted\_risk / false\_positive + audit trail |
+| SLA tracking | CRITICAL=3d · HIGH=7d · MEDIUM=30d · LOW=90d; API filter `?sla_status=` |
+| Local LLM | Ollama → `qwen2.5-coder:14b` (configurable via `OLLAMA_MODEL`) |
 | GitHub Integration | GitHub App (JWT RS256 + installation token) + PR webhook + Check Run |
-| CI/CD | GitHub Actions workflow (Bandit + pip-audit + Semgrep) |
-| Frontend | HTML + Vanilla JS + Tailwind CDN + Chart.js |
+| CI/CD | GitHub Actions workflow (Bandit + pip-audit + Semgrep on every PR) |
+| Frontend | Modular ES6 JS (`api.js`, `modal.js`, `diff.js`, `dashboard.js`) + Chart.js |
 
 ---
 
 ## Scanner Architecture
 
-The platform uses a **profile-driven, multi-engine approach** for maximum coverage:
+The platform uses a **profile-driven, multi-engine approach** for maximum coverage.
 
-- **Bandit** (Python): fast, battle-tested, low false-positive rate for common CWEs.
-- **Semgrep** (Python, Angular, Java): pattern-based semantic analysis, OWASP Top 10 rulesets, closest open-source equivalent to Fortify/Veracode rule quality.
-- **pip-audit** (Python SCA): CVE and GHSA coverage from PyPI advisory database.
-- **OWASP Dependency Check** (Java SCA): NVD-backed CVE coverage for Maven/Gradle dependencies.
+### Built-in engines
 
-**Scan Profiles** let you configure which engines run per project. The `ScanOrchestrator` runs SAST, DAST, and Quality runners in parallel using `ThreadPoolExecutor`, then deduplicates findings by SHA-256 fingerprint (`rule_id + file_path + line_number`). DAST and Quality runners are pluggable placeholders ready for ZAP or SonarQube adapters.
+| Engine | Language | Type |
+|---|---|---|
+| Bandit | Python | SAST |
+| Semgrep | Python / Angular / Java | SAST |
+| pip-audit | Python | SCA (CVE) |
+| OWASP Dependency Check | Java | SCA (CVE) |
+| Pylint | Python | Quality |
+| ESLint | Angular / TypeScript | Quality |
+| SonarQube Community REST | Any | Quality |
+
+### Scan Profiles
+
+`ScanProfile` records let you configure which engines run per project. The `ScanOrchestrator` runs SAST, DAST, and Quality runners in parallel using `ThreadPoolExecutor`, then deduplicates findings by SHA-256 fingerprint (`rule_id + file_path + line_number + description`).
 
 Four built-in profiles ship by default:
 
@@ -67,7 +83,17 @@ Four built-in profiles ship by default:
 | Python SAST | Bandit + Semgrep + pip-audit |
 | Angular SAST | Semgrep |
 | Java SAST | Semgrep + OWASP DC |
-| Full Scan | Bandit + Semgrep + pip-audit (DAST/Quality when adapters ship) |
+| Full Scan | All of the above + Quality when adapter configured |
+
+### Target path resolution (`POST /api/scan`)
+
+The general scan endpoint resolves the target in priority order:
+
+1. **`target_path` in body** → path-traversal validation → run scan.
+2. **`project_id` in body** → look up `project.target_path` in DB → validate → scan with project profile.
+3. **No parameters** → fallback to `src/dummy_vulnerable_app.py` (retro-compat).
+
+Path validation enforces that the resolved path stays inside `SCAN_ALLOWED_ROOTS` (default: project root + `workspace/uploads/`), blocking directory traversal.
 
 ---
 
@@ -75,9 +101,11 @@ Four built-in profiles ship by default:
 
 | Technology | SAST Engine | Remediation Prompt |
 |---|---|---|
-| Python | Bandit + Semgrep | Python-specific (OS injection, shell=True, unsafe deserialization, MD5/SHA1, TLS, path traversal) |
-| Angular / TypeScript | Semgrep | Angular-specific (XSS via innerHTML, DomSanitizer bypass, unsafe bindings, hardcoded secrets with CI/CD injection pattern) |
-| Java | Semgrep | Java AppSec (SQL injection, insecure crypto, TLS, SecureRandom, unsafe deserialization) |
+| Python | Bandit + Semgrep | Python-specific (OS injection, `shell=True`, unsafe deserialization, MD5/SHA1, TLS, path traversal) |
+| Angular / TypeScript | Semgrep | Angular-specific (XSS via `innerHTML`, `DomSanitizer` bypass, hardcoded secrets → CI/CD injection pattern) |
+| Java | Semgrep | Java AppSec (SQL injection, insecure crypto, TLS, `SecureRandom`, unsafe deserialization) |
+| CSS / SCSS | SonarQube | CSS-specific (duplicate selectors, `!important` overuse, specificity issues) |
+| HTML | SonarQube | HTML5 (XSS via `textContent`, `rel="noopener noreferrer"`, deprecated attributes) |
 
 ---
 
@@ -85,12 +113,30 @@ Four built-in profiles ship by default:
 
 AI remediations are technology-aware and context-aware:
 
-- **Python findings**: guardrails enforce AST-valid output; only the affected function is replaced (never a full-file replacement with a short snippet).
-- **Angular secret findings** (hardcoded `apiKey`, `token`, `password`): the LLM is instructed to show the correct injection pattern — reading from CI/CD environment variables or a backend `ConfigService` — never just emptying the field.
-- **Angular XSS findings**: DomSanitizer usage, safe binding patterns, Content Security Policy guidance.
-- **Java findings**: cryptography upgrades, PreparedStatement patterns, secure TLS configuration.
+- **Python findings**: AST guardrails enforce valid output; only the affected function is replaced (never a full-file replacement with a short snippet). Deterministic rules (S1192 duplicate literals, B324 weak hashes) are patched without calling the LLM.
+- **Angular secret findings** (`apiKey`, `token`, `password`): the LLM is instructed to inject values from CI/CD environment variables or a backend `ConfigService` — never just empty the field.
+- **Angular XSS findings**: `DomSanitizer` patterns, safe binding, Content Security Policy guidance.
+- **Angular cognitive complexity (S3776)**: full enclosing function extracted from source and passed to the LLM for real refactoring, not placeholder generation.
+- **Java findings**: cryptography upgrades, `PreparedStatement` patterns, secure TLS configuration.
+
+Safety guardrails in `is_safe_to_apply()` block patches that delete functions, contain generic stubs (`// TODO: implement`, `refactoredFunction`, etc.), or remove more than 20% of source lines. Rejected patches fall back to a **proposal-only PR** (a Markdown file in `docs/remediations/`) — no source code is modified without human approval.
 
 All remediations are proposed as Pull Requests. Nothing is committed automatically without human review.
+
+---
+
+## Finding Lifecycle
+
+Each finding follows a tracked state machine:
+
+```
+open → fixed (re-scan confirms fix)
+     → regression (re-scan finds it again after "fixed")
+     → accepted_risk (human triage)
+     → false_positive (human triage)
+```
+
+Every state transition is recorded in `FindingAuditEvent` with a required reason string. The dashboard exposes Accept Risk, False Positive, and History buttons per finding. Findings in `accepted_risk` or `false_positive` states are preserved across subsequent scans.
 
 ---
 
@@ -100,9 +146,9 @@ All remediations are proposed as Pull Requests. Nothing is committed automatical
 AI-DevSecOps-Control-Plane/
 ├── src/
 │   ├── api/
-│   │   ├── main.py              ← FastAPI endpoints (profiles, webhook, reports)
+│   │   ├── main.py              ← FastAPI endpoints (scan, profiles, lifecycle, webhook, reports)
 │   │   ├── database.py          ← SQLModel engine + default profile seed
-│   │   └── models.py            ← ScanProfile, Project, Scan, Finding, Remediation
+│   │   └── models.py            ← ScanProfile, Project, Scan, Finding, Remediation, FindingAuditEvent
 │   ├── scanners/
 │   │   ├── base.py              ← BaseScannerAdapter
 │   │   ├── orchestrator.py      ← ScanOrchestrator (ThreadPoolExecutor)
@@ -112,19 +158,34 @@ AI-DevSecOps-Control-Plane/
 │   │   ├── angular_adapter.py   ← Angular/TS scanner
 │   │   ├── java_adapter.py      ← Java scanner
 │   │   ├── odc_adapter.py       ← Java SCA (OWASP Dependency Check)
+│   │   ├── pylint_adapter.py    ← Python Quality
+│   │   ├── eslint_adapter.py    ← Angular/TypeScript Quality
+│   │   ├── sonarqube_adapter.py ← SonarQube Community REST
 │   │   └── escaneo.py           ← Adapter selection + finding upsert + SLA
 │   ├── ai_engine/
-│   │   └── remediator.py        ← Ollama + technology-aware prompts
+│   │   └── remediator.py        ← Ollama + technology-aware prompts (Python/Angular/Java/CSS/HTML)
 │   ├── integrations/
-│   │   └── github_client.py     ← GitHub App PR automation + Check Run API
+│   │   └── github_client.py     ← GitHub App PR automation + semantic patching + Check Run
 │   └── dashboard/
-│       └── index.html           ← SPA: 2-step wizard, findings, reports, auto-fix
-├── tests/                       ← 42 tests across 7 files
+│       ├── index.html           ← HTML shell (no inline JS/CSS)
+│       ├── css/
+│       │   ├── base.css         ← CSS variables, reset, animations
+│       │   ├── layout.css       ← nav, bento grid, cards, findings table
+│       │   └── modal.css        ← modal overlays, tabs, form panels
+│       └── js/
+│           ├── api.js           ← all fetch() wrappers
+│           ├── utils.js         ← i18n (ES/EN), helpers, tool badges
+│           ├── diff.js          ← LCS diff view + GitHub unified diff parser
+│           ├── modal.js         ← project wizard, remediation modal, audit modal
+│           ├── dashboard.js     ← findings render, scan trigger, charts, PDF export
+│           └── main.js          ← entry point, event wiring, boot sequence
+├── tests/                       ← 117 tests across 15 files
 ├── .github/
 │   └── workflows/
 │       └── devsecops-scan.yml   ← CI: Bandit + pip-audit + Semgrep on every PR
-├── helm/                        ← Kubernetes deployment (roadmap)
-├── docker-compose.yml
+├── docker-compose.yml           ← api + ollama + ollama-init services
+├── Dockerfile
+├── .env.example
 └── code/requirements.txt
 ```
 
@@ -153,6 +214,13 @@ uvicorn src.api.main:app --reload
 # http://127.0.0.1:8000
 ```
 
+### Docker Compose
+
+```bash
+docker compose up -d
+# Dashboard → http://localhost:8000
+```
+
 ---
 
 ## GitHub App Setup
@@ -176,64 +244,55 @@ GITHUB_BASE_BRANCH=main
 
 ## Security Roadmap
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the full sprint plan with implementation details.
+See [ROADMAP.md](ROADMAP.md) for the full sprint plan with implementation details.
 
 ### Phase 1 — Core platform ✅
 
 | Surface | Tool |
 |---|---|
-| Python SAST | Bandit + Semgrep (`p/bandit`, `p/python`, `p/owasp-top-ten`) |
-| Angular/TS SAST | Semgrep (`p/javascript`, `p/typescript`, `p/owasp-top-ten`) |
-| Java SAST | Semgrep (`p/java`, `p/owasp-top-ten`, `p/find-sec-bugs`) |
+| Python SAST | Bandit + Semgrep |
+| Angular/TS SAST | Semgrep |
+| Java SAST | Semgrep + OWASP DC |
 | AI Remediation | Ollama local LLM — technology-aware prompts |
 | GitHub PR automation | GitHub App — JWT RS256 + semantic patching |
 
-### Phase 2 — Scan profiles + SCA + CI/CD ✅
+### Phase 2 — Scan profiles + SCA + lifecycle ✅
 
-| Area | Feature | Status |
-|---|---|---|
-| SCA | CVE coverage for Python libs (pip-audit) | ✅ |
-| SCA | CVE coverage for Java libs (OWASP DC) | ✅ |
-| Finding lifecycle | `fixed → regression` state transition + audit trail | ✅ |
-| Finding lifecycle | SLA tracking by severity (3/7/30/90 days) | ✅ |
-| Finding lifecycle | Reports per project (Chart.js dashboard) | ✅ |
-| CI/CD | PR webhook + GitHub Check Run (blocks merge on criticals) | ✅ |
-| CI/CD | GitHub Actions workflow (Bandit + pip-audit + Semgrep) | ✅ |
-| Scan profiles | `ScanProfile` model + `ScanOrchestrator` + 4 default profiles | ✅ |
-| Dashboard | 2-step project wizard (profile select → upload/clone) | ✅ |
+| Area | Feature |
+|---|---|
+| SCA | CVE coverage for Python (pip-audit) and Java (OWASP DC) |
+| Finding lifecycle | open / fixed / regression / accepted\_risk / false\_positive + audit trail |
+| SLA tracking | Per-severity deadlines (3/7/30/90d) · API filter · dashboard badges |
+| CI/CD | PR webhook + GitHub Check Run (blocks merge on criticals) |
+| Scan profiles | `ScanProfile` model + `ScanOrchestrator` + 4 default profiles |
+| Target path | Flexible `POST /api/scan` — resolves from body, project DB, or fallback |
+| Dashboard | Modular ES6 JS/CSS · 2-step wizard · Chart.js reports · PDF export |
 
-### Phase 3 — Infrastructure security 🔜
+### Phase 3 — Quality + Hardening ✅
+
+| Area | Feature |
+|---|---|
+| Quality — Python | Pylint adapter |
+| Quality — Angular | ESLint adapter |
+| Quality — Any | SonarQube Community REST adapter |
+| Semantic patching | Python AST guardrails · JS/TS brace-counting · proposal-only PR fallback |
+| Diff viewer | LCS diff + GitHub unified diff · side-by-side Antes/Después · scroll sync |
+| Remediation cache | Lightweight cache check — no re-read of source file; Ollama called once per finding |
+
+### Phase 4 — Infrastructure & DAST 🔜
 
 | Surface | Tool |
 |---|---|
+| DAST | OWASP ZAP adapter (real implementation pending) |
 | Secret scanning | gitleaks |
 | Docker + K8s YAML | Checkov |
 | Container images | Trivy |
-| K8s cluster hardening | kube-bench |
-
-### Phase 4 — DAST 🔜
-
-| Surface | Approach |
-|---|---|
-| Web application | LangGraph agent loop (crawler → attacker → verifier) |
+| K8s cluster | kube-bench |
 
 ---
 
 ## Why This Project Matters (for AppSec roles)
 
-> "At sector bancario I resolved 3,000+ vulnerabilities using existing tools (Fortify, SonarQube, Veracode). Outside of work I built the platform that automates that same cycle with local AI — because I understood the problem from the inside. The LLM runs on your infrastructure; code never crosses your network boundary."
+> "Working in the banking sector I was exposed to thousands of vulnerabilities managed through industrial tools (Fortify, SonarQube, Veracode). Outside of work I built the platform that automates that same cycle with local AI — because I understood the problem from the inside. The LLM runs on your infrastructure; code never crosses your network boundary."
 
 Relevant keywords: `DevSecOps` · `AppSec` · `SAST` · `SCA` · `AI Remediation` · `Local LLM Inference` · `FastAPI` · `Kubernetes` · `OpenShift` · `Helm` · `Bandit` · `Semgrep` · `Ollama` · `Vulnerability Management` · `Security Automation` · `GitHub App`
-
----
-
-<!-- DRAFT NOTES — remove before publishing -->
-<!--
-TODO:
-- Add demo GIF (dashboard → scan → auto-fix → PR)
-- Add .env.example file
-- Add badge for Python version and test coverage
-- Add comparison table vs Snyk / GitHub Copilot Autofix / SonarCloud
-- Add Architecture diagram (ASCII or Mermaid)
-- DAST section: expand LangGraph agent loop description when implemented
--->

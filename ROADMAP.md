@@ -105,6 +105,14 @@
 - [x] `orchestrator._run_sast`: instanciar adapters directamente sin `os.environ["SCANNER_ENGINE"]`
 - [x] `CombinedScannerAdapter.tool_name`: concatenar nombres de todos los hijos
 
+### Phase 2 — Generalizar target_path (ítem 23, 2026-05-27)
+- [x] `ScanRequest`: `project_id`, `target_path`, `profile_id`, `technology` todos opcionales; anteriormente `target_path` y `technology` eran obligatorios
+- [x] `POST /api/scan`: resolución por prioridad — 1) `target_path` explícito → `validate_scan_target` → `run_scan`; 2) `project_id` → `project.target_path` en DB → `scan_project` (con profile override); 3) fallback `dummy_vulnerable_app.py`
+- [x] `validate_scan_target`: ya existente — remap legacy path + check existencia (404) + check en allowed roots (403)
+- [x] `get_allowed_scan_roots` + `SCAN_ALLOWED_ROOTS` env var: ya existente — documentada en `.env.example`
+- [x] `api.js` `triggerScan(projectId, profileId)`: nueva función export — llama `POST /api/scan` con `{project_id, profile_id}`
+- [x] `tests/test_target_path_validation.py` (4 tests): valid path inside workspace, path traversal blocked (403), nonexistent path (404), fallback to dummy retro-compat
+
 ### Phase 3 — Quality + DAST
 - [ ] DAST adapter real (OWASP ZAP)
 - [x] Quality adapter ligero (Pylint / ESLint)

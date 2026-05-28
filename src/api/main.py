@@ -75,8 +75,10 @@ app.mount("/static", StaticFiles(directory=str(DASHBOARD_STATIC)), name="static"
 
 
 class ScanRequest(BaseModel):
-    target_path: str
-    technology: str
+    project_id: uuid.UUID | None = None
+    target_path: str | None = None
+    profile_id: int | None = None
+    technology: str | None = None
 
 
 class CloneRepoRequest(BaseModel):
@@ -1035,18 +1037,43 @@ async def clone_repo_project(request: CloneRepoRequest):
 @app.post("/api/scan")
 async def scan_code(request: ScanRequest | None = None):
     if request is None:
-        request = ScanRequest(
-            target_path=str(PROJECT_ROOT / "src"),
-            technology="python",
-        )
+        request = ScanRequest()
 
-    technology = request.technology.strip().lower()
+    # Priority 1: explicit target_path in body
+    if request.target_path is not None:
+        technology = (request.technology or "python").strip().lower()
+        if technology not in {"python", "angular", "typescript", "java"}:
+            raise HTTPException(status_code=400, detail="Unsupported technology value")
+        target_path = validate_scan_target(request.target_path)
+        return await run_scan(target_path, technology)
 
-    if technology not in {"python", "angular", "typescript", "java"}:
-        raise HTTPException(status_code=400, detail="Unsupported technology value")
+    # Priority 2: project_id → look up workspace path in DB
+    if request.project_id is not None:
+        with Session(engine) as session:
+            project = session.get(Project, request.project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if project.target_path:
+            target_path = validate_scan_target(project.target_path)
+            with Session(engine) as session:
+                db_project = session.get(Project, project.id)
+                if db_project:
+                    db_project.target_path = target_path
+                    session.add(db_project)
+                    session.commit()
+                    session.refresh(db_project)
+                    project = db_project
+            if request.profile_id is not None:
+                with Session(engine) as session:
+                    profile = session.get(ScanProfile, request.profile_id)
+                if profile:
+                    return await _scan_with_profile(project, profile)
+            return await scan_project(project)
+        # project.target_path is null → fall through to dummy
 
-    target_path = validate_scan_target(request.target_path)
-    return await run_scan(target_path, technology)
+    # Priority 3: fallback — retro-compat, no target provided
+    fallback = str(PROJECT_ROOT / "src" / "dummy_vulnerable_app.py")
+    return await run_scan(fallback, "python")
 
 
 @app.post("/api/scan/sonar")

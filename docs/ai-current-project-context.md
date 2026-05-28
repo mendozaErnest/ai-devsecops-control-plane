@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-27 (SLA tracking visibility: get_sla_status API, ?sla_status= filter, SLA badge date format, KPI counters 🔴/⚠ — 113 tests)
+Ultima actualizacion: 2026-05-27 (generalizar target_path: ScanRequest flexible, POST /api/scan resuelve project_id→workspace, validación de ruta segura, triggerScan en api.js, SCAN_ALLOWED_ROOTS en .env.example — 117 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -51,7 +51,7 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - SLA deadlines: CRITICAL=3d, HIGH=7d, MEDIUM=30d, LOW=90d.
 - IA local: Ollama, modelo por defecto qwen2.5-coder:14b.
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (113 tests).
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (117 tests).
 
 Dependencias en code/requirements.txt:
 
@@ -363,8 +363,9 @@ tests/test_safe_patching_python.py         (12 tests) ← S1192 constant + B324 
 tests/test_scan_profile.py                 (11 tests)
 tests/test_semantic_patching.py            (11 tests)
 tests/test_semgrep_adapter.py              (4 tests)
+tests/test_target_path_validation.py       (4 tests)  ← valid path, path traversal, nonexistent, fallback dummy
 tests/test_technology_inference.py         (29 tests)
-Total: 113 passed  ← verificado tras modal bug fixes (2026-05-27)
+Total: 117 passed  ← verificado tras generalizar target_path (2026-05-27)
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -434,10 +435,10 @@ Inmediato (proxima sesion):
 18. ✅ Fix PR solution inconsistency (2026-05-27): `cached_remediation_is_reusable()` en main.py — cache check que NO re-lee archivo fuente local (archivo editado localmente ya no invalida la remediación cacheada → Ollama no se re-llama → el patch siempre es el mismo). `GET /api/remediate/{id}/preview-diff` aplica build_safe_patched_content en el archivo local y devuelve {original, patched}. `renderPreviewDiff()` en diff.js muestra diff full-file exacto con badge "✓ Vista previa exacta del PR". IIFE en modal.js usa Promise.allSettled para obtener fileData + previewData en paralelo; si preview disponible usa renderPreviewDiff, si no cae a renderDiffView. computeDiff y normalizeLines extraídos a scope módulo.
 19. ✅ is_safe_to_apply extendido a JS/TS: _extract_named_functions detecta `function funcName(` además de Python `def`. Stub signals JS agregados. Angular prompt fortalecido contra clase TypeScript inventada (S930).
 20. ✅ SLA tracking visibility: get_sla_status() + _SLA_EXEMPT_STATUSES en main.py (ok/warning/breached/exempt/unknown); ?sla_status= filter en GET /api/findings; sla_status + sla_deadline en ambos endpoints de findings; buildSlaBadge muestra fecha deadline en MMM DD; KPI counters 🔴 N vencidos / ⚠ N por vencer en #sla-foot.
-21. `docker compose build api && docker compose up -d api` — rebuild para que iputils-ping entre en el contenedor.
-22. Reiniciar servidor uvicorn para que POST /api/scan/sonar active CLI automáticamente (scan_submitted: true).
-23. DAST adapter real con OWASP ZAP o validacion post-patch `tsc --noEmit` / Maven-Java.
-24. Generalizar POST /api/scan para aceptar target_path parametrizable.
+21. ✅ Generalizar target_path (ítem 23 Phase 2): ScanRequest ahora acepta project_id/target_path/profile_id/technology opcionales. POST /api/scan resuelve: 1) target_path explícito → validate_scan_target → run_scan; 2) project_id → project.target_path en DB → validate_scan_target → scan_project (con profile override si profile_id dado); 3) ninguno → fallback dummy_vulnerable_app.py. triggerScan(projectId, profileId) añadida en api.js. SCAN_ALLOWED_ROOTS documentada en .env.example. 4 tests nuevos: valid path, path traversal bloqueado, path inexistente, fallback retro-compat.
+22. `docker compose build api && docker compose up -d api` — rebuild para que iputils-ping entre en el contenedor.
+23. Reiniciar servidor uvicorn para que POST /api/scan/sonar active CLI automáticamente (scan_submitted: true).
+24. DAST adapter real con OWASP ZAP o validacion post-patch `tsc --noEmit` / Maven-Java.
 
 Phase 2 ya implementado ✅:
 - normalize_file_path_for_github(): rutas absolutas workspace→relativas para GitHub API.
