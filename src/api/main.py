@@ -63,6 +63,8 @@ from src.scanners.escaneo import persist_scan, run_scan
 from src.scanners.orchestrator import ScanOrchestrator
 
 
+PROJECT_NOT_FOUND = "Project not found"
+
 app = FastAPI()
 _logger = logging.getLogger(__name__)
 
@@ -866,7 +868,7 @@ async def get_project(project_id: uuid.UUID):
         project = session.get(Project, project_id)
 
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
         last_scans = get_last_scans_for_projects(session, [project_id])
         return project_to_response(
@@ -882,7 +884,7 @@ async def get_project_findings_endpoint(project_id: uuid.UUID):
         project = session.get(Project, project_id)
 
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
         findings = get_project_findings(session, project.id)
         remediated_finding_ids = latest_valid_remediation_ids(session, findings)
@@ -908,7 +910,7 @@ async def scan_project_endpoint(project_id: uuid.UUID):
         project = session.get(Project, project_id)
 
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
         target_path = validate_scan_target(project.target_path)
         project.target_path = target_path
@@ -1052,7 +1054,7 @@ async def scan_code(request: ScanRequest | None = None):
         with Session(engine) as session:
             project = session.get(Project, request.project_id)
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
         if project.target_path:
             target_path = validate_scan_target(project.target_path)
             with Session(engine) as session:
@@ -1635,7 +1637,7 @@ async def get_project_report(project_id: uuid.UUID):
         project = session.get(Project, project_id)
 
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
         findings = get_project_findings(session, project.id)
 
