@@ -21,6 +21,7 @@ AI DevSecOps Control Plane is a **local, self-hosted** platform that automates t
 4. Store normalized findings with **SLA deadlines** and a full **audit trail**.
 5. Generate AI-powered remediations using a **local LLM via Ollama** — no code ever leaves your infrastructure.
 6. Open real, reviewable GitHub Pull Requests with the patched code.
+7. Extend into **agentic DAST with LangGraph**: Explorer, Attacker, and Verifier agents coordinating dynamic testing loops.
 
 ---
 
@@ -50,6 +51,7 @@ This platform runs the LLM on your own hardware via Ollama. The network boundary
 | Finding lifecycle | open / fixed / regression / accepted\_risk / false\_positive + audit trail |
 | SLA tracking | CRITICAL=3d · HIGH=7d · MEDIUM=30d · LOW=90d; API filter `?sla_status=` |
 | Local LLM | Ollama → `qwen2.5-coder:14b` (configurable via `OLLAMA_MODEL`) |
+| Agentic DAST | LangGraph StateGraph roadmap: Explorer Agent + Attacker Agent + Verifier Agent |
 | GitHub Integration | GitHub App (JWT RS256 + installation token) + PR webhook + Check Run |
 | CI/CD | GitHub Actions workflow (Bandit + pip-audit + Semgrep on every PR) |
 | Frontend | Modular ES6 JS (`api.js`, `modal.js`, `diff.js`, `dashboard.js`) + Chart.js |
@@ -94,6 +96,31 @@ The general scan endpoint resolves the target in priority order:
 3. **No parameters** → fallback to `src/dummy_vulnerable_app.py` (retro-compat).
 
 Path validation enforces that the resolved path stays inside `SCAN_ALLOWED_ROOTS` (default: project root + `workspace/uploads/`), blocking directory traversal.
+
+---
+
+## Agentic DAST Roadmap
+
+Phase 4 adds dynamic application security testing through two complementary paths:
+
+- **OWASP ZAP adapter**: API-driven spidering and active scans against running applications.
+- **LangGraph agent loop**: a `StateGraph` where specialized agents collaborate, observe results, and iterate until findings are confirmed or rejected.
+
+Planned agent roles:
+
+| Agent | Responsibility |
+|---|---|
+| Explorer Agent | Crawl the target, discover routes, forms, parameters, and authentication boundaries. |
+| Attacker Agent | Generate focused fuzzing payloads for XSS, injection, auth bypass, path traversal, and common OWASP Top 10 cases. |
+| Verifier Agent | Reproduce candidate findings, reduce false positives, and emit normalized evidence for the existing finding lifecycle. |
+
+```
+Explorer Agent -> Attacker Agent -> Verifier Agent
+   (crawl)        (fuzzing)         (confirm)
+      ^________________feedback______________|
+```
+
+This is intentionally marked as roadmap: the current codebase already models `dast_tool` values such as `zap` and `agent_loop`, while the real ZAP adapter and LangGraph agent implementation belong to the next infrastructure/DAST phase.
 
 ---
 
@@ -284,6 +311,7 @@ See [ROADMAP.md](ROADMAP.md) for the full sprint plan with implementation detail
 | Surface | Tool |
 |---|---|
 | DAST | OWASP ZAP adapter (real implementation pending) |
+| Agentic DAST | LangGraph StateGraph: Explorer Agent → Attacker Agent → Verifier Agent |
 | Secret scanning | gitleaks |
 | Docker + K8s YAML | Checkov |
 | Container images | Trivy |
@@ -295,4 +323,4 @@ See [ROADMAP.md](ROADMAP.md) for the full sprint plan with implementation detail
 
 > "Working in the banking sector I was exposed to thousands of vulnerabilities managed through industrial tools (Fortify, SonarQube, Veracode). Outside of work I built the platform that automates that same cycle with local AI — because I understood the problem from the inside. The LLM runs on your infrastructure; code never crosses your network boundary."
 
-Relevant keywords: `DevSecOps` · `AppSec` · `SAST` · `SCA` · `AI Remediation` · `Local LLM Inference` · `FastAPI` · `Kubernetes` · `OpenShift` · `Helm` · `Bandit` · `Semgrep` · `Ollama` · `Vulnerability Management` · `Security Automation` · `GitHub App`
+Relevant keywords: `DevSecOps` · `AppSec` · `SAST` · `SCA` · `DAST` · `AI Remediation` · `Local LLM Inference` · `FastAPI` · `Kubernetes` · `OpenShift` · `Helm` · `Bandit` · `Semgrep` · `OWASP ZAP` · `Ollama` · `LangGraph` · `Vulnerability Management` · `Security Automation` · `GitHub App`
