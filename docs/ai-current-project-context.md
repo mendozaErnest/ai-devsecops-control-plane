@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-28 (scanner filter icons en findings bar — reemplaza texto "python·repo", filtros clicables por herramienta (All/Bandit/Semgrep/etc), routing back/forward con History API — 124 tests)
+Ultima actualizacion: 2026-05-28 (scan crash fix updateDastTargetUrlInput, SonarQube language auto-detect, scan visibility warnings+scan_summary — 124 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -228,14 +228,15 @@ ScanOrchestrator._run_quality() ejecuta adapters reales segun ScanProfile:
 - python + quality_tool=pylint → PylintAdapter.
 - angular/typescript + quality_tool=eslint → EslintAdapter.
 - python/angular/typescript/java + quality_tool=sonarqube → SonarQubeAdapter REST.
-- Java Quality por CLI local queda pendiente; Java puede consumir findings SonarQube si el proyecto ya fue analizado en Sonar.
+- Retorna `(findings, notices)` tuple. `notices` incluye mensajes de tecnología-incompatible y "0 hallazgos encontrados" para dar visibilidad al usuario sin lanzar error.
 - Si falta el binario (`pylint`, `node_modules/.bin/eslint` o `npx --no-install eslint`), el adapter retorna [] y el orquestador reporta el error sin tumbar todo el scan.
 - SonarQube usa `SONARQUBE_URL`, `SONARQUBE_TOKEN` y `SONARQUBE_PROJECT_KEY`; si no hay project key deriva una desde target_path.
 - Auth: Bearer token (`Authorization: Bearer <token>`), no Basic Auth — compatible con SonarQube Community v26+.
-- `run_sonar_scan(target_path)`: invoca sonar-scanner CLI como subprocess; si el binario no está en PATH lanza RuntimeError (el endpoint lo captura y sigue).
+- `run_sonar_scan(target_path)`: invoca sonar-scanner CLI como subprocess sin `-Dsonar.language` — auto-detección de lenguaje (Angular/TS/Java funciona correctamente).
 - `fetch_sonar_issues(page_size)`: consulta REST `/api/issues/search` con Bearer token; valida 401/404 con mensajes claros.
 - `POST /api/scan/sonar`: intenta CLI (graceful skip), llama `SonarQubeAdapter.execute_scan()`, persiste con `persist_scan()`.
 - `SONARQUBE_URL` en `.env` apunta a `http://localhost:9000` para dev local; cambiar a `http://sonarqube:9000` en Docker.
+- `OrchestratorResult` incluye `scan_summary: dict` (tool → count) y `warnings: list` (notices no-fatales). `_scan_with_profile()` expone ambos en la respuesta HTTP.
 
 ---
 
@@ -365,7 +366,8 @@ tests/test_semantic_patching.py            (11 tests)
 tests/test_semgrep_adapter.py              (4 tests)
 tests/test_target_path_validation.py       (4 tests)  ← valid path, path traversal, nonexistent, fallback dummy
 tests/test_technology_inference.py         (29 tests)
-Total: 117 passed  ← verificado tras generalizar target_path (2026-05-27)
+tests/test_zap_adapter.py                  (7 tests)
+Total: 124 passed  ← verificado tras configuration UX (2026-05-28)
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -393,9 +395,9 @@ Reglas permanentes:
 
 ## Riesgos Conocidos
 
-1. DAST runner sigue como placeholder — retorna [].
+1. DAST runner sigue como placeholder — retorna []. Al escanear con perfil DAST habilitado, el sistema hace `window.prompt` para la URL; si el usuario cancela o deja en blanco, ZAP se salta gracefully.
 2. Validacion Angular/Java es heuristica (brace-counting), no parser real.
-3. Java Quality local sigue pendiente; SonarQube requiere sonar-scanner CLI instalado para analizar y poblar findings (0 issues hasta primer análisis CLI).
+3. Java Quality local sigue pendiente; SonarQube requiere sonar-scanner CLI instalado para analizar y poblar findings (0 issues hasta primer análisis CLI). Nota: ya no hardcodea `-Dsonar.language=py` — el CLI auto-detecta Angular/TS/Java.
 7. sonar-scanner CLI instalado en ~/.local/bin/sonar-scanner v6.2.1. Primer análisis real ejecutado: 125 issues importados. sonar-project.properties en raíz del repo. Para dispararlo desde el endpoint POST /api/scan/sonar se requiere reiniciar el servidor (fallback path ya codificado en run_sonar_scan).
 8. GET /api/ping — binario `ping` no estaba en python:3.12-slim. Fix: iputils-ping añadido al Dockerfile + FileNotFoundError → HTTP 503 graceful en el endpoint (requerirá `docker compose build api && docker compose up -d api` para que el rebuild aplique).
 4. workspace/ puede contener uploads temporales; no versionar.
@@ -416,6 +418,10 @@ Reglas permanentes:
 
 Inmediato (proxima sesion):
 1. ✅ sonar-scanner CLI instalado y primer análisis real ejecutado (125 issues).
+2. ✅ Crash `updateDastTargetUrlInput is not defined` corregido — `runScan()` ya no falla.
+3. ✅ SonarQube CLI ya no hardcodea `-Dsonar.language=py` — Angular/TS analizado correctamente.
+4. ✅ Visibilidad de scan: `scan_summary`, `warnings` y mensajes de 0-findings en feedback post-scan.
+5. Próximo: probar scan real con ZIP Angular + perfil SonarQube para verificar que el CLI ahora detecta TypeScript correctamente. Recordar ejecutar sonar-scanner CLI antes de escanear desde el dashboard (o usar `POST /api/scan/sonar` que lo dispara automáticamente).
 2. ✅ build_pr_body() con formato estructurado (🔒 Security Fix, Herramienta, Problema, Fix aplicado, Referencias CWE).
 3. ✅ Badge de origen en dashboard — detectTool(finding) por rule_id namespace; SonarQube/Bandit/Semgrep/ESLint/Pylint coloreados.
 4. ✅ Ping 500 corregido — iputils-ping en Dockerfile + FileNotFoundError graceful (HTTP 503) + timeout 15s.
@@ -439,6 +445,11 @@ Inmediato (proxima sesion):
 22. `docker compose build api && docker compose up -d api` — rebuild para que iputils-ping entre en el contenedor.
 23. Reiniciar servidor uvicorn para que POST /api/scan/sonar active CLI automáticamente (scan_submitted: true).
 24. DAST adapter real con OWASP ZAP o validacion post-patch `tsc --noEmit` / Maven-Java.
+25. ✅ Configuration page UX: palette min-height 520px, form vacío al cargar, tarjetas no-clickable con "Usar" como único gatillo, botones header deshabilitados hasta activar perfil, scanner icon badges en lista de proyectos (last_scan_tool split por "+").
+26. ✅ SonarQube findings fix: normalize_issue() ahora setea tool="sonarqube" en cada Finding — findings persistidos con tool correcto en lugar del SAST tool del profile. _run_quality() expandido para django/flask/java-spring/react; soporta herramientas quality comma-separated ("pylint,sonarqube"); degrada gracefully por herramienta (solo lanza RuntimeError si TODAS fallan).
+27. ✅ ZAP profile builder: warning "necesitará URL antes de ejecutar DAST" eliminado — URL se provee al momento del scan, no al crear el perfil. canDropScannerOnTechnology() ya no bloquea ni advierte por URL faltante al agregar ZAP.
+28. ✅ Multi-quality-tool: restricción "solo una herramienta Quality" removida del builder. toScanProfilePayload() une múltiples con coma ("pylint,sonarqube"). profileScanners() divide y reconstruye al cargar perfil guardado. Orchestrator soporta CSV completo.
+29. ✅ Scan-stack header overhaul: CSS .scan-stack-chip/.scan-stack-profile/.scan-stack-icon/.scan-stack-empty/tone-classes añadidas a layout.css. STACK_ICON_META reemplaza text marks con SVG icons por tool (Python serpientes, Angular A, TypeScript rect+T, Java taza, Semgrep lupa, Bandit escudo+!, ZAP rayo, Pylint ✓, ESLint hexágono, SonarQube ondas, pip-audit paquete, Dep Check escudo). updateScanStackIcons() muestra nombre del perfil activo antes de los chips.
 
 Phase 2 ya implementado ✅:
 - normalize_file_path_for_github(): rutas absolutas workspace→relativas para GitHub API.

@@ -13,7 +13,6 @@ import {
   findScanner,
   findTechnology,
   getAllSelectedScannerIds,
-  loadSessionProfile,
   profileToDraft,
   removeScannerFromDraft,
   removeTechnologyFromDraft,
@@ -32,19 +31,16 @@ let profileDraft = createEmptyProfileBuilderState();
 let savedProfiles = [];
 let onOpenProjectsView = null;
 let onAddProject = null;
+// CAMBIO 2/3: active profile tracked independently from builder form
+let activeProfileId = null;
+let activeProfile = null;
 
 export function initProfileBuilderView(options = {}) {
   onOpenProjectsView = options.onOpenProjectsView || null;
   onAddProject = options.onAddProject || null;
 
-  const savedProfile = loadSessionProfile();
-  profileDraft = savedProfile?.draft
-    ? {
-        ...applyValidation(savedProfile.draft),
-        savedSessionProfile: savedProfile,
-        applySavedProfileToNextProjects: true,
-      }
-    : applyValidation(createEmptyProfileBuilderState());
+  // CAMBIO 2: always start with empty form on load — no session restore
+  profileDraft = applyValidation(createEmptyProfileBuilderState());
 
   renderProfileBuilder();
   loadSavedProfiles();
@@ -56,8 +52,13 @@ export function initProfileBuilderView(options = {}) {
     renderProfileBuilder();
     renderSavedProfiles();
   });
-  builderNewProjectButton?.addEventListener("click", openProjectWithCurrentProfile);
+  // CAMBIO 4: header button uses the active saved profile, not the builder draft
+  builderNewProjectButton?.addEventListener("click", () => {
+    if (activeProfile) onAddProject?.(activeProfile);
+  });
   goProjectsButton?.addEventListener("click", () => onOpenProjectsView?.());
+
+  updateActionButtons(); // CAMBIO 4: disabled until a profile is activated
 }
 
 export async function loadSavedProfiles() {
@@ -70,6 +71,34 @@ export async function loadSavedProfiles() {
     savedProfilesList.innerHTML = `<p style="color:#ff7b72;font-size:12px;padding:10px;">No se pudieron cargar perfiles.</p>`;
     showFeedback(`No se pudieron cargar perfiles: ${error.message}`, "error");
   }
+}
+
+// CAMBIO 4: habilita/deshabilita botones del header según si hay perfil activo
+function updateActionButtons() {
+  const hasActive = Boolean(activeProfileId);
+  [builderNewProjectButton, goProjectsButton].forEach((btn) => {
+    if (!btn) return;
+    btn.disabled = !hasActive;
+    btn.style.opacity = hasActive ? "1" : ".45";
+    btn.style.cursor = hasActive ? "pointer" : "not-allowed";
+  });
+}
+
+// CAMBIO 3: activar un perfil guardado sin abrir modal ni rellenar el builder
+function activateProfile(profile) {
+  activeProfileId = profile.id;
+  activeProfile = profile;
+  saveSessionProfile(profile, profileToDraft(profile));
+
+  const labelEl = document.getElementById("active-profile-label");
+  if (labelEl) {
+    labelEl.textContent = `Perfil activo: ${profile.name}`;
+    labelEl.style.display = "";
+  }
+
+  renderSavedProfiles();
+  updateActionButtons();
+  showFeedback(`Perfil activo: ${profile.name}`, "success");
 }
 
 function renderProfileBuilder() {
@@ -432,7 +461,8 @@ function renderBuilderMessage() {
 
 function renderSavedProfiles() {
   if (!savedProfilesList) return;
-  const activeId = loadSessionProfile()?.id;
+  // CAMBIO 3: use module-level activeProfileId, not sessionStorage
+  const activeId = activeProfileId;
   savedProfilesList.innerHTML = "";
 
   if (!savedProfiles.length) {
@@ -443,9 +473,7 @@ function renderSavedProfiles() {
   savedProfiles.forEach((profile) => {
     const item = document.createElement("article");
     item.className = "saved-profile-item" + (String(activeId) === String(profile.id) ? " active" : "");
-    item.tabIndex = 0;
-    item.setAttribute("role", "button");
-    item.title = "Usar configuracion y elegir proyecto";
+    // CAMBIO 3: cards are NOT clickable — only the "Usar" button acts
     item.innerHTML = `
       <div class="saved-profile-top">
         <div>
@@ -461,17 +489,8 @@ function renderSavedProfiles() {
         ${profile.dast_enabled ? `<span>DAST: ${escapeHtml(profile.dast_tool || "zap")}</span>` : ""}
         ${profile.quality_enabled ? `<span>Quality: ${escapeHtml(profile.quality_tool || "auto")}</span>` : ""}
       </div>`;
-    item.addEventListener("click", (event) => {
-      if (event.target.closest("[data-profile-use]")) return;
-      useSavedProfile(profile, true);
-    });
-    item.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        useSavedProfile(profile, true);
-      }
-    });
-    item.querySelector("[data-profile-use]")?.addEventListener("click", () => useSavedProfile(profile, true));
+    // CAMBIO 3: "Usar" marks profile active, does NOT fill builder form
+    item.querySelector("[data-profile-use]")?.addEventListener("click", () => activateProfile(profile));
     savedProfilesList.appendChild(item);
   });
 }

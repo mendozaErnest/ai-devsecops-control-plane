@@ -330,16 +330,9 @@ tr:hover .col-action { background: var(--bg-hover); }
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
-  cursor: pointer;
+  cursor: default;
   padding: 10px;
   transition: background .15s, border-color .15s, transform .15s;
-}
-
-.saved-profile-item:hover,
-.saved-profile-item:focus {
-  background: rgba(47,129,247,.08);
-  border-color: rgba(88,166,255,.5);
-  outline: 0;
 }
 
 .saved-profile-item.active {
@@ -430,7 +423,39 @@ tr:hover .col-action { background: var(--bg-hover); }
   letter-spacing: -0.01em;
 }
 .head h1 .lt { color: var(--t-dim); font-weight: 400; }
-.head .actions { display: flex; gap: 10px; }
+.head .actions { display: flex; align-items: center; gap: 10px; }
+
+/* ── Scan-stack: profile name + tool chips (project header) ── */
+.scan-stack-icons {
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+}
+.scan-stack-profile {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 600; color: var(--t-dim);
+  padding: 3px 8px 3px 7px; border-radius: 6px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  white-space: nowrap; margin-right: 2px;
+}
+.scan-stack-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 8px 3px 6px; border-radius: 6px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-left-width: 2.5px; transition: opacity .12s;
+}
+.scan-stack-icon { display: inline-flex; align-items: center; flex-shrink: 0; }
+.scan-stack-label { font-size: 11px; }
+.scan-stack-empty { font-size: 11.5px; color: var(--t-dim); }
+
+/* per-category tone */
+.scan-stack-chip.python     { border-left-color: #6aadde; color: #6aadde; }
+.scan-stack-chip.angular    { border-left-color: #f47f7f; color: #f47f7f; }
+.scan-stack-chip.typescript { border-left-color: #6aa4e0; color: #6aa4e0; }
+.scan-stack-chip.java       { border-left-color: #f8a842; color: #f8a842; }
+.scan-stack-chip.sast       { border-left-color: #58a6ff; color: #58a6ff; }
+.scan-stack-chip.dast       { border-left-color: #ff7b72; color: #ff7b72; }
+.scan-stack-chip.quality    { border-left-color: #3fb950; color: #3fb950; }
+.scan-stack-chip.sca        { border-left-color: #e3905a; color: #e3905a; }
 
 /* ── Generic button ── */
 .btn {

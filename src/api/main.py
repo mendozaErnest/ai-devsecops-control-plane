@@ -32,6 +32,7 @@ from src.ai_engine.remediator import (
     infer_technology_from_finding,
 )
 from src.integrations.github_client import (
+    load_env_file,
     GitHubClientError,
     build_python_b324_remediation_text,
     build_python_b324_weak_hash_patch,
@@ -63,6 +64,7 @@ from src.integrations.github_client import (
 from src.scanners.escaneo import persist_scan, run_scan
 from src.scanners.orchestrator import ScanOrchestrator
 
+load_env_file()
 
 app = FastAPI()
 _logger = logging.getLogger(__name__)
@@ -914,6 +916,8 @@ async def _scan_with_profile(
         "saved_findings": saved,
         "tools_run": result.tools_run,
         "errors": result.errors,
+        "warnings": result.warnings,
+        "scan_summary": result.scan_summary,
         "technology": project.technology,
         "target_path": project.target_path,
         "target_url": target_url,

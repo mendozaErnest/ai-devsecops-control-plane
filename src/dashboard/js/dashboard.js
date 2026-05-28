@@ -540,6 +540,25 @@ function setActiveChip(filter) {
   renderPage();
 }
 
+// ── Scanner badge helper (CAMBIO 4b) ──────────────────────────────────────────
+const TOOL_BADGE_COLOR = {
+  semgrep:     "#2f81f7",
+  bandit:      "#d29922",
+  sonarqube:   "#4e9bf5",
+  eslint:      "#a371f7",
+  pylint:      "#3fb950",
+  zap:         "#ff7b72",
+  "pip-audit": "#58a6ff",
+  odc:         "#e3693e",
+  unknown:     "#8b949e",
+};
+
+function buildScannerIconBadge(toolKey) {
+  const meta  = TOOL_CHIP_META[toolKey] || TOOL_CHIP_META.unknown;
+  const color = TOOL_BADGE_COLOR[toolKey] || TOOL_BADGE_COLOR.unknown;
+  return `<span style="padding:1px 6px;border-radius:4px;font-size:.67rem;font-weight:700;font-family:var(--f-mono);background:${color}1a;color:${color};border:1px solid ${color}40;" title="${escapeHtml(meta.label)}">${escapeHtml(meta.short)}</span>`;
+}
+
 // ── Project rendering ─────────────────────────────────────────────────────────
 export function renderProjects() {
   projectsList.innerHTML = "";
@@ -586,6 +605,15 @@ export function renderProjects() {
       ? `<div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;">${sevParts.length ? sevParts.join("") : `<span style="font-size:.67rem;color:var(--muted);">Sin hallazgos</span>`}</div>`
       : "";
 
+    // CAMBIO 4b: scanner icon badges from last_scan_tool (e.g. "bandit+pip-audit")
+    const scannerBadges = String(project.last_scan_tool || "")
+      .split("+").map((s) => s.trim()).filter(Boolean)
+      .map((s) => normalizeToolKey(s)).filter(Boolean)
+      .map(buildScannerIconBadge);
+    const scannerRow = scannerBadges.length
+      ? `<div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;">${scannerBadges.join("")}</div>`
+      : "";
+
     btn.innerHTML = `
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
         <span style="font-size:.85rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">${escapeHtml(project.name)}</span>
@@ -598,6 +626,7 @@ export function renderProjects() {
         <span style="padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:600;background:var(--bg-hover);color:var(--muted);border:1px solid var(--border);">${escapeHtml(String(project.source_type || "").toUpperCase())}</span>
       </div>
       ${sevRow}
+      ${scannerRow}
       <p style="margin-top:5px;font-size:.7rem;color:var(--muted);">${escapeHtml(createdAt)}</p>
     `;
     btn.addEventListener("click", () => selectProject(project));
@@ -694,19 +723,56 @@ function selectedProjectProfile() {
   return scanProfiles.find((profile) => profile.id === selectedProject.scan_profile_id) || null;
 }
 
+const _SI = (d) => `<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">${d}</svg>`;
 const STACK_ICON_META = {
-  python: { label: "Python", mark: "Py", tone: "python" },
-  angular: { label: "Angular", mark: "A", tone: "angular" },
-  typescript: { label: "TypeScript", mark: "TS", tone: "typescript" },
-  java: { label: "Java", mark: "Jv", tone: "java" },
-  semgrep: { label: "Semgrep", mark: "Se", tone: "sast" },
-  bandit: { label: "Bandit", mark: "Ba", tone: "sast" },
-  zap: { label: "OWASP ZAP", mark: "ZAP", tone: "dast" },
-  pylint: { label: "Pylint", mark: "PyL", tone: "quality" },
-  eslint: { label: "ESLint", mark: "ES", tone: "quality" },
-  sonarqube: { label: "SonarQube", mark: "SQ", tone: "quality" },
-  "pip-audit": { label: "pip-audit", mark: "pip", tone: "sca" },
-  odc: { label: "OWASP Dependency-Check", mark: "DC", tone: "sca" },
+  python: {
+    label: "Python", tone: "python",
+    icon: _SI(`<path fill="currentColor" d="M7.5 2C5.5 2 4.5 3 4.5 4V5.5H7.5V6H4C3 6 2.5 6.8 2.5 7.5S3 9 4 9H5V7.5H7.5V7H5.5V6.5H7.5C8.5 6.5 9 6 9 5V4C9 3 8 2 7.5 2ZM6.5 3.5A.5.5 0 116.5 4.5.5.5 0 016.5 3.5Z"/><path fill="currentColor" d="M8.5 14C10.5 14 11.5 13 11.5 12V10.5H8.5V10H12C13 10 13.5 9.2 13.5 8.5S13 7 12 7H11V8.5H8.5V9H10.5V9.5H8.5C7.5 9.5 7 10 7 11V12C7 13 8 14 8.5 14ZM9.5 12.5A.5.5 0 119.5 11.5.5.5 0 019.5 12.5Z"/>`)
+  },
+  angular: {
+    label: "Angular", tone: "angular",
+    icon: _SI(`<path fill="currentColor" d="M8 1.5L2 13H4L5.5 9.5H10.5L12 13H14L8 1.5ZM8 5L10 9H6L8 5Z"/>`)
+  },
+  typescript: {
+    label: "TypeScript", tone: "typescript",
+    icon: _SI(`<rect fill="currentColor" x="1.5" y="1.5" width="13" height="13" rx="2"/><path fill="#0f172a" d="M3.5 5.5H12.5V7.5H9.5V13H7V7.5H3.5V5.5Z"/>`)
+  },
+  java: {
+    label: "Java", tone: "java",
+    icon: _SI(`<path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M5 2C5 4.5 7.5 5 6 7.5M7.5 1.5C7.5 3.5 9.5 4.5 8.5 7M10 2.5C10 4.5 12 5 11 7"/><path fill="none" stroke="currentColor" stroke-width="1.3" d="M4 9c0 .5 1 .5 4 .5s4 0 4-.5-1-.5-4-.5-4 0-4 .5Z"/><path fill="none" stroke="currentColor" stroke-width="1.2" d="M5 11c0 .4.8.4 3 .4s3-.4 3-.4-1-.4-3-.4-3 0-3 .4ZM5.5 13c0 .3.7.5 2.5.5s2.5-.2 2.5-.5-.7-.5-2.5-.5-2.5.2-2.5.5Z"/>`)
+  },
+  semgrep: {
+    label: "Semgrep", tone: "sast",
+    icon: _SI(`<circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="10.5" y1="10.5" x2="13.5" y2="13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M5 7h4M7 5v4"/>`)
+  },
+  bandit: {
+    label: "Bandit", tone: "sast",
+    icon: _SI(`<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M8 1.5L2.5 4V9C2.5 12.5 5.5 14.5 8 15 10.5 14.5 13.5 12.5 13.5 9V4L8 1.5Z"/><line x1="8" y1="5.5" x2="8" y2="9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.2" r=".8" fill="currentColor"/>`)
+  },
+  zap: {
+    label: "OWASP ZAP", tone: "dast",
+    icon: _SI(`<path fill="currentColor" d="M9.5 1.5L4 9H8.5L6 14.5L13.5 7H8.5L9.5 1.5Z"/>`)
+  },
+  pylint: {
+    label: "Pylint", tone: "quality",
+    icon: _SI(`<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M5 8l2.5 2.5L11 6"/>`)
+  },
+  eslint: {
+    label: "ESLint", tone: "quality",
+    icon: _SI(`<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M8 1.5L2 5V11L8 14.5L14 11V5L8 1.5Z"/><path fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" d="M5 6.5H11M5 8H9.5M5 9.5H11"/>`)
+  },
+  sonarqube: {
+    label: "SonarQube", tone: "quality",
+    icon: _SI(`<path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M3 12C3 9 5.7 6.5 9 6.5M3 12C3 6 6.8 2.5 12 2.5M3 12H13"/>`)
+  },
+  "pip-audit": {
+    label: "pip-audit", tone: "sca",
+    icon: _SI(`<rect x="2.5" y="5.5" width="11" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><path fill="none" stroke="currentColor" stroke-width="1.3" d="M5.5 5.5V4A1.5 1.5 0 017 2.5H9A1.5 1.5 0 0110.5 4V5.5"/><path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" d="M6 10l1.5 1.5 3-2.5"/>`)
+  },
+  odc: {
+    label: "Dep Check", tone: "sca",
+    icon: _SI(`<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M8 1.5L2.5 4.5V10C2.5 13 5.5 15 8 15 10.5 15 13.5 13 13.5 10V4.5L8 1.5Z"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M5.5 8.5l2 2 3.5-3.5"/>`)
+  },
 };
 
 function addStackItem(items, key, source = "scan") {
@@ -756,7 +822,6 @@ function buildScanStackItems() {
 
 function updateScanStackIcons() {
   if (!scanStackIcons) return;
-  const items = buildScanStackItems();
   scanStackIcons.innerHTML = "";
 
   if (!selectedProject) {
@@ -764,18 +829,23 @@ function updateScanStackIcons() {
     return;
   }
 
-  if (!items.length) {
-    scanStackIcons.innerHTML = `<span class="scan-stack-empty">Sin scans</span>`;
-    return;
+  const profile = selectedProjectProfile();
+  if (profile) {
+    const profileEl = document.createElement("span");
+    profileEl.className = "scan-stack-profile";
+    profileEl.title = `Perfil: ${profile.name}`;
+    profileEl.innerHTML = `<svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3" width="12" height="2" rx="1" fill="currentColor"/><rect x="2" y="7" width="8" height="2" rx="1" fill="currentColor"/><rect x="2" y="11" width="10" height="2" rx="1" fill="currentColor"/></svg>${escapeHtml(profile.name)}`;
+    scanStackIcons.appendChild(profileEl);
   }
+
+  const items = buildScanStackItems();
+  if (!items.length) return;
 
   items.forEach((item) => {
     const badge = document.createElement("span");
     badge.className = `scan-stack-chip ${item.tone}`;
-    badge.title = `${item.label} · ${item.source}`;
-    badge.innerHTML = `
-      <span class="scan-stack-mark">${escapeHtml(item.mark)}</span>
-      <span class="scan-stack-label">${escapeHtml(item.label)}</span>`;
+    badge.title = item.label;
+    badge.innerHTML = `<span class="scan-stack-icon">${item.icon}</span><span class="scan-stack-label">${escapeHtml(item.label)}</span>`;
     scanStackIcons.appendChild(badge);
   });
 }
@@ -796,15 +866,47 @@ export async function runScan() {
 
   try {
     await ensureScanProfilesLoaded();
-    updateDastTargetUrlInput();
-    const targetUrl = dastTargetUrlInput?.style.display !== "none"
-      ? dastTargetUrlInput.value.trim()
-      : "";
-    const result = await scanProject(selectedProject.id, targetUrl || null);
+    const profile = selectedProjectProfile();
+    let targetUrl = null;
+    if (profile?.dast_enabled) {
+      targetUrl = window.prompt("URL del objetivo DAST (ej: http://host.docker.internal:8000) — usar host.docker.internal en lugar de 127.0.0.1 o localhost:") || null;
+    }
+    const result = await scanProject(selectedProject.id, targetUrl);
     if (!result.success) throw new Error(result.error || "Scan failed");
     const finishedAt = new Date().toLocaleTimeString();
-    if (scanStatus) scanStatus.textContent = `${result.saved_findings} guardados`;
-    showFeedback(`Escaneo completado a las ${finishedAt}. ${result.saved_findings} hallazgos guardados.`, "success");
+    const saved = result.saved_findings ?? 0;
+    if (scanStatus) scanStatus.textContent = `${saved} guardados`;
+
+    const msgParts = [];
+    if (saved === 0) {
+      msgParts.push("Sin hallazgos nuevos encontrados.");
+    } else {
+      const plural = saved === 1 ? "" : "s";
+      msgParts.push(`${saved} hallazgo${plural} guardado${plural}.`);
+    }
+    if (result.scan_summary && Object.keys(result.scan_summary).length > 0) {
+      const summaryStr = Object.entries(result.scan_summary)
+        .map(([tool, count]) => `${tool}: ${count}`).join(" · ");
+      msgParts.push(`[${summaryStr}]`);
+    }
+    if (result.warnings?.length) {
+      msgParts.push(`ℹ ${result.warnings.join("; ")}`);
+    }
+    if (result.errors?.length) {
+      msgParts.push(`⚠ ${result.errors.join("; ")}`);
+    }
+    let feedbackType;
+    if (result.errors?.length) {
+      feedbackType = "warning";
+    } else if (saved === 0 && !result.warnings?.length) {
+      feedbackType = "info";
+    } else {
+      feedbackType = "success";
+    }
+    showFeedback(
+      `Escaneo completado a las ${finishedAt}. ${msgParts.join(" ")}`,
+      feedbackType,
+    );
     await loadProjects(false);
     await loadFindings();
   } catch (error) {

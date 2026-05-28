@@ -91,6 +91,7 @@ class PylintAdapter(BaseScannerAdapter):
 
         return Finding(
             scan_id=uuid.UUID(int=0),
+            tool="pylint",
             rule_id=rule_id,
             title=f"Pylint: {symbol}",
             description=description,

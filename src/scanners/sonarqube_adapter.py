@@ -72,7 +72,6 @@ def run_sonar_scan(target_path: str) -> dict:
         f"-Dsonar.sources={target_path}",
         f"-Dsonar.host.url={base_url}",
         f"-Dsonar.token={token}",
-        "-Dsonar.language=py",
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
@@ -206,6 +205,7 @@ class SonarQubeAdapter(BaseScannerAdapter):
 
         return Finding(
             scan_id=uuid.UUID(int=0),
+            tool="sonarqube",
             rule_id=rule_id,
             title=f"SonarQube: {rule_id}",
             description=message,

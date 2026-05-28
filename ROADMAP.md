@@ -273,6 +273,20 @@
 - [x] `dashboard.js` `updateCounters()`: KPI footer shows `🔴 N vencidos` and `⚠ N por vencer` when > 0; populates `#sla-breaches` and `#sla-foot` elements
 - [x] 113 tests passing — no regression
 
+### Phase 3 — Configuration Page UX (2026-05-28)
+- [x] `modal.css` `.builder-palette`: `max-height: 430px` → `min-height: 520px` — all palette chips visible without hidden scroll (CAMBIO 1)
+- [x] `profile-builder-view.js` `initProfileBuilderView()`: always calls `createEmptyProfileBuilderState()` on load — form starts empty regardless of sessionStorage (CAMBIO 2)
+- [x] `profile-builder-view.js` module-level `activeProfileId` / `activeProfile`: profile activation tracked independently from the builder draft form
+- [x] `profile-builder-view.js` `activateProfile(profile)`: "Usar" button marks card visually active, shows "Perfil activo: X" label, enables header buttons — does NOT fill builder form, does NOT open modal (CAMBIO 3)
+- [x] `profile-builder-view.js` `updateActionButtons()`: "Agregar proyecto" + "Ver proyectos escaneados" header buttons disabled (opacity .45 / not-allowed) until a profile is activated via "Usar" (CAMBIO 4)
+- [x] `profile-builder-view.js` `renderSavedProfiles()`: removed `tabIndex`, `role="button"`, `title` and card-level click/keydown handlers — only the "Usar" button acts (CAMBIO 3)
+- [x] `index.html`: added `<div id="active-profile-label">` between panel head and saved-profiles-list for the active-profile indicator
+- [x] `layout.css` `.saved-profile-item`: `cursor: pointer` → `cursor: default`; removed card `:hover/:focus` highlight (cards no longer interactive)
+- [x] `dashboard.js` `buildScannerIconBadge(toolKey)`: per-tool colored badge (monospace short label) using `TOOL_BADGE_COLOR` map (CAMBIO 4b)
+- [x] `dashboard.js` `TOOL_BADGE_COLOR`: color map matching existing `scan-chip` per-tool colors
+- [x] `dashboard.js` `renderProjects()`: parses `project.last_scan_tool` (split by `+`), normalizes each key via `normalizeToolKey()`, renders scanner icon badges below severity row
+- [x] 124 tests passing — no regression
+
 ### Phase 3 — Dashboard UX: Scanner Filter Icons + Routing (2026-05-28)
 - [x] `dashboard.js` `renderScannerFilterIcons()`: detects all scanners present in loaded findings via `detectTool()`; renders scanner chips (All + one per tool) in `#scanner-filter-icons`; hidden when only 1 scanner
 - [x] `dashboard.js` `setActiveScannerFilter(key)`: updates `activeScannerFilter`, rebuilds `filteredFindings`, re-renders page + refreshes chip active states
@@ -283,4 +297,26 @@
 - [x] `main.js` `showAppView(view, push)`: pushes `history.pushState({ view })` on each navigation — browser back/forward now works
 - [x] `main.js` `popstate` listener: calls `showAppView(e.state.view, false)` to restore view without double-pushing
 - [x] `main.js` boot: reads hash on load (`#configuration` | `#projects` | `#reports`); uses `history.replaceState` for initial entry
+- [x] 124 tests passing — no regression
+
+### Phase 3 — Scan Crash Fix + Visibility + SonarQube Language (2026-05-28)
+- [x] `dashboard.js` `runScan()`: removed undefined `updateDastTargetUrlInput()` call (ReferenceError crash on every scan); replaced with inline `selectedProjectProfile()` check — if DAST enabled, prompts for target URL via `globalThis.prompt`; otherwise passes `null` gracefully
+- [x] `dashboard.js` `runScan()`: enriched success feedback — shows `scan_summary` per-tool counts `[bandit: 12 · semgrep: 4]`, `warnings` (ℹ), `errors` (⚠), and differentiates `"info"` / `"success"` / `"warning"` message types; "Sin hallazgos nuevos" message when 0 saved
+- [x] `sonarqube_adapter.py` `run_sonar_scan()`: removed hardcoded `-Dsonar.language=py` — CLI now auto-detects language; Angular/TypeScript/Java projects are analyzed correctly
+- [x] `orchestrator.py` `OrchestratorResult`: added `scan_summary: dict` (tool → count from pre-dedup findings) and `warnings: list` (non-fatal notices)
+- [x] `orchestrator.py` `run()`: handles tuple `(findings, notices)` return from `_run_quality` — appends notices to `warnings`; builds `scan_summary` by counting `finding.tool` across all findings; passes both fields to `OrchestratorResult`
+- [x] `orchestrator.py` `_run_quality()`: returns `(findings, notices)` tuple; appends tech-incompatible notice (`"pylint: tecnología 'angular' no compatible — saltado"`) instead of silently skipping; appends 0-findings notice when adapter connects but returns empty; only raises RuntimeError for real adapter errors
+- [x] `api/main.py` `_scan_with_profile()`: includes `warnings` and `scan_summary` in response dict
+- [x] 124 tests passing — no regression
+
+### Phase 3 — SonarQube + Profile Builder Fixes (2026-05-28)
+- [x] `sonarqube_adapter.py` `normalize_issue()`: sets `tool="sonarqube"` on each Finding — fixes findings being persisted with wrong tool label (SAST adapter name) when scanning with a profile that includes SonarQube quality tool
+- [x] `orchestrator.py` `_run_quality()`: rewrote to support comma-separated quality tools ("pylint,sonarqube"); expanded tech sets — pylint covers django/flask, eslint covers react, sonarqube covers django/flask/java-spring; degrades per-tool (logs error + continues) instead of failing entire quality runner; raises RuntimeError only if ALL tools fail and 0 findings returned
+- [x] `profile-builder-state.js` `canDropScannerOnTechnology()`: removed ZAP "necesitará URL" warning — DAST URL is provided at scan time, not profile creation time
+- [x] `profile-builder-state.js` `validateProfileDraft()`: removed 1-quality-tool restriction (`quality.length > 1` error)
+- [x] `profile-builder-state.js` `toScanProfilePayload()`: `quality_tool` now joins multiple tools with comma ("pylint,sonarqube")
+- [x] `profile-builder-state.js` `profileScanners()`: splits comma-separated `quality_tool` when reconstructing draft from saved profile
+- [x] `dashboard.js` `STACK_ICON_META`: replaced text `mark` with full inline SVG `icon` for every tool (Python interlock, Angular A, TypeScript box+T, Java cup, Semgrep magnifier+cross, Bandit shield+!, ZAP bolt, Pylint check-circle, ESLint hexagon, SonarQube radar waves, pip-audit package+check, odc shield+check)
+- [x] `dashboard.js` `updateScanStackIcons()`: shows active profile name chip before tool chips; renders SVG icons via `item.icon`
+- [x] `layout.css`: added `.scan-stack-icons`, `.scan-stack-profile`, `.scan-stack-chip` (surface-2 bg + left-border 2.5px), `.scan-stack-icon`, `.scan-stack-label`, `.scan-stack-empty` + 8 tone color variants (python/angular/typescript/java/sast/dast/quality/sca)
 - [x] 124 tests passing — no regression

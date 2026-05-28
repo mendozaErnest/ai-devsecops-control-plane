@@ -233,12 +233,7 @@ export function canDropScannerOnTechnology(scannerId, technologyId, context = {}
     };
   }
 
-  if (rule.requires?.includes("targetUrl") && !String(context.targetUrl || "").trim()) {
-    return {
-      ok: true,
-      warning: `${scanner.label} podra guardarse, pero necesitara una URL antes de ejecutar DAST.`,
-    };
-  }
+  // ZAP URL is supplied at scan time via the DAST input, not at profile-creation time.
 
   return { ok: true };
 }
@@ -262,9 +257,6 @@ export function validateProfileDraft(state) {
     errors.push("Selecciona al menos un scanner que pueda guardarse en ScanProfile.");
   }
 
-  if ((state.selectedScanners?.quality || []).length > 1) {
-    errors.push("ScanProfile solo puede guardar una herramienta Quality por ahora.");
-  }
 
   selectedScanners.forEach((scannerId) => {
     const scanner = findScanner(scannerId);
@@ -397,7 +389,7 @@ export function toScanProfilePayload(state) {
     dast_enabled: dast.includes("zap"),
     dast_tool: dast.includes("zap") ? "zap" : null,
     quality_enabled: quality.length > 0,
-    quality_tool: quality[0] || null,
+    quality_tool: quality.length > 0 ? quality.join(",") : null,
   };
 }
 
@@ -474,8 +466,10 @@ export function profileScanners(profile) {
 
   if (profile.dast_enabled && profile.dast_tool === "zap") scanners.dast.push("zap");
 
-  if (profile.quality_enabled && findScanner(profile.quality_tool)) {
-    scanners.quality.push(profile.quality_tool);
+  if (profile.quality_enabled && profile.quality_tool) {
+    (profile.quality_tool).split(",").map((t) => t.trim()).filter(Boolean).forEach((tool) => {
+      if (findScanner(tool)) scanners.quality.push(tool);
+    });
   }
 
   return scanners;

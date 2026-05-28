@@ -41,6 +41,8 @@ class OrchestratorResult:
     findings: list
     errors: list
     tools_run: list = field(default_factory=list)
+    scan_summary: dict = field(default_factory=dict)   # {tool_name: finding_count}
+    warnings: list = field(default_factory=list)       # non-fatal notices (0 findings, tech mismatch)
 
 
 class ScanOrchestrator:
@@ -60,6 +62,7 @@ class ScanOrchestrator:
     ) -> OrchestratorResult:
         futures_map: dict = {}
         errors: list[str] = []
+        warnings: list[str] = []
         tools_run: list[str] = []
 
         with ThreadPoolExecutor(max_workers=3) as executor:
@@ -82,7 +85,13 @@ class ScanOrchestrator:
             for future in as_completed(futures_map):
                 runner_name = futures_map[future]
                 try:
-                    runner_findings = future.result()
+                    runner_result = future.result()
+                    # _run_quality returns (findings, notices); others return findings list
+                    if isinstance(runner_result, tuple):
+                        runner_findings, runner_notices = runner_result
+                        warnings.extend(runner_notices)
+                    else:
+                        runner_findings = runner_result
                     all_findings.extend(runner_findings)
                     tools_run.append(runner_name)
                 except Exception as exc:
@@ -90,10 +99,17 @@ class ScanOrchestrator:
                     errors.append(f"{runner_name}: {exc}")
 
         deduplicated = self._deduplicate(all_findings)
+        scan_summary: dict[str, int] = {}
+        for f in all_findings:
+            tool = getattr(f, "tool", None) or "unknown"
+            scan_summary[tool] = scan_summary.get(tool, 0) + 1
+
         return OrchestratorResult(
             findings=deduplicated,
             errors=errors,
             tools_run=tools_run,
+            scan_summary=scan_summary,
+            warnings=warnings,
         )
 
     def _run_sast(
@@ -143,38 +159,98 @@ class ScanOrchestrator:
             logger.warning("DAST enabled but no target_url provided - skipping ZAP")
             return []
 
-        return ZapAdapter().execute_scan(resolved_target_url)
+        adapter = ZapAdapter()
+        findings = adapter.execute_scan(resolved_target_url)
+        if adapter.error:
+            raise RuntimeError(f"ZAP: {adapter.error}")
+        return findings
 
     def _run_quality(
         self,
         profile: ScanProfile,
         target_path: str,
         technology: str,
-    ) -> list[Finding]:
+    ) -> tuple[list[Finding], list[str]]:
         from src.scanners.eslint_adapter import EslintAdapter
         from src.scanners.pylint_adapter import PylintAdapter
         from src.scanners.sonarqube_adapter import SonarQubeAdapter
 
-        quality_tool = (profile.quality_tool or "").strip().lower()
         norm_tech = technology.strip().lower()
+        quality_tools = [
+            t.strip().lower()
+            for t in (profile.quality_tool or "").split(",")
+            if t.strip()
+        ]
 
-        if quality_tool == "pylint" and norm_tech == "python":
-            adapter = PylintAdapter()
-        elif quality_tool == "eslint" and norm_tech in {"angular", "typescript"}:
-            adapter = EslintAdapter()
-        elif quality_tool == "sonarqube" and norm_tech in {"python", "angular", "typescript", "java"}:
-            adapter = SonarQubeAdapter()
-        else:
-            message = f"No Quality adapter for technology={technology} quality_tool={profile.quality_tool}"
-            logger.warning(message)
-            raise RuntimeError(message)
+        all_findings: list[Finding] = []
+        tool_errors: list[str] = []
+        notices: list[str] = []
 
-        findings = adapter.execute_scan(target_path)
-        if getattr(adapter, "error", None):
-            logger.warning("Quality runner %s reported: %s", adapter.tool_name, adapter.error)
-            raise RuntimeError(adapter.error)
+        for quality_tool in quality_tools:
+            adapter = self._build_quality_adapter(
+                quality_tool, norm_tech, technology, notices
+            )
+            if adapter is None:
+                continue
 
-        return findings
+            findings = adapter.execute_scan(target_path)
+            self._collect_quality_results(
+                adapter, findings, quality_tool, all_findings, tool_errors, notices
+            )
+
+        if not all_findings and tool_errors:
+            raise RuntimeError("; ".join(tool_errors))
+
+        return all_findings, notices
+
+    def _build_quality_adapter(
+        self,
+        quality_tool: str,
+        norm_tech: str,
+        technology: str,
+        notices: list[str],
+    ):
+        from src.scanners.eslint_adapter import EslintAdapter
+        from src.scanners.pylint_adapter import PylintAdapter
+        from src.scanners.sonarqube_adapter import SonarQubeAdapter
+
+        PYLINT_TECHS  = {"python", "django", "flask"}
+        ESLINT_TECHS  = {"angular", "typescript", "react"}
+        SONAR_TECHS   = {"python", "django", "flask", "angular", "typescript",
+                         "java", "java-spring", "react"}
+
+        if quality_tool == "pylint" and norm_tech in PYLINT_TECHS:
+            return PylintAdapter()
+        if quality_tool == "eslint" and norm_tech in ESLINT_TECHS:
+            return EslintAdapter()
+        if quality_tool == "sonarqube" and norm_tech in SONAR_TECHS:
+            return SonarQubeAdapter()
+
+        notices.append(f"{quality_tool}: tecnología '{technology}' no compatible — saltado")
+        logger.warning(
+            "No Quality adapter for technology=%s quality_tool=%s — skipping",
+            technology, quality_tool,
+        )
+        return None
+
+    def _collect_quality_results(
+        self,
+        adapter,
+        findings: list[Finding],
+        quality_tool: str,
+        all_findings: list[Finding],
+        tool_errors: list[str],
+        notices: list[str],
+    ) -> None:
+        error = getattr(adapter, "error", None)
+        if error:
+            logger.warning("Quality runner %s reported: %s", adapter.tool_name, error)
+            if not findings:
+                tool_errors.append(error)
+        if findings:
+            all_findings.extend(findings)
+        elif not error:
+            notices.append(f"{quality_tool}: conectado, 0 hallazgos encontrados")
 
     def _deduplicate(self, findings: list[Finding]) -> list[Finding]:
         seen: dict[str, Finding] = {}

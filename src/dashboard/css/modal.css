@@ -108,7 +108,7 @@
 
 .builder-palette {
   padding: 12px;
-  max-height: 430px;
+  min-height: 520px;
   overflow-y: auto;
 }
 
