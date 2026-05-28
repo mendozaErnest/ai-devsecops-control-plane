@@ -3,7 +3,7 @@ import {
   t, applyI18n, currentLang, showFeedback, ensureServerContext,
   escapeHtml, setText, setWidth,
   severityKey, severityClass, sevStyle,
-  fileLine, formatRelativeTime, formatShortDuration,
+  fileLine, formatRelativeTime,
   techStyle, lifecycleStyle,
   shortPath, cleanCodeFences, formatApiError,
   detectTool, buildToolBadge,
@@ -108,8 +108,7 @@ function updateCounters(records) {
   records.forEach((r) => { counts[severityKey(r.severity)] += 1; });
   const total = records.length;
   const files = new Set(records.map((r) => shortPath(r.file_path || "")).filter(Boolean));
-  const overdue = records.filter((r) => r.sla_deadline && new Date(r.sla_deadline) < new Date()).length;
-  const pct = (n) => total ? (n / total) * 100 : 0;
+  const { breached, warning } = _countSlaStatuses(records);
 
   if (criticalCount) criticalCount.textContent = counts.critical;
   if (highCount) highCount.textContent = counts.high;
@@ -118,30 +117,61 @@ function updateCounters(records) {
   if (totalCount) totalCount.textContent = total;
   if (totalRadialCount) totalRadialCount.textContent = total;
 
-  const modWord    = currentLang === "es" ? "módulos" : "modules";
-  const critWord   = currentLang === "es" ? "críticos" : "critical";
-  const overdueWord = currentLang === "es" ? "vencidos" : "overdue";
+  const modWord  = currentLang === "es" ? "módulos" : "modules";
+  const critWord = currentLang === "es" ? "críticos" : "critical";
   if (moduleCount) moduleCount.textContent = `${files.size || (selectedProject ? 1 : 0)} ${modWord}`;
   if (criticalCopy) criticalCopy.textContent = `${counts.critical} ${critWord}`;
   if (filterAllCount) filterAllCount.textContent = total;
   if (filterCriticalCount) filterCriticalCount.textContent = counts.critical;
   if (filterHighCount) filterHighCount.textContent = counts.high;
-  if (filterBreachCount) filterBreachCount.textContent = overdue;
-  setText("sla-breaches", overdue);
-  setText("sla-foot", `${overdue} ${overdueWord} · CVSS ≥ 9.0`);
+  if (filterBreachCount) filterBreachCount.textContent = breached;
+  setText("sla-breaches", breached);
+  setText("sla-foot", _buildSlaFoot(breached, warning));
 
-  setWidth("sev-bar-critical", pct(counts.critical));
-  setWidth("sev-bar-high", pct(counts.high));
-  setWidth("sev-bar-medium", pct(counts.medium));
-  setWidth("sev-bar-low", pct(counts.low));
+  setWidth("sev-bar-critical", _pct(counts.critical, total));
+  setWidth("sev-bar-high",     _pct(counts.high,     total));
+  setWidth("sev-bar-medium",   _pct(counts.medium,   total));
+  setWidth("sev-bar-low",      _pct(counts.low,      total));
 
+  _updateRadialArcs(counts, total);
+}
+
+// ── SLA helpers ───────────────────────────────────────────────────────────────
+function effectiveSlaStatus(record) {
+  if (record.sla_status) return record.sla_status;
+  if (!record.sla_deadline) return "unknown";
+  return new Date(record.sla_deadline) < new Date() ? "breached" : "ok";
+}
+
+function _buildSlaFoot(breached, warning) {
+  const overdueWord = currentLang === "es" ? "vencidos" : "overdue";
+  const warningWord = currentLang === "es" ? "por vencer" : "due soon";
+  const parts = [];
+  if (breached > 0) parts.push(`🔴 ${breached} ${overdueWord}`);
+  if (warning > 0)  parts.push(`⚠ ${warning} ${warningWord}`);
+  return parts.length > 0 ? parts.join("   ") : `0 ${overdueWord} · CVSS ≥ 9.0`;
+}
+
+function _pct(n, total) { return total ? (n / total) * 100 : 0; }
+
+function _countSlaStatuses(records) {
+  let breached = 0, warning = 0;
+  for (const r of records) {
+    const s = effectiveSlaStatus(r);
+    if (s === "breached") breached++;
+    else if (s === "warning") warning++;
+  }
+  return { breached, warning };
+}
+
+function _updateRadialArcs(counts, total) {
   const circumference = 540;
   let offset = 0;
   [
     ["radial-critical", counts.critical],
-    ["radial-high", counts.high],
-    ["radial-medium", counts.medium],
-    ["radial-low", counts.low],
+    ["radial-high",     counts.high],
+    ["radial-medium",   counts.medium],
+    ["radial-low",      counts.low],
   ].forEach(([id, count]) => {
     const circle = document.getElementById(id);
     if (!circle) return;
@@ -202,25 +232,34 @@ function buildLifecycleBadge(record) {
 }
 
 function buildSlaBadge(record) {
-  const span = document.createElement("span");
-  span.className = "sla ok";
-  if (!record.sla_deadline) { span.textContent = "SLA"; return span; }
-  const deadline = new Date(record.sla_deadline);
-  const remaining = deadline - Date.now();
-  const label = formatShortDuration(remaining);
-  if (remaining < 0) {
-    span.className = "sla brk";
-    span.textContent = `-${label}`;
-    span.title = `SLA ${span.textContent}`;
-  } else if (remaining <= 2 * 86400000) {
-    span.className = "sla warn";
-    span.textContent = label;
-    span.title = `SLA ${label}`;
-  } else {
-    span.className = "sla ok";
-    span.textContent = label;
-    span.title = `SLA ${label}`;
+  // Prefer server-computed sla_status; fall back to local computation from deadline.
+  let status = record.sla_status;
+  if (!status && record.sla_deadline) {
+    const remaining = new Date(record.sla_deadline) - Date.now();
+    if (["accepted_risk", "false_positive", "fixed"].includes(record.status)) {
+      status = "exempt";
+    } else if (remaining < 0) {
+      status = "breached";
+    } else if (remaining <= 3 * 86400000) {
+      status = "warning";
+    } else {
+      status = "ok";
+    }
   }
+
+  // Exempt or no deadline → no badge shown
+  if (!record.sla_deadline || status === "exempt") return document.createElement("span");
+
+  const deadline = new Date(record.sla_deadline);
+  const label = deadline.toLocaleDateString("es-MX", { month: "short", day: "numeric" });
+
+  const clsMap = { ok: "sla ok", warning: "sla warn", breached: "sla brk", unknown: "sla ok" };
+  const iconMap = { ok: "✓", warning: "⚠", breached: "!", unknown: "?" };
+
+  const span = document.createElement("span");
+  span.className = clsMap[status] || "sla ok";
+  span.textContent = `${iconMap[status] || "?"} ${label}`;
+  span.title = `SLA deadline: ${deadline.toLocaleDateString("es-MX")} (${status})`;
   return span;
 }
 

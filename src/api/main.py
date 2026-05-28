@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import asyncio
 import hashlib
@@ -169,22 +170,50 @@ async def update_profile(profile_id: int, body: ScanProfileUpdate):
         return profile.model_dump(mode="json")
 
 
-@app.get("/api/findings")
-async def get_findings():
-    with Session(engine) as session:
-        findings = session.exec(select(Finding)).all()
-        remediated_finding_ids = latest_valid_remediation_ids(session, findings)
+_SLA_EXEMPT_STATUSES = {"accepted_risk", "false_positive", "fixed"}
 
-        return [
+
+def get_sla_status(finding: Finding, now: datetime) -> str:
+    if finding.status in _SLA_EXEMPT_STATUSES:
+        return "exempt"
+    if not finding.sla_deadline:
+        return "unknown"
+    # Normalize naive deadline to UTC-aware for comparison
+    deadline = (
+        finding.sla_deadline.replace(tzinfo=timezone.utc)
+        if finding.sla_deadline.tzinfo is None
+        else finding.sla_deadline
+    )
+    if now > deadline:
+        return "breached"
+    if now > deadline - timedelta(days=3):
+        return "warning"
+    return "ok"
+
+
+@app.get("/api/findings")
+async def get_findings(sla_status: str | None = None):
+    with Session(engine) as session:
+        findings = list(session.exec(select(Finding)).all())
+        remediated_finding_ids = latest_valid_remediation_ids(session, findings)
+        now = datetime.now(timezone.utc)
+
+        result = [
             {
                 **finding.model_dump(mode="json"),
                 "has_remediation": finding.id in remediated_finding_ids,
                 "remediation_status": "Parche listo"
                 if finding.id in remediated_finding_ids
                 else "Sin parche",
+                "sla_status": get_sla_status(finding, now),
             }
             for finding in findings
         ]
+
+        if sla_status:
+            result = [f for f in result if f.get("sla_status") == sla_status]
+
+        return result
 
 
 def get_allowed_scan_roots() -> list[Path]:
@@ -855,6 +884,7 @@ async def get_project_findings_endpoint(project_id: uuid.UUID):
 
         findings = get_project_findings(session, project.id)
         remediated_finding_ids = latest_valid_remediation_ids(session, findings)
+        now = datetime.now(timezone.utc)
 
         return [
             {
@@ -864,6 +894,7 @@ async def get_project_findings_endpoint(project_id: uuid.UUID):
                 if finding.id in remediated_finding_ids
                 else "Sin parche",
                 "project_source_type": project.source_type,
+                "sla_status": get_sla_status(finding, now),
             }
             for finding in findings
         ]

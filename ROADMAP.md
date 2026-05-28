@@ -226,6 +226,21 @@
 - [x] `modal.js` IIFE updated: `Promise.allSettled([getSourceFile, getRemediationPreview])` fetches both in parallel; if preview available → `renderPreviewDiff` (exact match with PR); otherwise falls back to `renderDiffView` (AI proposal with context)
 - [x] 107 tests passing — no regression
 
+### Phase 2 — Finding Lifecycle (2026-05-27)
+- [x] `escaneo.py` `persist_scan()`: regression detection on re-scan — `fixed` → `regression`, increments `regression_count`, creates `FindingAuditEvent(event_type="regression")`
+- [x] `escaneo.py` `upsert_finding()`: same regression logic for Bandit upsert path
+- [x] `escaneo.py`: `accepted_risk` / `false_positive` findings are skipped on re-scan (human decision preserved)
+- [x] `models.py` `FindingAuditEvent`: table with `finding_id`, `event_type`, `from_status`, `to_status`, `reason`, `created_at`
+- [x] `main.py` `POST /api/findings/{id}/accept-risk`: sets status `accepted_risk` + audit event
+- [x] `main.py` `POST /api/findings/{id}/false-positive`: sets status `false_positive` + audit event
+- [x] `main.py` `GET /api/findings/{id}/audit`: returns full audit trail with `current_status` + `regression_count`
+- [x] `dashboard.js` `buildLifecycleBadge()`: status badges — open (blue), regression (red + ↩N counter), fixed (green), accepted_risk (yellow), false_positive (grey)
+- [x] `dashboard.js` `buildActionButtons()`: Accept Risk + False Positive buttons hidden for already-ignored findings; History button always shown
+- [x] `modal.js` `openReasonModal()`: capture reason via modal textarea (not `prompt()`)
+- [x] `modal.js` `openAuditModal()`: renders audit event timeline for a finding
+- [x] `modal.js` `postLifecycle()`: POSTs triage action + refreshes findings without page reload
+- [x] `utils.js` `lifecycleStyle()`: CSS-in-JS map for all 5 lifecycle states
+
 ### Phase 3 — Bug Fixes: Modal Empty Diff + JS Placeholder Patches (2026-05-27)
 - [x] **Bug 1** `diff.js` `renderDiffView()` line 67: `toDiffLines()` referenced but never defined → `ReferenceError` → diff area permanently empty when `renderPreviewDiff` fallback fires; fixed to `normalizeLines(effectiveProposed)`
 - [x] **Bug 2** `main.py` `enrich_js_finding_context()`: new function — reads source file, calls `find_enclosing_js_function()` to extract the full enclosing function for Angular/JS findings; overrides `code_snippet` so Ollama gets the complete body (not just 1-2 lines); prevents placeholder generation for cognitive-complexity rules like `javascript:S3776`
@@ -237,4 +252,14 @@
 - [x] **Bug 4** `main.py` `create_remediation_pr`: `manual_review` patches skip code-fix PR entirely → go straight to `create_proposal_pr`; language-mismatch 409 check still applies to stale patches that differ by technology
 - [x] **Bug 4** `dashboard.js` `remediateFinding()`: checks `result.validation_warning` — shows warning feedback but still opens modal; success message unchanged for valid patches
 - [x] **Bug 5** `github_client.py` `is_safe_to_apply` stub signals: added 8 JS placeholder signals — `"function refactoredFunction"`, `"refactoredFunction()"`, `"// Placeholder for the refactored function"`, `"// Implement the refactored logic"`, `"// TODO: implement"`, `"// TODO: refactor"`, `"// implement refactored"`, `"// insert refactored"`
+- [x] 113 tests passing — no regression
+
+### Phase 2 — SLA Tracking Visibility (2026-05-27)
+- [x] `main.py` `_SLA_EXEMPT_STATUSES`: constant set `{"accepted_risk", "false_positive", "fixed"}` — lifecycle-exempt from active SLA
+- [x] `main.py` `get_sla_status(finding, now)`: returns `"ok"` / `"warning"` (deadline ≤3 days away) / `"breached"` (past deadline) / `"exempt"` / `"unknown"` (null deadline); timezone-naive `sla_deadline` normalized with `.replace(tzinfo=timezone.utc)` before comparison
+- [x] `main.py` `GET /api/findings`: accepts `?sla_status=` query param; includes `sla_status` + `sla_deadline` in each finding dict
+- [x] `main.py` `GET /api/projects/{id}/findings`: includes `sla_status` + `sla_deadline` in each finding dict (dashboard endpoint)
+- [x] `dashboard.js` `buildSlaBadge()`: uses server-provided `sla_status`; shows deadline as `MMM DD` date label (not remaining duration); client-side fallback when `sla_status` absent; empty `<span>` for `exempt` status
+- [x] `dashboard.js` helpers: `effectiveSlaStatus()`, `_buildSlaFoot(breached, warning)`, `_countSlaStatuses(records)`, `_pct(n, total)`, `_updateRadialArcs(counts, total)` — extracted to reduce S3776 cognitive complexity from 23 → ~14 (below pre-existing baseline of 17)
+- [x] `dashboard.js` `updateCounters()`: KPI footer shows `🔴 N vencidos` and `⚠ N por vencer` when > 0; populates `#sla-breaches` and `#sla-foot` elements
 - [x] 113 tests passing — no regression

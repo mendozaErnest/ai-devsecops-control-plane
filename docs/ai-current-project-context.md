@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-27 (Fix modal bugs: toDiffLines, JS enrichment, angular prompt S3776, 422→warning, JS stubs — 113 tests)
+Ultima actualizacion: 2026-05-27 (SLA tracking visibility: get_sla_status API, ?sla_status= filter, SLA badge date format, KPI counters 🔴/⚠ — 113 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -51,7 +51,7 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - SLA deadlines: CRITICAL=3d, HIGH=7d, MEDIUM=30d, LOW=90d.
 - IA local: Ollama, modelo por defecto qwen2.5-coder:14b.
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (65 tests).
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (113 tests).
 
 Dependencias en code/requirements.txt:
 
@@ -180,10 +180,10 @@ para parchear BanditAdapter y CombinedScannerAdapter en su modulo de origen.
 ## API Actual
 
 - GET  /                                    → dashboard
-- GET  /api/findings                        → lista hallazgos
+- GET  /api/findings                        → lista hallazgos (acepta ?sla_status=ok|warning|breached|exempt|unknown; incluye sla_status + sla_deadline en cada finding)
 - GET  /api/projects                        → lista proyectos
 - GET  /api/projects/{id}                   → proyecto por id
-- GET  /api/projects/{id}/findings          → findings del proyecto
+- GET  /api/projects/{id}/findings          → findings del proyecto (incluye sla_status + sla_deadline en cada finding)
 - POST /api/projects/{id}/scan              → re-escanear proyecto
 - POST /api/projects/upload-zip             → ZIP + crear proyecto + scan
 - POST /api/projects/clone-repo             → clonar repo + scan
@@ -202,6 +202,9 @@ para parchear BanditAdapter y CombinedScannerAdapter en su modulo de origen.
 - GET  /api/remediate/{finding_id}/preview-diff → before/after exacto que el PR commitiría (build_safe_patched_content local)
 - GET  /api/reports/project/{id}            → reporte by_severity/status/top_rules
 - POST /api/scan/sonar                      → fetch SonarQube issues + persist (CLI optional)
+- POST /api/findings/{finding_id}/accept-risk  → triage: mark as accepted_risk + audit event
+- POST /api/findings/{finding_id}/false-positive → triage: mark as false_positive + audit event
+- GET  /api/findings/{finding_id}/audit        → historial de audit events del finding
 - POST /api/webhooks/github                 → webhook PR con HMAC-SHA256
 
 ---
@@ -430,10 +433,11 @@ Inmediato (proxima sesion):
 17. ✅ Diff viewer guard (diff.js): renderDiffView ahora tiene guard explícito para snippet null/vacío. Si ambos son vacíos → mensaje "Sin código disponible". Si snippet vacío pero proposed existe → lado izquierdo muestra placeholder y lado derecho muestra proposed. Si snippet === proposed → forceReplacement=true → ops delete+insert explícitos (nunca queda solo lineas azules).
 18. ✅ Fix PR solution inconsistency (2026-05-27): `cached_remediation_is_reusable()` en main.py — cache check que NO re-lee archivo fuente local (archivo editado localmente ya no invalida la remediación cacheada → Ollama no se re-llama → el patch siempre es el mismo). `GET /api/remediate/{id}/preview-diff` aplica build_safe_patched_content en el archivo local y devuelve {original, patched}. `renderPreviewDiff()` en diff.js muestra diff full-file exacto con badge "✓ Vista previa exacta del PR". IIFE en modal.js usa Promise.allSettled para obtener fileData + previewData en paralelo; si preview disponible usa renderPreviewDiff, si no cae a renderDiffView. computeDiff y normalizeLines extraídos a scope módulo.
 19. ✅ is_safe_to_apply extendido a JS/TS: _extract_named_functions detecta `function funcName(` además de Python `def`. Stub signals JS agregados. Angular prompt fortalecido contra clase TypeScript inventada (S930).
-20. `docker compose build api && docker compose up -d api` — rebuild para que iputils-ping entre en el contenedor.
-21. Reiniciar servidor uvicorn para que POST /api/scan/sonar active CLI automáticamente (scan_submitted: true).
-22. DAST adapter real con OWASP ZAP o validacion post-patch `tsc --noEmit` / Maven-Java.
-23. Generalizar POST /api/scan para aceptar target_path parametrizable.
+20. ✅ SLA tracking visibility: get_sla_status() + _SLA_EXEMPT_STATUSES en main.py (ok/warning/breached/exempt/unknown); ?sla_status= filter en GET /api/findings; sla_status + sla_deadline en ambos endpoints de findings; buildSlaBadge muestra fecha deadline en MMM DD; KPI counters 🔴 N vencidos / ⚠ N por vencer en #sla-foot.
+21. `docker compose build api && docker compose up -d api` — rebuild para que iputils-ping entre en el contenedor.
+22. Reiniciar servidor uvicorn para que POST /api/scan/sonar active CLI automáticamente (scan_submitted: true).
+23. DAST adapter real con OWASP ZAP o validacion post-patch `tsc --noEmit` / Maven-Java.
+24. Generalizar POST /api/scan para aceptar target_path parametrizable.
 
 Phase 2 ya implementado ✅:
 - normalize_file_path_for_github(): rutas absolutas workspace→relativas para GitHub API.
@@ -460,6 +464,7 @@ Phase 2 ya implementado ✅:
 - GET /api/remediate/{finding_id}/pr: retorna pr_url/branch o 404. ✅
 - POST /api/remediate/{finding_id}/pr: detecta PR abierto existente (get_existing_open_pr_for_branch), persiste pr_url+pr_branch en BD. ✅
 - Remediation model: campos pr_url y pr_branch (TEXT, nullable). SQLite migration en ensure_sqlite_schema(). ✅
+- SLA tracking visibility: get_sla_status(finding, now) → ok/warning/breached/exempt/unknown; _SLA_EXEMPT_STATUSES={accepted_risk,false_positive,fixed}; timezone-naive sla_deadline normalizado con .replace(tzinfo=timezone.utc); ?sla_status= filter en GET /api/findings; sla_status+sla_deadline en ambos endpoints de findings; buildSlaBadge usa sla_status del servidor y muestra deadline como fecha MMM DD; KPI counters 🔴 N vencidos / ⚠ N por vencer en #sla-foot (solo cuando > 0). ✅
 
 Tarea B ya implementado ✅:
 - tests/test_safe_patching_python.py: 6 tests cubriendo build_safe_patched_content() y helpers.
