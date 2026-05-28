@@ -581,7 +581,7 @@ function renderProfileCards() {
       badge: "Semgrep", badgeBg: "rgba(248,81,73,.15)", badgeColor: "#ff7b72",
     },
     "Java SAST": {
-      icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#3a2e1a"/><text x="18" y="25" font-family="sans-serif" font-size="19" text-anchor="middle">☕</text></svg>`,
+      icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#3a2e1a"/><text x="18" y="24" font-family="Geist Mono, monospace" font-size="13" font-weight="800" fill="#d29922" text-anchor="middle">Jv</text></svg>`,
       desc: "Semgrep — SQL injection, crypto débil y configuración TLS insegura",
       badge: "Semgrep", badgeBg: "rgba(210,153,34,.15)", badgeColor: "#d29922",
     },
@@ -597,6 +597,59 @@ function renderProfileCards() {
     },
   };
 
+  function inferProfileMeta(profile) {
+    if (PROFILE_META[profile.name]) return PROFILE_META[profile.name];
+
+    const name = String(profile.name || "").toLowerCase();
+    const description = String(profile.description || "").toLowerCase();
+    const text = `${name} ${description}`;
+
+    if (text.includes("angular") || text.includes("typescript")) {
+      return {
+        ...PROFILE_META["Angular SAST"],
+        desc: profile.description || PROFILE_META["Angular SAST"].desc,
+        badge: profile.sast_tools || PROFILE_META["Angular SAST"].badge,
+      };
+    }
+    if (text.includes("java")) {
+      return {
+        ...PROFILE_META["Java SAST"],
+        desc: profile.description || PROFILE_META["Java SAST"].desc,
+        badge: profile.sast_tools || PROFILE_META["Java SAST"].badge,
+      };
+    }
+    if (text.includes("python")) {
+      return {
+        ...PROFILE_META["Python SAST"],
+        desc: profile.description || PROFILE_META["Python SAST"].desc,
+        badge: profile.sast_tools || PROFILE_META["Python SAST"].badge,
+      };
+    }
+    if (text.includes("full")) {
+      return {
+        ...PROFILE_META["Full Scan"],
+        desc: profile.description || PROFILE_META["Full Scan"].desc,
+        badge: profile.sast_tools || PROFILE_META["Full Scan"].badge,
+      };
+    }
+
+    return {
+      icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="var(--bg-hover)"/><circle cx="18" cy="18" r="3" fill="var(--muted)"/><path d="M18 8v4M18 24v4M8 18h4M24 18h4M11.5 11.5l2.8 2.8M21.7 21.7l2.8 2.8M11.5 24.5l2.8-2.8M21.7 14.3l2.8-2.8" stroke="var(--muted)" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+      desc: profile.description || profile.sast_tools || "SAST",
+      badge: profile.sast_tools || "SAST",
+      badgeBg: "var(--bg-hover)",
+      badgeColor: "var(--muted)",
+    };
+  }
+
+  const profileOrder = {
+    "Python SAST": 1,
+    "Angular SAST": 2,
+    "Java SAST": 3,
+    "Full Scan": 4,
+    "Angular + Quality": 5,
+  };
+
   const profileList = wizardProfiles.length
     ? wizardProfiles
     : [
@@ -604,33 +657,36 @@ function renderProfileCards() {
         { id: null, name: "Java SAST" },   { id: null, name: "Full Scan" },
       ];
 
-  profileList.forEach((p) => {
-    const meta = PROFILE_META[p.name] || {
-      icon: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="var(--bg-hover)"/><text x="18" y="25" font-family="sans-serif" font-size="18" text-anchor="middle" fill="var(--muted)">?</text></svg>`,
-      desc: p.description || p.sast_tools || "SAST",
-      badge: p.sast_tools || "SAST", badgeBg: "var(--bg-hover)", badgeColor: "var(--muted)",
-    };
-    const isSelected = wizardSelectedProfileId === p.id;
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "profile-card" + (isSelected ? " profile-card-active" : "");
-    card.dataset.profileId = p.id ?? "";
-    card.style.cssText =
-      `text-align:left;padding:14px;border-radius:8px;border:2px solid ${isSelected ? "var(--accent)" : "var(--border)"};` +
-      `background:${isSelected ? "rgba(47,129,247,.12)" : "var(--bg-surface)"};cursor:pointer;` +
-      "transition:border .15s,background .15s;min-height:135px;display:flex;flex-direction:column;gap:7px;";
-    card.innerHTML = `
-      ${meta.icon}
-      <p style="font-size:.82rem;font-weight:700;color:var(--text);margin:0;">${escapeHtml(p.name)}</p>
-      <p style="font-size:.72rem;color:var(--muted);line-height:1.4;flex:1;">${escapeHtml(meta.desc)}</p>
-      <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:.67rem;font-weight:700;background:${meta.badgeBg};color:${meta.badgeColor};">${escapeHtml(meta.badge)}</span>`;
-    card.addEventListener("click", () => {
-      wizardSelectedProfileId = p.id;
-      customPanel.style.display = "none";
-      renderProfileCards();
+  [...profileList]
+    .sort((a, b) => {
+      const aOrder = profileOrder[a.name] || 100;
+      const bOrder = profileOrder[b.name] || 100;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    })
+    .forEach((p) => {
+      const meta = inferProfileMeta(p);
+      const isSelected = wizardSelectedProfileId === p.id;
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "profile-card" + (isSelected ? " profile-card-active" : "");
+      card.dataset.profileId = p.id ?? "";
+      card.style.cssText =
+        `text-align:left;padding:14px;border-radius:8px;border:2px solid ${isSelected ? "var(--accent)" : "var(--border)"};` +
+        `background:${isSelected ? "rgba(47,129,247,.12)" : "var(--bg-surface)"};cursor:pointer;` +
+        "transition:border .15s,background .15s;min-height:135px;display:flex;flex-direction:column;gap:7px;";
+      card.innerHTML = `
+        ${meta.icon}
+        <p style="font-size:.82rem;font-weight:700;color:var(--text);margin:0;">${escapeHtml(p.name)}</p>
+        <p style="font-size:.72rem;color:var(--muted);line-height:1.4;flex:1;">${escapeHtml(meta.desc)}</p>
+        <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:.67rem;font-weight:700;background:${meta.badgeBg};color:${meta.badgeColor};">${escapeHtml(meta.badge)}</span>`;
+      card.addEventListener("click", () => {
+        wizardSelectedProfileId = p.id;
+        customPanel.style.display = "none";
+        renderProfileCards();
+      });
+      profileCards.appendChild(card);
     });
-    profileCards.appendChild(card);
-  });
 
   const isCustom = wizardSelectedProfileId === "custom";
   const customCard = document.createElement("button");

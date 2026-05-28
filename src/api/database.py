@@ -54,11 +54,13 @@ def seed_default_profiles() -> None:
     from .models import ScanProfile
 
     with Session(engine) as session:
-        existing = session.exec(select(ScanProfile)).first()
-        if existing:
-            return
+        existing_names = {
+            profile.name
+            for profile in session.exec(select(ScanProfile)).all()
+        }
         for data in _DEFAULT_PROFILES:
-            session.add(ScanProfile(**data))
+            if data["name"] not in existing_names:
+                session.add(ScanProfile(**data))
         session.commit()
 
 
