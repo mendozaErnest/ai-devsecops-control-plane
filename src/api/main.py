@@ -61,6 +61,7 @@ from src.integrations.github_client import (
 )
 from src.scanners.escaneo import persist_scan, run_scan
 from src.scanners.orchestrator import ScanOrchestrator
+from typing import Annotated
 
 
 app = FastAPI()
@@ -513,7 +514,7 @@ def find_enclosing_js_function(source: str, line_number: object) -> tuple[str | 
     return best_name, func_source
 
 
-def enrich_js_finding_context(details: dict) -> dict:
+def enrich_js_finding_context(details: Annotated[dict, "Input details"]) -> dict:
     """Attach the full enclosing JS/TS function to an Angular/JS finding.
 
     Mirrors ``enrich_python_finding_context`` but for TypeScript / JavaScript /
