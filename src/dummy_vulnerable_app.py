@@ -81,8 +81,15 @@ def run_ping(host):
 
 
 def run_backup(user_supplied_path):
-    # Vulnerability: command injection with subprocess.Popen and shell=True.
-    return subprocess.Popen("tar czf backup.tgz " + user_supplied_path, shell=True)
+    # Ensure the user-supplied path is safe by validating and normalizing it
+    import os
+    normalized_path = os.path.normpath(os.path.abspath(user_supplied_path))
+    if not normalized_path.startswith(os.getcwd()):
+        raise ValueError("Invalid path traversal detected")
+
+    # Construct the command using a list to avoid shell=True and prevent injection
+    command = ["tar", "czf", "backup.tgz", normalized_path]
+    return subprocess.Popen(command)
 
 
 def run_admin_task(task_name):
