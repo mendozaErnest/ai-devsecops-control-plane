@@ -62,6 +62,7 @@ from src.integrations.github_client import (
 )
 from src.scanners.escaneo import persist_scan, run_scan
 from src.scanners.orchestrator import ScanOrchestrator
+from typing import Annotated
 
 
 app = FastAPI()
@@ -532,7 +533,7 @@ _JS_FUNC_PATTERNS = [
 ]
 
 
-def find_enclosing_js_function(source: str, line_number: object) -> tuple[str | None, str | None]:
+def find_enclosing_js_function(source: str, line_number: Annotated[object, "Line number as object"]) -> tuple[str | None, str | None]:
     """Return (function_name, function_source) for the JS/TS function that contains
     the given 1-based line number.
 
