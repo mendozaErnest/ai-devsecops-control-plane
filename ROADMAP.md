@@ -320,3 +320,23 @@
 - [x] `dashboard.js` `updateScanStackIcons()`: shows active profile name chip before tool chips; renders SVG icons via `item.icon`
 - [x] `layout.css`: added `.scan-stack-icons`, `.scan-stack-profile`, `.scan-stack-chip` (surface-2 bg + left-border 2.5px), `.scan-stack-icon`, `.scan-stack-label`, `.scan-stack-empty` + 8 tone color variants (python/angular/typescript/java/sast/dast/quality/sca)
 - [x] 124 tests passing — no regression
+
+### Phase 4 — Observabilidad: Prometheus + Grafana (feat/observability, 2026-06-02) ✅
+- [x] `src/metrics/security_metrics.py`: 6 custom Prometheus metrics — `findings_total` (Counter, labels severity+tool), `remediations_generated_total` (Counter, label source), `regressions_detected_total` (Counter), `sla_breached_findings` (Gauge), `scan_duration_seconds` (Histogram, label tool), `remediation_latency_seconds` (Histogram, label source). Noop stubs when `prometheus_client` absent — main flow never breaks.
+- [x] `src/api/main.py`: `prometheus_fastapi_instrumentator.Instrumentator` instruments app and exposes `GET /metrics` (try/except for graceful degradation). Imports `record_remediation`, `record_scan_duration`, `update_sla_breached_gauge`. `_refresh_sla_breached_gauge()` counts open/regression findings with SLA breached; called in `on_startup` and after `_scan_with_profile`. `record_remediation("db_cache"|"ollama"|"fallback")` on each remediation path; `remediation_latency_seconds` observed on Ollama calls.
+- [x] `src/scanners/escaneo.py`: `persist_scan()` calls `record_finding(severity, tool)` per finding and `record_regression()` on regression detection.
+- [x] `docker-compose.yml`: added `prometheus` (prom/prometheus:latest, port 9090) and `grafana` (grafana/grafana:latest, port 3000, anonymous Viewer, no login form). Named volumes `prometheus_data` and `grafana_data` added.
+- [x] `infra/prometheus/prometheus.yml`: global scrape_interval 15s; job `ai-devsecops-api` → `api:8000` on `/metrics`.
+- [x] `infra/grafana/provisioning/datasources/prometheus.yml`: Prometheus datasource, isDefault=true, url `http://prometheus:9090`.
+- [x] `infra/grafana/provisioning/dashboards/dashboard.yml`: file provider, path `/etc/grafana/provisioning/dashboards`, auto-refresh 30s.
+- [x] `infra/grafana/provisioning/dashboards/devsecops.json`: 6-panel dashboard — findings by severity (barchart), regression rate (stat), SLA breached (stat red if >0), remediation latency p50/p95 (timeseries), remediation source ratio (piechart), scan duration by tool (timeseries).
+- [x] `code/requirements.txt`: added `prometheus-fastapi-instrumentator>=6.1.0`.
+- [x] `tests/test_metrics.py` (7 tests): GET /metrics returns 200 text/plain, record_finding no raise, record_regression no raise, persist_scan calls record_finding per finding, cache hit records db_cache, ollama latency observed, SLA breached gauge reflects real DB count.
+- [x] 130 tests passing (6 new + 1 skipped when prometheus_fastapi_instrumentator not installed) — no regression.
+
+### Phase 4 — ML Risk Scoring (feat/ml-risk-scoring, PENDIENTE)
+- [ ] `src/ml/risk_scorer.py`: XGBoost + scikit-learn model. `train_model(findings)` → XGBClassifier persisted with joblib. `score_finding(finding)` → float [0.0–1.0]; severity fallback when no model.
+- [ ] `GET /api/findings` + `GET /api/projects/{id}/findings`: add `risk_score: float` per finding.
+- [ ] `POST /api/ml/train`: train on all DB findings, return `{precision, recall, roc_auc, n_samples}`; 400 if < 10 findings.
+- [ ] Dashboard: risk_score progress bar/badge alongside severity; sort by risk_score; "🧠 Reentrenar modelo" button.
+- [ ] `code/requirements.txt`: add `xgboost>=2.0.0`, `scikit-learn>=1.4.0`, `joblib>=1.3.0`.

@@ -16,6 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.api.database import create_db_and_tables, engine
 from src.api.models import Finding, FindingAuditEvent, Project, Scan, Target
+from src.metrics.security_metrics import record_finding, record_regression
 from src.scanners.angular_adapter import AngularAdapter
 from src.scanners.base import BaseScannerAdapter
 from src.scanners.bandit_adapter import BanditAdapter
@@ -252,6 +253,7 @@ def persist_scan(
 
                 if is_regression:
                     finding.regression_count += 1
+                    record_regression()
                     session.add(FindingAuditEvent(
                         finding_id=finding.id,
                         event_type="regression",
@@ -279,6 +281,10 @@ def persist_scan(
                 )
                 session.add(finding)
 
+            record_finding(
+                normalized_finding.severity or "unknown",
+                normalized_finding.tool or adapter.tool_name,
+            )
             saved_findings += 1
 
         session.commit()

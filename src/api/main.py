@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 import zipfile
 from urllib.parse import urlparse
@@ -63,6 +64,11 @@ from src.integrations.github_client import (
 )
 from src.scanners.escaneo import persist_scan, run_scan
 from src.scanners.orchestrator import ScanOrchestrator
+from src.metrics.security_metrics import (
+    record_remediation,
+    record_scan_duration,
+    update_sla_breached_gauge,
+)
 
 load_env_file()
 
@@ -75,6 +81,12 @@ DASHBOARD_STATIC = PROJECT_ROOT / "src" / "dashboard"
 WORKSPACE_ROOT = PROJECT_ROOT / "workspace" / "uploads"
 
 app.mount("/static", StaticFiles(directory=str(DASHBOARD_STATIC)), name="static")
+
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app)
+except ImportError:
+    pass
 
 
 def validate_target_url(url: str) -> str:
@@ -143,10 +155,25 @@ class ProjectProfileUpdate(BaseModel):
     scan_profile_id: int | None = None
 
 
+def _refresh_sla_breached_gauge() -> None:
+    """Count open/regression findings with SLA breached and update the Prometheus gauge."""
+    try:
+        now = datetime.now(timezone.utc)
+        with Session(engine) as session:
+            findings = session.exec(
+                select(Finding).where(Finding.status.in_(["open", "regression"]))
+            ).all()
+            breached = sum(1 for f in findings if get_sla_status(f, now) == "breached")
+        update_sla_breached_gauge(breached)
+    except Exception:
+        pass  # never break the main flow
+
+
 @app.on_event("startup")
 def on_startup():
     create_db_and_tables()
     WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
+    _refresh_sla_breached_gauge()
 
 
 @app.get("/")
@@ -890,6 +917,7 @@ async def _scan_with_profile(
     target_url: str | None = None,
 ) -> dict:
     orchestrator = ScanOrchestrator()
+    _scan_t0 = time.monotonic()
     result = await asyncio.to_thread(
         orchestrator.run,
         profile,
@@ -898,6 +926,8 @@ async def _scan_with_profile(
         project.id,
         target_url,
     )
+    _scan_elapsed = time.monotonic() - _scan_t0
+    record_scan_duration(profile.sast_tools or project.technology, _scan_elapsed)
 
     from src.scanners.escaneo import get_scanner_adapter
 
@@ -910,6 +940,8 @@ async def _scan_with_profile(
         result.findings,
         project.id,
     )
+
+    _refresh_sla_breached_gauge()
 
     return {
         "success": True,
@@ -1264,6 +1296,7 @@ async def remediate_finding(finding_id: uuid.UUID):
         ).first()
 
         if existing and cached_remediation_is_reusable(existing.patch_diff, finding_details):
+            record_remediation("db_cache")
             return {
                 "finding_id": str(finding_id),
                 "remediation_id": str(existing.id),
@@ -1283,6 +1316,7 @@ async def remediate_finding(finding_id: uuid.UUID):
     deterministic_patch = build_deterministic_remediation_text(finding_details)
     if deterministic_patch:
         rule_id = str(finding_details.get("rule_id") or "deterministic")
+        record_remediation("fallback")
         with Session(engine) as session:
             remediation = Remediation(
                 finding_id=finding_id,
@@ -1317,7 +1351,9 @@ async def remediate_finding(finding_id: uuid.UUID):
             },
         )
 
+    _t0 = time.monotonic()
     patch = await generate_patch(finding_details)
+    record_remediation("ollama", latency_seconds=time.monotonic() - _t0)
     valid_patch, validation_reason = validate_remediation_patch(patch, finding_details)
 
     # Always save and return the patch so the modal opens.

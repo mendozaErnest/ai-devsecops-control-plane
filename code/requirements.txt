@@ -10,3 +10,4 @@ python-multipart>=0.0.9
 semgrep>=1.163.0
 pytest>=8.0.0
 pylint>=3.0.0
+prometheus-fastapi-instrumentator>=6.1.0

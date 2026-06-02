@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-05-28 (scan crash fix updateDastTargetUrlInput, SonarQube language auto-detect, scan visibility warnings+scan_summary — 124 tests)
+Ultima actualizacion: 2026-06-02 (feat/observability: Prometheus custom metrics, Grafana dashboard, security_metrics.py, /metrics endpoint — 130 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -51,7 +51,8 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - SLA deadlines: CRITICAL=3d, HIGH=7d, MEDIUM=30d, LOW=90d.
 - IA local: Ollama, modelo por defecto qwen2.5-coder:14b.
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (124 tests).
+- Observabilidad: Prometheus (/metrics via prometheus-fastapi-instrumentator), Grafana (provisioning automatico en infra/grafana/), metricas custom en src/metrics/security_metrics.py.
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (130 tests).
 
 Dependencias en code/requirements.txt:
 
@@ -68,6 +69,7 @@ python-multipart>=0.0.9
 semgrep>=1.163.0
 pytest>=8.0.0
 pylint>=3.0.0
+prometheus-fastapi-instrumentator>=6.1.0
 ```
 
 ---
@@ -102,6 +104,9 @@ src/dashboard/js/diff.js          ← diff view rendering (LCS + GitHub)
 src/dashboard/js/modal.js         ← all modal lifecycle
 src/dashboard/js/dashboard.js     ← findings, scan, report, PDF
 src/dashboard/js/main.js          ← entry point, event wiring
+src/metrics/security_metrics.py   ← Prometheus custom metrics (findings_total, remediations, SLA gauge, scan duration)
+infra/prometheus/prometheus.yml   ← Prometheus scrape config (scrapes api:8000/metrics)
+infra/grafana/provisioning/       ← Grafana datasource + dashboard JSON auto-provisioned
 code/requirements.txt
 .github/workflows/devsecops-scan.yml  ← CI workflow
 docs/ai-current-project-context.md
@@ -206,6 +211,7 @@ para parchear BanditAdapter y CombinedScannerAdapter en su modulo de origen.
 - POST /api/findings/{finding_id}/false-positive → triage: mark as false_positive + audit event
 - GET  /api/findings/{finding_id}/audit        → historial de audit events del finding
 - POST /api/webhooks/github                 → webhook PR con HMAC-SHA256
+- GET  /metrics                             → Prometheus metrics (text/plain; auto-expuesto por prometheus_fastapi_instrumentator)
 
 ---
 
@@ -367,7 +373,8 @@ tests/test_semgrep_adapter.py              (4 tests)
 tests/test_target_path_validation.py       (4 tests)  ← valid path, path traversal, nonexistent, fallback dummy
 tests/test_technology_inference.py         (29 tests)
 tests/test_zap_adapter.py                  (7 tests)
-Total: 124 passed  ← verificado tras configuration UX (2026-05-28)
+tests/test_metrics.py                      (7 tests) ← Phase 4: Prometheus metrics integration
+Total: 130 passed  ← verificado tras feat/observability (2026-06-02)
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -488,6 +495,23 @@ Phase 3:
 1. DAST adapter real (OWASP ZAP).
 2. Validacion post-patch: tsc --noEmit (Angular), javac/Maven (Java).
 3. Multi-finding PR (batch remediation en una rama).
+
+Phase 4 — Observabilidad (feat/observability ✅):
+1. ✅ src/metrics/security_metrics.py: Counter findings_total, Counter remediations_generated_total (db_cache/ollama/fallback), Counter regressions_detected_total, Gauge sla_breached_findings, Histogram scan_duration_seconds, Histogram remediation_latency_seconds. Stubs noop cuando prometheus_client no está instalado.
+2. ✅ main.py: prometheus_fastapi_instrumentator instrumenta app y expone GET /metrics. Importa record_remediation, record_scan_duration, update_sla_breached_gauge. _refresh_sla_breached_gauge() cuenta findings open/regression con SLA vencido; llamada en on_startup y post-scan.
+3. ✅ escaneo.py: persist_scan() llama record_finding(severity, tool) por cada finding y record_regression() en regresiones.
+4. ✅ docker-compose.yml: servicios prometheus (prom/prometheus:latest, port 9090) y grafana (grafana/grafana:latest, port 3000, anonymous Viewer).
+5. ✅ infra/prometheus/prometheus.yml: scrape api:8000/metrics cada 15s.
+6. ✅ infra/grafana/provisioning/: datasource Prometheus + dashboard JSON con 6 paneles (findings por severidad, tasa regresión, SLA vencido, latencia p50/p95, ratio fuente remediación, duración escaneos).
+7. ✅ tests/test_metrics.py (7 tests): /metrics 200, record_finding no raise, record_regression no raise, persist_scan llama record_finding, cache hit llama db_cache, latencia ollama observada, SLA gauge refleja count real.
+
+Phase 4 — ML Risk Scoring (feat/ml-risk-scoring, PENDIENTE):
+- Crear src/ml/risk_scorer.py con XGBoost + scikit-learn.
+- train_model(findings) → XGBClassifier; score_finding(finding) → float [0.0–1.0].
+- Integrar risk_score en GET /api/findings y GET /api/projects/{id}/findings.
+- POST /api/ml/train: entrena y persiste modelo; retorna precision/recall/roc_auc.
+- Dashboard: barra de progreso risk_score junto a severity badge; botón "🧠 Reentrenar modelo".
+- Requiere: xgboost>=2.0.0, scikit-learn>=1.4.0, joblib>=1.3.0 en requirements.txt.
 
 ---
 
