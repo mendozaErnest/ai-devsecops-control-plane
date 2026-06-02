@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-06-02 (Phase 4 DAST real: ZAP conectado al orquestador con `dast_target_url`, docker-compose ZAP default-on, tests de plumbing — 136 tests)
+Ultima actualizacion: 2026-06-02 (Phase 4 DAST real + Agentic Loop: ZAP conectado al orquestador con `dast_target_url`, LangGraph Explorer/Attacker/Verifier en src/dast_agent/, endpoint POST /api/dast/agent/scan + status polling — 145 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -48,12 +48,13 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - Scanners SCA: pip-audit (Python), OWASP Dependency Check (Java).
 - Scanners Quality: Pylint (Python), ESLint (Angular/TypeScript), SonarQube Community REST.
 - Scanner DAST: OWASP ZAP (spider + active scan via REST, degrada con gracia si ZAP no responde).
+- Agentic DAST: LangGraph Explorer → Attacker → Verifier (loop iterativo); LLM backend Ollama local; degrada cuando LangGraph/Ollama no disponibles (endpoint 503 / agente skip LLM).
 - Orquestacion: ScanProfile + ScanOrchestrator con ThreadPoolExecutor.
 - SLA deadlines: CRITICAL=3d, HIGH=7d, MEDIUM=30d, LOW=90d.
 - IA local: Ollama, modelo por defecto qwen2.5-coder:14b.
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
 - Observabilidad: Prometheus (/metrics via prometheus-fastapi-instrumentator), Grafana (provisioning automatico en infra/grafana/), metricas custom en src/metrics/security_metrics.py.
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (136 tests).
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (145 tests passing, 2 skipped cuando LangGraph/prometheus_fastapi_instrumentator no instalados).
 
 Dependencias en code/requirements.txt:
 
@@ -94,6 +95,12 @@ src/scanners/pylint_adapter.py        ← Python Quality
 src/scanners/eslint_adapter.py        ← Angular/TypeScript Quality
 src/scanners/sonarqube_adapter.py     ← SonarQube Community Quality REST
 src/scanners/zap_adapter.py           ← OWASP ZAP DAST (spider + active scan, graceful degrade)
+src/dast_agent/__init__.py            ← Exposición de runner + LANGGRAPH_AVAILABLE flag
+src/dast_agent/state.py               ← DastAgentState TypedDict para LangGraph
+src/dast_agent/tools.py               ← Wrappers REST ZAP: spider_crawl, active_scan, get_alerts, verify_alert
+src/dast_agent/agents.py              ← explorer_agent, attacker_agent, verifier_agent (con Ollama opcional)
+src/dast_agent/graph.py               ← build_dast_graph() + should_continue()
+src/dast_agent/runner.py              ← run_dast_agent(target_url, project_id, max_iterations) + status tracking
 src/ai_engine/remediator.py
 src/integrations/github_client.py
 src/dashboard/index.html          ← HTML-only shell (no inline JS/CSS)
@@ -214,6 +221,8 @@ para parchear BanditAdapter y CombinedScannerAdapter en su modulo de origen.
 - GET  /api/findings/{finding_id}/audit        → historial de audit events del finding
 - POST /api/webhooks/github                 → webhook PR con HMAC-SHA256
 - GET  /metrics                             → Prometheus metrics (text/plain; auto-expuesto por prometheus_fastapi_instrumentator)
+- POST /api/dast/agent/scan                 → Agentic DAST (Explorer/Attacker/Verifier) — 400 URL inválida, 503 si LangGraph no instalado
+- GET  /api/dast/agent/scan/{scan_id}/status → polling de progreso para Agentic DAST en curso (exploring/attacking/verifying/done/error)
 
 ---
 
@@ -376,8 +385,9 @@ tests/test_target_path_validation.py       (4 tests)  ← valid path, path trave
 tests/test_technology_inference.py         (29 tests)
 tests/test_zap_adapter.py                  (4 tests)
 tests/test_dast_orchestrator.py            (6 tests) ← Phase 4 DAST: plumbing dast_target_url end-to-end
+tests/test_dast_agent.py                   (9 passed + 1 skip) ← Phase 4 Agentic DAST: should_continue + verify_alert + endpoint 400/503/404
 tests/test_metrics.py                      (7 tests) ← Phase 4: Prometheus metrics integration
-Total: 136 passed  ← verificado tras Phase 4 DAST real (2026-06-02)
+Total: 145 passed, 2 skipped  ← verificado tras Phase 4 DAST real + Agentic Loop (2026-06-02)
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -498,6 +508,9 @@ Phase 3:
 1. ✅ DAST adapter real (OWASP ZAP) — `ZapAdapter` con spider + active scan via REST, `_run_dast` orquestrado con `dast_target_url` desde `POST /api/scan`. Docker-compose con ZAP default-on (puerto 8090) + healthcheck.
 2. Validacion post-patch: tsc --noEmit (Angular), javac/Maven (Java).
 3. Multi-finding PR (batch remediation en una rama).
+
+Phase 4 (Agentic DAST):
+1. ✅ Loop LangGraph Explorer → Attacker → Verifier (`src/dast_agent/`), backend LLM Ollama local. Endpoint `POST /api/dast/agent/scan` + polling `GET /api/dast/agent/scan/{scan_id}/status`. Persistencia con `tool="zap+langgraph"`. Dashboard: scanner item "OWASP ZAP + LangGraph (Agentic)" en profile builder con `dast_tool="agent_loop"`; `runScan()` dispara `runAgenticDastFlow()` antes del scan SAST/Quality normal cuando el perfil activa agent_loop.
 
 Phase 4 — Observabilidad (feat/observability ✅):
 1. ✅ src/metrics/security_metrics.py: Counter findings_total, Counter remediations_generated_total (db_cache/ollama/fallback), Counter regressions_detected_total, Gauge sla_breached_findings, Histogram scan_duration_seconds, Histogram remediation_latency_seconds. Stubs noop cuando prometheus_client no está instalado.

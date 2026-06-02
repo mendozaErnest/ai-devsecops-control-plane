@@ -90,6 +90,13 @@ export const SCANNER_ITEMS = [
     requires: ["targetUrl"],
   },
   {
+    id: "zap-agent",
+    label: "OWASP ZAP + LangGraph (Agentic)",
+    slot: "dast",
+    persisted: true,
+    requires: ["targetUrl"],
+  },
+  {
     id: "pip-audit",
     label: "pip-audit",
     slot: "sca",
@@ -134,6 +141,11 @@ export const COMPATIBILITY_MATRIX = {
     technologies: ["python", "django", "flask", "angular", "typescript", "java", "java-spring", "react"],
     requires: ["targetUrl"],
     message: "OWASP ZAP requiere una URL ejecutable del aplicativo.",
+  },
+  "zap-agent": {
+    technologies: ["python", "django", "flask", "angular", "typescript", "java", "java-spring", "react"],
+    requires: ["targetUrl"],
+    message: "Agentic DAST (ZAP + LangGraph + Ollama) — requiere LangGraph instalado en el servidor.",
   },
   "pip-audit": {
     technologies: ["python", "django", "flask"],
@@ -386,11 +398,17 @@ export function toScanProfilePayload(state) {
     technologies: JSON.stringify(validated.selectedTechnologies || []),
     sast_enabled: sast.length > 0,
     sast_tools: resolveSastTools(sast),
-    dast_enabled: dast.includes("zap"),
-    dast_tool: dast.includes("zap") ? "zap" : null,
+    dast_enabled: dast.length > 0,
+    dast_tool: resolveDastTool(dast),
     quality_enabled: quality.length > 0,
     quality_tool: quality.length > 0 ? quality.join(",") : null,
   };
+}
+
+export function resolveDastTool(dastScannerIds) {
+  if (dastScannerIds.includes("zap-agent")) return "agent_loop";
+  if (dastScannerIds.includes("zap")) return "zap";
+  return null;
 }
 
 export function buildProfileName(state) {
@@ -464,7 +482,10 @@ export function profileScanners(profile) {
     else scanners.sast.push("semgrep");
   }
 
-  if (profile.dast_enabled && profile.dast_tool === "zap") scanners.dast.push("zap");
+  if (profile.dast_enabled) {
+    if (profile.dast_tool === "agent_loop") scanners.dast.push("zap-agent");
+    else if (profile.dast_tool === "zap") scanners.dast.push("zap");
+  }
 
   if (profile.quality_enabled && profile.quality_tool) {
     (profile.quality_tool).split(",").map((t) => t.trim()).filter(Boolean).forEach((tool) => {

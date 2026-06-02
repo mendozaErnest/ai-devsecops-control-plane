@@ -161,6 +161,12 @@ class ProjectProfileUpdate(BaseModel):
     scan_profile_id: int | None = None
 
 
+class DastAgentScanRequest(BaseModel):
+    target_url: str
+    project_id: uuid.UUID | None = None
+    max_iterations: int = 3
+
+
 def _refresh_sla_breached_gauge() -> None:
     """Count open/regression findings with SLA breached and update the Prometheus gauge."""
     try:
@@ -1280,6 +1286,113 @@ async def scan_with_sonar(target_path: str = "."):
         "project_key": adapter.project_key or adapter.derive_project_key(resolved_path),
         "warning": adapter.error,
     }
+
+
+@app.post("/api/dast/agent/scan")
+async def dast_agent_scan(request: DastAgentScanRequest):
+    """Run the agentic DAST loop (Explorer → Attacker → Verifier) via LangGraph.
+
+    Persists confirmed findings with `tool="zap+langgraph"`.
+    Returns 400 for invalid URL, 503 when LangGraph is not installed.
+    """
+    target_url = resolve_dast_target_url(request.target_url)
+    if target_url is None:
+        raise HTTPException(status_code=400, detail="target_url is required")
+
+    try:
+        from src.dast_agent import LANGGRAPH_AVAILABLE, run_dast_agent
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="LangGraph not available. Install langgraph and langchain_ollama.",
+        )
+
+    if not LANGGRAPH_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="LangGraph not available. Install langgraph and langchain_ollama.",
+        )
+
+    max_iterations = max(1, min(int(request.max_iterations or 3), 5))
+
+    result = await run_dast_agent(
+        target_url=target_url,
+        project_id=str(request.project_id) if request.project_id else None,
+        max_iterations=max_iterations,
+    )
+
+    saved = 0
+    confirmed = result.get("confirmed_findings", []) or []
+    if confirmed and not result.get("error"):
+        try:
+            saved = await asyncio.to_thread(
+                _persist_agentic_findings, confirmed, request.project_id, target_url
+            )
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("Could not persist agentic DAST findings: %s", exc)
+
+    return {
+        "scan_id": result["scan_id"],
+        "status": result["status"],
+        "error": result.get("error"),
+        "confirmed_findings": confirmed,
+        "false_positives_count": result.get("false_positives_count", 0),
+        "iterations_run": result.get("iterations_run", 0),
+        "saved_findings": saved,
+        "target_url": target_url,
+    }
+
+
+def _persist_agentic_findings(
+    confirmed: list[dict],
+    project_id: uuid.UUID | None,
+    target_url: str,
+) -> int:
+    """Convert agent dicts → Finding rows and persist via persist_scan."""
+    findings: list[Finding] = []
+    for item in confirmed:
+        findings.append(
+            Finding(
+                scan_id=uuid.UUID(int=0),
+                tool=str(item.get("tool") or "zap+langgraph"),
+                rule_id=str(item.get("rule_id") or "ZAP-UNKNOWN"),
+                title=str(item.get("title") or ""),
+                description=str(item.get("description") or ""),
+                severity=str(item.get("severity") or "LOW"),
+                confidence=str(item.get("confidence") or "MEDIUM"),
+                file_path=str(item.get("file_path") or target_url),
+                line_start=int(item.get("line_start") or 0),
+                line_end=int(item.get("line_end") or 0),
+                code_snippet=str(item.get("code_snippet") or ""),
+                status="open",
+                fingerprint=str(item.get("fingerprint") or ""),
+            )
+        )
+
+    if not findings:
+        return 0
+
+    return persist_scan(
+        target_url,
+        "dast",
+        _NullAdapter("zap+langgraph"),
+        findings,
+        project_id,
+    )
+
+
+@app.get("/api/dast/agent/scan/{scan_id}/status")
+async def dast_agent_scan_status(scan_id: str):
+    """Return progress for an in-flight or completed agentic DAST scan."""
+    try:
+        from src.dast_agent import get_scan_status
+    except ImportError:
+        raise HTTPException(status_code=503, detail="LangGraph not available")
+
+    snapshot = get_scan_status(scan_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="scan_id not found")
+    return {"scan_id": scan_id, **snapshot}
 
 
 @app.get("/api/ai-status")

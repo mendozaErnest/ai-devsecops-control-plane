@@ -151,6 +151,25 @@ export async function getRemediationPreview(findingId) {
   return res.json();
 }
 
+export async function runAgenticDastScan({ targetUrl, projectId = null, maxIterations = 3 }) {
+  const body = { target_url: targetUrl, max_iterations: maxIterations };
+  if (projectId) body.project_id = projectId;
+  const res = await fetch("/api/dast/agent/scan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(), { detail: data.detail, status: res.status, data });
+  return data;
+}
+
+export async function getAgenticDastStatus(scanId) {
+  const res = await fetch(`/api/dast/agent/scan/${encodeURIComponent(scanId)}/status`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function triggerScan(projectId, profileId = null) {
   const body = { project_id: projectId };
   if (profileId !== null) body.profile_id = profileId;

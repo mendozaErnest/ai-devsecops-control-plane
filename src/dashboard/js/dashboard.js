@@ -11,6 +11,7 @@ import {
 } from "/static/js/utils.js";
 import {
   getProjects, getProjectFindings, scanProject, getAiStatus, generateRemediation, getReport,
+  runAgenticDastScan, getAgenticDastStatus,
   getProfiles,
 } from "/static/js/api.js";
 import {
@@ -850,6 +851,65 @@ function updateScanStackIcons() {
   });
 }
 
+// ── Agentic DAST flow ────────────────────────────────────────────────────────
+async function runAgenticDastFlow(dastTargetUrl) {
+  if (!dastTargetUrl) {
+    showFeedback("Agentic DAST necesita una URL. Salta este paso.", "warning");
+    return { aborted: false };
+  }
+  const iterRaw = window.prompt("Iteraciones del agente (1-5):", "3");
+  const maxIterations = Math.max(1, Math.min(parseInt(iterRaw || "3", 10) || 3, 5));
+
+  if (scanStatus) scanStatus.textContent = "🤖 Agentic DAST en curso";
+  showFeedback("LangGraph agentic loop iniciado — Exploring…", "info");
+
+  let pollHandle = null;
+  try {
+    const agenticPromise = runAgenticDastScan({
+      targetUrl: dastTargetUrl,
+      projectId: selectedProject.id,
+      maxIterations,
+    });
+
+    let lastScanId = null;
+    pollHandle = setInterval(async () => {
+      if (!lastScanId) return;
+      const status = await getAgenticDastStatus(lastScanId).catch(() => null);
+      if (status?.status) {
+        const label = ({
+          exploring: "🤖 Explorando rutas",
+          attacking: "🤖 Atacando endpoints",
+          verifying: "🤖 Verificando hallazgos",
+          done: "🤖 Agentic DAST completado",
+          error: "🤖 Agentic DAST con error",
+        })[status.status] || "🤖 Agentic DAST";
+        if (scanStatus) scanStatus.textContent = label;
+      }
+    }, 2000);
+
+    const result = await agenticPromise;
+    lastScanId = result.scan_id;
+
+    if (result.status === "error") {
+      showFeedback(`Agentic DAST: ${result.error || "fallo desconocido"}`, "warning");
+    } else {
+      const n = (result.confirmed_findings || []).length;
+      const fp = result.false_positives_count || 0;
+      showFeedback(
+        `Agentic DAST OK — ${n} confirmados, ${fp} falsos positivos en ${result.iterations_run} iteración(es).`,
+        n > 0 ? "success" : "info",
+      );
+    }
+  } catch (err) {
+    const detail = err?.detail || err?.message || "error desconocido";
+    showFeedback(`Agentic DAST falló: ${detail}`, "warning");
+  } finally {
+    if (pollHandle) clearInterval(pollHandle);
+  }
+  return { aborted: false };
+}
+
+
 // ── Scan ──────────────────────────────────────────────────────────────────────
 export async function runScan() {
   if (!ensureServerContext()) return;
@@ -871,6 +931,14 @@ export async function runScan() {
     if (profile?.dast_enabled) {
       dastTargetUrl = window.prompt("URL del objetivo DAST (ej: http://host.docker.internal:8000) — usar host.docker.internal en lugar de 127.0.0.1 o localhost:") || null;
     }
+
+    if (profile?.dast_enabled && profile?.dast_tool === "agent_loop") {
+      const agenticResult = await runAgenticDastFlow(dastTargetUrl);
+      if (agenticResult.aborted) return;
+      // After the agentic flow finishes, fall through to a normal SAST/Quality scan
+      // so the SAST + Quality runners still produce findings for this project.
+    }
+
     const result = await scanProject(selectedProject.id, dastTargetUrl);
     if (!result.success) throw new Error(result.error || "Scan failed");
     const finishedAt = new Date().toLocaleTimeString();

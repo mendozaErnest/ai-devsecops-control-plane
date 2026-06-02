@@ -75,6 +75,7 @@ The platform uses a **profile-driven, multi-engine approach** for maximum covera
 | ESLint | Angular / TypeScript | Quality |
 | SonarQube Community REST | Any | Quality |
 | OWASP ZAP | Any HTTP/HTTPS target | DAST |
+| OWASP ZAP + LangGraph | Any HTTP/HTTPS target | Agentic DAST (Explorer → Attacker → Verifier loop) |
 
 ### Scan Profiles
 
@@ -114,28 +115,62 @@ POST /api/scan
 
 ---
 
-## Agentic DAST Roadmap
+## Agentic DAST (LangGraph)
 
-Phase 4 adds dynamic application security testing through two complementary paths:
+Phase 4 ships a fully-wired agentic DAST loop driven by LangGraph. The LLM backend is **Ollama running locally** (no cloud calls). The loop wraps the existing OWASP ZAP REST API so every action runs against a real scanner.
 
-- **OWASP ZAP adapter**: API-driven spidering and active scans against running applications.
-- **LangGraph agent loop**: a `StateGraph` where specialized agents collaborate, observe results, and iterate until findings are confirmed or rejected.
-
-Planned agent roles:
+```
+Explorer Agent → Attacker Agent → Verifier Agent
+   (crawl)         (fuzzing)         (confirm)
+      ↑_______________feedback_____________↓
+```
 
 | Agent | Responsibility |
 |---|---|
-| Explorer Agent | Crawl the target, discover routes, forms, parameters, and authentication boundaries. |
-| Attacker Agent | Generate focused fuzzing payloads for XSS, injection, auth bypass, path traversal, and common OWASP Top 10 cases. |
-| Verifier Agent | Reproduce candidate findings, reduce false positives, and emit normalized evidence for the existing finding lifecycle. |
+| Explorer Agent | Spider the target with ZAP, identify routes / forms / auth boundaries, optionally rank attack surface via Ollama. |
+| Attacker Agent | Trigger ZAP active scan, generate focused payloads (XSS, SQLi, path traversal, auth bypass) per discovered form. |
+| Verifier Agent | Re-request each alert; confirm XSS when payload is reflected, confirm missing-header alerts via live response inspection, otherwise trust ZAP evidence. |
+
+### Endpoint
+
+```json
+POST /api/dast/agent/scan
+{
+  "target_url": "http://host.docker.internal:3000",
+  "project_id": "<uuid optional>",
+  "max_iterations": 3
+}
+```
+
+Response:
+
+```json
+{
+  "scan_id": "uuid",
+  "status": "done",
+  "confirmed_findings": [ /* normalized findings with tool="zap+langgraph" */ ],
+  "false_positives_count": 2,
+  "iterations_run": 1,
+  "saved_findings": 5
+}
+```
+
+Progress polling for the UI:
 
 ```
-Explorer Agent -> Attacker Agent -> Verifier Agent
-   (crawl)        (fuzzing)         (confirm)
-      ^________________feedback______________|
+GET /api/dast/agent/scan/{scan_id}/status
+→ { "status": "exploring" | "attacking" | "verifying" | "done" | "error", ... }
 ```
 
-This is intentionally marked as roadmap: the current codebase already models `dast_tool` values such as `zap` and `agent_loop`, while the real ZAP adapter and LangGraph agent implementation belong to the next infrastructure/DAST phase.
+### Graceful degradation
+
+- **LangGraph missing** → `POST /api/dast/agent/scan` returns HTTP 503 with `"LangGraph not available. Install langgraph and langchain_ollama."`.
+- **Ollama missing** → agents skip LLM enrichment silently and fall back to deterministic ZAP-driven logic.
+- **ZAP missing** → tool wrappers return empty results; the agent completes with 0 findings and no error.
+
+### Dashboard integration
+
+The profile builder ships a scanner item **"OWASP ZAP + LangGraph (Agentic)"** that maps to `dast_tool="agent_loop"`. When the active profile uses this tool, `runScan()` first triggers the agentic endpoint and polls `/status` (Exploring → Attacking → Verifying → Done) before running the standard SAST/Quality scan.
 
 ---
 
