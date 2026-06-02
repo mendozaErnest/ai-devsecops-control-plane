@@ -867,11 +867,11 @@ export async function runScan() {
   try {
     await ensureScanProfilesLoaded();
     const profile = selectedProjectProfile();
-    let targetUrl = null;
+    let dastTargetUrl = null;
     if (profile?.dast_enabled) {
-      targetUrl = window.prompt("URL del objetivo DAST (ej: http://host.docker.internal:8000) — usar host.docker.internal en lugar de 127.0.0.1 o localhost:") || null;
+      dastTargetUrl = window.prompt("URL del objetivo DAST (ej: http://host.docker.internal:8000) — usar host.docker.internal en lugar de 127.0.0.1 o localhost:") || null;
     }
-    const result = await scanProject(selectedProject.id, targetUrl);
+    const result = await scanProject(selectedProject.id, dastTargetUrl);
     if (!result.success) throw new Error(result.error || "Scan failed");
     const finishedAt = new Date().toLocaleTimeString();
     const saved = result.saved_findings ?? 0;

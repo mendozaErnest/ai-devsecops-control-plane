@@ -23,9 +23,9 @@ export async function assignProjectProfile(projectId, profileId) {
   return data;
 }
 
-export async function scanProject(projectId, targetUrl = null) {
+export async function scanProject(projectId, dastTargetUrl = null) {
   const body = { project_id: projectId };
-  if (targetUrl) body.target_url = targetUrl;
+  if (dastTargetUrl) body.dast_target_url = dastTargetUrl;
   const res = await fetch("/api/scan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

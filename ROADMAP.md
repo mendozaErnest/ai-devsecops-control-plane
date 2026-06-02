@@ -114,7 +114,7 @@
 - [x] `tests/test_target_path_validation.py` (4 tests): valid path inside workspace, path traversal blocked (403), nonexistent path (404), fallback to dummy retro-compat
 
 ### Phase 3 — Quality + DAST
-- [ ] DAST adapter real (OWASP ZAP)
+- [x] DAST adapter real (OWASP ZAP) — `ZapAdapter` con spider + active scan via REST; `_run_dast` orquestrado con `dast_target_url` desde `POST /api/scan` y `POST /api/projects/{id}/scan`; ZAP en docker-compose arranca por defecto (puerto 8090) con healthcheck y `restart: unless-stopped`; degrada gracefully si ZAP no responde; URL inválida → HTTP 400 desde `resolve_dast_target_url`; 6 tests nuevos en `test_dast_orchestrator.py`
 - [x] Quality adapter ligero (Pylint / ESLint)
 - [x] Quality adapter SonarQube Community
 - [ ] Post-patch validation: `tsc --noEmit` (Angular), `javac`/Maven (Java)
@@ -333,6 +333,22 @@
 - [x] `code/requirements.txt`: added `prometheus-fastapi-instrumentator>=6.1.0`.
 - [x] `tests/test_metrics.py` (7 tests): GET /metrics returns 200 text/plain, record_finding no raise, record_regression no raise, persist_scan calls record_finding per finding, cache hit records db_cache, ollama latency observed, SLA breached gauge reflects real DB count.
 - [x] 130 tests passing (6 new + 1 skipped when prometheus_fastapi_instrumentator not installed) — no regression.
+
+### Phase 4 — DAST Real con ZAP (2026-06-02) ✅
+- [x] `src/api/main.py` `ScanRequest`: campo `target_url` renombrado a `dast_target_url` para reflejar explícitamente que solo aplica a DAST runner; validación movida del `field_validator` (que daba 422) a `resolve_dast_target_url()` helper (devuelve HTTP 400 limpio); endpoints `POST /api/scan` y `POST /api/projects/{id}/scan` llaman `resolve_dast_target_url(request.dast_target_url)` antes de despachar.
+- [x] `src/api/main.py` `scan_project()` + `_scan_with_profile()`: firma renombrada `target_url` → `dast_target_url`; pasa la URL al `ScanOrchestrator.run()` que la rutea al `_run_dast` runner.
+- [x] `src/dashboard/js/api.js` `scanProject()`: body envía `dast_target_url` (antes `target_url`).
+- [x] `src/dashboard/js/dashboard.js` `runScan()`: prompt al usuario por URL DAST cuando perfil tiene `dast_enabled=true`; pasa al endpoint via `scanProject(projectId, dastTargetUrl)`.
+- [x] `docker-compose.yml`: servicio `zap` ya no requiere profile `dast` — arranca por defecto con `restart: unless-stopped`, healthcheck nuevo (`wget /JSON/core/view/version/`), 30s interval, 60s start_period. Variable de entorno del servicio api cambiada de `ZAP_API_URL: http://zap:8080` (errónea) a `ZAP_BASE_URL: http://zap:8090` (correcta — el adapter usa esa variable).
+- [x] `.env.example`: documentadas `ZAP_BASE_URL` (default `http://localhost:8090`) y `ZAP_API_KEY` (vacío por defecto, ZAP arranca con `api.disablekey=true`).
+- [x] `README.md`: Stack actualizado con fila DAST; tabla de Built-in engines incluye OWASP ZAP; nueva sección "DAST target URL (`dast_target_url`)" con ejemplo de request.
+- [x] `tests/test_dast_orchestrator.py` (6 tests):
+  - `test_orchestrator_skips_dast_without_url`: `dast_enabled=True` sin URL → findings vacíos, no error.
+  - `test_orchestrator_forwards_dast_url`: orquestador instancia ZapAdapter con la URL correcta via `execute_scan(target)`.
+  - `test_zap_adapter_calls_spider_with_target_url`: mock httpx — verifica que el adapter llama `/JSON/spider/action/scan/` con `url=<target>`.
+  - `test_post_scan_rejects_ftp_dast_url`: `ftp://` → HTTP 400 (no 422 ni 500).
+  - `test_post_scan_accepts_blank_dast_url`: `""` se trata como None → 200.
+  - `test_post_scan_passes_valid_dast_url_to_project`: `project_id + dast_target_url` → `scan_project()` recibe la URL.
 
 ### Phase 4 — ML Risk Scoring (feat/ml-risk-scoring, PENDIENTE)
 - [ ] `src/ml/risk_scorer.py`: XGBoost + scikit-learn model. `train_model(findings)` → XGBClassifier persisted with joblib. `score_finding(finding)` → float [0.0–1.0]; severity fallback when no model.

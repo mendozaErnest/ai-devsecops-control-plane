@@ -47,6 +47,7 @@ This platform runs the LLM on your own hardware via Ollama. The network boundary
 | Quality — Python | Pylint (JSON output, HIGH/MEDIUM/LOW severity mapping) |
 | Quality — Angular | ESLint (local `node_modules/.bin/eslint` or `npx`) |
 | Quality — Any | SonarQube Community REST (Bearer token, issues import) |
+| DAST | OWASP ZAP (spider + active scan, graceful degrade when ZAP unreachable) |
 | Scan profiles | `ScanProfile` + `ScanOrchestrator` (ThreadPoolExecutor) |
 | Finding lifecycle | open / fixed / regression / accepted\_risk / false\_positive + audit trail |
 | SLA tracking | CRITICAL=3d · HIGH=7d · MEDIUM=30d · LOW=90d; API filter `?sla_status=` |
@@ -73,6 +74,7 @@ The platform uses a **profile-driven, multi-engine approach** for maximum covera
 | Pylint | Python | Quality |
 | ESLint | Angular / TypeScript | Quality |
 | SonarQube Community REST | Any | Quality |
+| OWASP ZAP | Any HTTP/HTTPS target | DAST |
 
 ### Scan Profiles
 
@@ -96,6 +98,19 @@ The general scan endpoint resolves the target in priority order:
 3. **No parameters** → fallback to `src/dummy_vulnerable_app.py` (retro-compat).
 
 Path validation enforces that the resolved path stays inside `SCAN_ALLOWED_ROOTS` (default: project root + `workspace/uploads/`), blocking directory traversal.
+
+### DAST target URL (`dast_target_url`)
+
+When the active `ScanProfile` has `dast_enabled=true`, send the running application's URL alongside the scan request:
+
+```json
+POST /api/scan
+{ "project_id": "...", "dast_target_url": "http://host.docker.internal:3000" }
+```
+
+- Only `http://` and `https://` schemes are accepted; anything else returns HTTP 400.
+- If `dast_target_url` is omitted or blank, the DAST runner skips with a warning — the SAST/Quality runners still execute.
+- The ZAP adapter reads `ZAP_BASE_URL` (default `http://localhost:8090`) and degrades to an empty result set when ZAP is unreachable.
 
 ---
 

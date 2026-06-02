@@ -11,7 +11,7 @@ services:
       - .env
     environment:
       OLLAMA_HOST: http://ollama:11434
-      ZAP_API_URL: http://zap:8080
+      ZAP_BASE_URL: http://zap:8090
       SONARQUBE_URL: http://sonarqube:9000
     ports:
       - "8000:8000"
@@ -57,7 +57,7 @@ services:
 
   zap:
     image: ghcr.io/zaproxy/zaproxy:stable
-    profiles: ["dast"]
+    restart: unless-stopped
     command:
       - zap.sh
       - -daemon
@@ -75,6 +75,12 @@ services:
       - "8090:8090"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/JSON/core/view/version/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   sonarqube:
     image: sonarqube:community

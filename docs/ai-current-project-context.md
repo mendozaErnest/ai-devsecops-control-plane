@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-06-02 (feat/observability: Prometheus custom metrics, Grafana dashboard, security_metrics.py, /metrics endpoint — 130 tests)
+Ultima actualizacion: 2026-06-02 (Phase 4 DAST real: ZAP conectado al orquestador con `dast_target_url`, docker-compose ZAP default-on, tests de plumbing — 136 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -47,12 +47,13 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - Scanners SAST: Bandit + Semgrep (Python), Semgrep (Angular/Java).
 - Scanners SCA: pip-audit (Python), OWASP Dependency Check (Java).
 - Scanners Quality: Pylint (Python), ESLint (Angular/TypeScript), SonarQube Community REST.
+- Scanner DAST: OWASP ZAP (spider + active scan via REST, degrada con gracia si ZAP no responde).
 - Orquestacion: ScanProfile + ScanOrchestrator con ThreadPoolExecutor.
 - SLA deadlines: CRITICAL=3d, HIGH=7d, MEDIUM=30d, LOW=90d.
 - IA local: Ollama, modelo por defecto qwen2.5-coder:14b.
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
 - Observabilidad: Prometheus (/metrics via prometheus-fastapi-instrumentator), Grafana (provisioning automatico en infra/grafana/), metricas custom en src/metrics/security_metrics.py.
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (130 tests).
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (136 tests).
 
 Dependencias en code/requirements.txt:
 
@@ -92,6 +93,7 @@ src/scanners/odc_adapter.py           ← Java SCA (OWASP DC)
 src/scanners/pylint_adapter.py        ← Python Quality
 src/scanners/eslint_adapter.py        ← Angular/TypeScript Quality
 src/scanners/sonarqube_adapter.py     ← SonarQube Community Quality REST
+src/scanners/zap_adapter.py           ← OWASP ZAP DAST (spider + active scan, graceful degrade)
 src/ai_engine/remediator.py
 src/integrations/github_client.py
 src/dashboard/index.html          ← HTML-only shell (no inline JS/CSS)
@@ -372,9 +374,10 @@ tests/test_semantic_patching.py            (11 tests)
 tests/test_semgrep_adapter.py              (4 tests)
 tests/test_target_path_validation.py       (4 tests)  ← valid path, path traversal, nonexistent, fallback dummy
 tests/test_technology_inference.py         (29 tests)
-tests/test_zap_adapter.py                  (7 tests)
+tests/test_zap_adapter.py                  (4 tests)
+tests/test_dast_orchestrator.py            (6 tests) ← Phase 4 DAST: plumbing dast_target_url end-to-end
 tests/test_metrics.py                      (7 tests) ← Phase 4: Prometheus metrics integration
-Total: 130 passed  ← verificado tras feat/observability (2026-06-02)
+Total: 136 passed  ← verificado tras Phase 4 DAST real (2026-06-02)
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -402,7 +405,7 @@ Reglas permanentes:
 
 ## Riesgos Conocidos
 
-1. DAST runner sigue como placeholder — retorna []. Al escanear con perfil DAST habilitado, el sistema hace `window.prompt` para la URL; si el usuario cancela o deja en blanco, ZAP se salta gracefully.
+1. ✅ RESUELTO — DAST runner real: `_run_dast` instancia `ZapAdapter` cuando `profile.dast_enabled=True` y se pasa `dast_target_url` válida. Sin URL → salta gracefully (no error). ZAP no disponible → adapter degrada a `[]`.
 2. Validacion Angular/Java es heuristica (brace-counting), no parser real.
 3. Java Quality local sigue pendiente; SonarQube requiere sonar-scanner CLI instalado para analizar y poblar findings (0 issues hasta primer análisis CLI). Nota: ya no hardcodea `-Dsonar.language=py` — el CLI auto-detecta Angular/TS/Java.
 7. sonar-scanner CLI instalado en ~/.local/bin/sonar-scanner v6.2.1. Primer análisis real ejecutado: 125 issues importados. sonar-project.properties en raíz del repo. Para dispararlo desde el endpoint POST /api/scan/sonar se requiere reiniciar el servidor (fallback path ya codificado en run_sonar_scan).
@@ -492,7 +495,7 @@ Tarea B ya implementado ✅:
 - .env.example: todas las variables documentadas (GitHub App, OLLAMA_HOST, DATABASE_URL).
 
 Phase 3:
-1. DAST adapter real (OWASP ZAP).
+1. ✅ DAST adapter real (OWASP ZAP) — `ZapAdapter` con spider + active scan via REST, `_run_dast` orquestrado con `dast_target_url` desde `POST /api/scan`. Docker-compose con ZAP default-on (puerto 8090) + healthcheck.
 2. Validacion post-patch: tsc --noEmit (Angular), javac/Maven (Java).
 3. Multi-finding PR (batch remediation en una rama).
 

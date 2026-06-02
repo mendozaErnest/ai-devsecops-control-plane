@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlmodel import Session, select
 
@@ -96,22 +96,28 @@ def validate_target_url(url: str) -> str:
     return url
 
 
+def resolve_dast_target_url(raw: str | None) -> str | None:
+    """Strip + validate a DAST target URL. Raises HTTP 400 on bad scheme.
+
+    Returns None when input is None or empty (DAST runner will skip gracefully).
+    """
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    try:
+        return validate_target_url(stripped)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 class ScanRequest(BaseModel):
     project_id: uuid.UUID | None = None
     target_path: str | None = None
-    target_url: str | None = None
+    dast_target_url: str | None = None
     profile_id: int | None = None
     technology: str | None = None
-
-    @field_validator("target_url")
-    @classmethod
-    def validate_scan_target_url(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        stripped = value.strip()
-        if not stripped:
-            return None
-        return validate_target_url(stripped)
 
 
 class CloneRepoRequest(BaseModel):
@@ -901,12 +907,12 @@ def create_project_record(
         return project
 
 
-async def scan_project(project: Project, target_url: str | None = None) -> dict:
+async def scan_project(project: Project, dast_target_url: str | None = None) -> dict:
     if project.scan_profile_id is not None:
         with Session(engine) as session:
             profile = session.get(ScanProfile, project.scan_profile_id)
         if profile is not None:
-            return await _scan_with_profile(project, profile, target_url)
+            return await _scan_with_profile(project, profile, dast_target_url)
 
     return await run_scan(project.target_path, project.technology, project.id)
 
@@ -914,7 +920,7 @@ async def scan_project(project: Project, target_url: str | None = None) -> dict:
 async def _scan_with_profile(
     project: Project,
     profile: ScanProfile,
-    target_url: str | None = None,
+    dast_target_url: str | None = None,
 ) -> dict:
     orchestrator = ScanOrchestrator()
     _scan_t0 = time.monotonic()
@@ -924,7 +930,7 @@ async def _scan_with_profile(
         project.target_path,
         project.technology,
         project.id,
-        target_url,
+        dast_target_url,
     )
     _scan_elapsed = time.monotonic() - _scan_t0
     record_scan_duration(profile.sast_tools or project.technology, _scan_elapsed)
@@ -952,7 +958,7 @@ async def _scan_with_profile(
         "scan_summary": result.scan_summary,
         "technology": project.technology,
         "target_path": project.target_path,
-        "target_url": target_url,
+        "dast_target_url": dast_target_url,
         "project_id": str(project.id),
         "profile": profile.name,
     }
@@ -1055,6 +1061,8 @@ async def get_project_findings_endpoint(project_id: uuid.UUID):
 
 @app.post("/api/projects/{project_id}/scan")
 async def scan_project_endpoint(project_id: uuid.UUID, request: ScanRequest | None = None):
+    dast_target_url = resolve_dast_target_url(request.dast_target_url if request else None)
+
     with Session(engine) as session:
         project = session.get(Project, project_id)
 
@@ -1067,7 +1075,7 @@ async def scan_project_endpoint(project_id: uuid.UUID, request: ScanRequest | No
         session.commit()
         session.refresh(project)
 
-    return await scan_project(project, request.target_url if request else None)
+    return await scan_project(project, dast_target_url)
 
 
 @app.post("/api/projects/upload-zip")
@@ -1190,6 +1198,8 @@ async def scan_code(request: ScanRequest | None = None):
     if request is None:
         request = ScanRequest()
 
+    dast_target_url = resolve_dast_target_url(request.dast_target_url)
+
     # Priority 1: explicit target_path in body
     if request.target_path is not None:
         technology = (request.technology or "python").strip().lower()
@@ -1218,8 +1228,8 @@ async def scan_code(request: ScanRequest | None = None):
                 with Session(engine) as session:
                     profile = session.get(ScanProfile, request.profile_id)
                 if profile:
-                    return await _scan_with_profile(project, profile, request.target_url)
-            return await scan_project(project, request.target_url)
+                    return await _scan_with_profile(project, profile, dast_target_url)
+            return await scan_project(project, dast_target_url)
         # project.target_path is null → fall through to dummy
 
     # Priority 3: fallback — retro-compat, no target provided
