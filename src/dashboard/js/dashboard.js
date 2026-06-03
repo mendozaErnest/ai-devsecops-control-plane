@@ -85,6 +85,9 @@ const TOOL_CHIP_META = {
   zap:         { label: "OWASP ZAP",  short: "ZAP" },
   "pip-audit": { label: "pip-audit",  short: "pip" },
   odc:         { label: "ODC",        short: "DC"  },
+  checkov:     { label: "Checkov",    short: "Ck"  },
+  trivy:       { label: "Trivy",      short: "Tv"  },
+  gitleaks:    { label: "Gitleaks",   short: "GL"  },
   unknown:     { label: "Scanner",    short: "?"   },
 };
 
@@ -587,6 +590,9 @@ const TOOL_BADGE_COLOR = {
   zap:         "#ff7b72",
   "pip-audit": "#58a6ff",
   odc:         "#e3693e",
+  checkov:     "#7c5cbf",
+  trivy:       "#1b9cf2",
+  gitleaks:    "#e05c3a",
   unknown:     "#8b949e",
 };
 
@@ -811,6 +817,18 @@ const STACK_ICON_META = {
     label: "Dep Check", tone: "sca",
     icon: _SI(`<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M8 1.5L2.5 4.5V10C2.5 13 5.5 15 8 15 10.5 15 13.5 13 13.5 10V4.5L8 1.5Z"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M5.5 8.5l2 2 3.5-3.5"/>`)
   },
+  checkov: {
+    label: "Checkov", tone: "infra",
+    icon: _SI(`<rect x="2" y="2" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="2" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="2" y="9" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M9.5 11.5l1.5 1.5 3-3"/>`)
+  },
+  trivy: {
+    label: "Trivy", tone: "infra",
+    icon: _SI(`<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M8 1.5L2 5V11L8 14.5L14 11V5L8 1.5Z"/><path fill="currentColor" d="M8 5.5A2.5 2.5 0 118 10.5 2.5 2.5 0 018 5.5Z"/>`)
+  },
+  gitleaks: {
+    label: "Gitleaks", tone: "infra",
+    icon: _SI(`<circle cx="8" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M8 9v5M6 12h4"/><circle cx="8" cy="6" r="1" fill="currentColor"/>`)
+  },
 };
 
 function addStackItem(items, key, source = "scan") {
@@ -829,6 +847,9 @@ function normalizeToolKey(value) {
   if (text.includes("sonar")) return "sonarqube";
   if (text.includes("pip")) return "pip-audit";
   if (text.includes("dependency") || text.includes("odc")) return "odc";
+  if (text.includes("checkov")) return "checkov";
+  if (text.includes("trivy")) return "trivy";
+  if (text.includes("gitleaks")) return "gitleaks";
   return "";
 }
 
@@ -849,6 +870,11 @@ function buildScanStackItems() {
   }
   if (profile?.dast_enabled) addStackItem(items, normalizeToolKey(profile.dast_tool || "zap"), "dast");
   if (profile?.quality_enabled) addStackItem(items, normalizeToolKey(profile.quality_tool), "quality");
+  if (profile?.infra_enabled && profile?.infra_tools) {
+    (profile.infra_tools).split(",").map((t) => t.trim()).filter(Boolean).forEach((t) => {
+      addStackItem(items, normalizeToolKey(t), "infra");
+    });
+  }
 
   addStackItem(items, normalizeToolKey(selectedProject.last_scan_tool), "scan");
   currentFindings.forEach((finding) => {

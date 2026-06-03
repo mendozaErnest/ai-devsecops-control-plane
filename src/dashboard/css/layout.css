@@ -456,6 +456,7 @@ tr:hover .col-action { background: var(--bg-hover); }
 .scan-stack-chip.dast       { border-left-color: #ff7b72; color: #ff7b72; }
 .scan-stack-chip.quality    { border-left-color: #3fb950; color: #3fb950; }
 .scan-stack-chip.sca        { border-left-color: #e3905a; color: #e3905a; }
+.scan-stack-chip.infra      { border-left-color: #7c5cbf; color: #7c5cbf; }
 
 /* ── Generic button ── */
 .btn {
@@ -712,6 +713,9 @@ tr:hover .col-action { background: var(--bg-hover); }
 .scan-chip.zap         { border-left-color: #ff7b72; color: #ff7b72; }
 .scan-chip.pip-audit   { border-left-color: #58a6ff; color: #58a6ff; }
 .scan-chip.odc         { border-left-color: #e3693e; color: #e3693e; }
+.scan-chip.checkov     { border-left-color: #7c5cbf; color: #7c5cbf; }
+.scan-chip.trivy       { border-left-color: #1b9cf2; color: #1b9cf2; }
+.scan-chip.gitleaks    { border-left-color: #e05c3a; color: #e05c3a; }
 .scan-chip.unknown     { border-left-color: #8b949e; color: #8b949e; }
 
 /* per-tool active (on) */
@@ -724,4 +728,7 @@ tr:hover .col-action { background: var(--bg-hover); }
 .scan-chip.zap.on         { background: rgba(255,123,114,.13); border-color: #ff7b72; color: #ff7b72; box-shadow: 0 0 10px -2px rgba(255,123,114,.4); }
 .scan-chip.pip-audit.on   { background: rgba(88,166,255,.13);  border-color: #58a6ff; color: #58a6ff; box-shadow: 0 0 10px -2px rgba(88,166,255,.4); }
 .scan-chip.odc.on         { background: rgba(227,105,62,.13);  border-color: #e3693e; color: #e3693e; box-shadow: 0 0 10px -2px rgba(227,105,62,.4); }
+.scan-chip.checkov.on     { background: rgba(124,92,191,.13);  border-color: #7c5cbf; color: #7c5cbf; box-shadow: 0 0 10px -2px rgba(124,92,191,.4); }
+.scan-chip.trivy.on       { background: rgba(27,156,242,.13);  border-color: #1b9cf2; color: #1b9cf2; box-shadow: 0 0 10px -2px rgba(27,156,242,.4); }
+.scan-chip.gitleaks.on    { background: rgba(224,92,58,.13);   border-color: #e05c3a; color: #e05c3a; box-shadow: 0 0 10px -2px rgba(224,92,58,.4); }
 .scan-chip.unknown.on     { background: rgba(139,148,158,.13); border-color: #8b949e; color: #8b949e; box-shadow: 0 0 10px -2px rgba(139,148,158,.4); }

@@ -81,6 +81,11 @@ class ScanOrchestrator:
                     self._run_quality, profile, target_path, technology
                 )] = "quality"
 
+            if profile.infra_enabled and profile.infra_tools:
+                futures_map[executor.submit(
+                    self._run_infra, profile, target_path
+                )] = "infra"
+
             all_findings: list[Finding] = []
             for future in as_completed(futures_map):
                 runner_name = futures_map[future]
@@ -251,6 +256,56 @@ class ScanOrchestrator:
             all_findings.extend(findings)
         elif not error:
             notices.append(f"{quality_tool}: conectado, 0 hallazgos encontrados")
+
+    def _run_infra(
+        self,
+        profile: ScanProfile,
+        target_path: str,
+    ) -> tuple[list[Finding], list[str]]:
+        from src.scanners.checkov_adapter import CheckovAdapter
+        from src.scanners.trivy_adapter import TrivyAdapter
+        from src.scanners.gitleaks_adapter import GitleaksAdapter
+
+        infra_tools = [
+            t.strip().lower()
+            for t in (profile.infra_tools or "").split(",")
+            if t.strip()
+        ]
+
+        _adapter_map = {
+            "checkov": CheckovAdapter,
+            "trivy": TrivyAdapter,
+            "gitleaks": GitleaksAdapter,
+        }
+
+        all_findings: list[Finding] = []
+        tool_errors: list[str] = []
+        notices: list[str] = []
+
+        for tool_name in infra_tools:
+            adapter_cls = _adapter_map.get(tool_name)
+            if adapter_cls is None:
+                notices.append(f"{tool_name}: herramienta infra desconocida — saltado")
+                logger.warning("Unknown infra tool: %s", tool_name)
+                continue
+
+            adapter = adapter_cls()
+            findings = adapter.execute_scan(target_path)
+            error = getattr(adapter, "error", None)
+
+            if error:
+                logger.warning("Infra runner %s reported: %s", tool_name, error)
+                if not findings:
+                    tool_errors.append(error)
+            if findings:
+                all_findings.extend(findings)
+            elif not error:
+                notices.append(f"{tool_name}: conectado, 0 hallazgos encontrados")
+
+        if not all_findings and tool_errors:
+            raise RuntimeError("; ".join(tool_errors))
+
+        return all_findings, notices
 
     def _deduplicate(self, findings: list[Finding]) -> list[Finding]:
         seen: dict[str, Finding] = {}

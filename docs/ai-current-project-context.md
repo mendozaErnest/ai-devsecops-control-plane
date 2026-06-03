@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-06-02 (Phase 4 completa: DAST real ZAP + Agentic LangGraph + ML Risk Scoring (XGBoost, POST /api/ml/train, risk_score por finding, dashboard retrain button) — 150 tests)
+Ultima actualizacion: 2026-06-02 (Phase 4 Infraestructura: Checkov + Trivy + Gitleaks adapters + infra slot en ScanProfile + dashboard integration — 162 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -47,6 +47,7 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - Scanners SAST: Bandit + Semgrep (Python), Semgrep (Angular/Java).
 - Scanners SCA: pip-audit (Python), OWASP Dependency Check (Java).
 - Scanners Quality: Pylint (Python), ESLint (Angular/TypeScript), SonarQube Community REST.
+- Scanners Infra: Checkov (IaC: Dockerfile/K8s/Helm/Terraform), Trivy (filesystem CVE), Gitleaks (secret scanning). Todos degradan gracefully si el binario no está instalado.
 - Scanner DAST: OWASP ZAP (spider + active scan via REST, degrada con gracia si ZAP no responde).
 - Agentic DAST: LangGraph Explorer → Attacker → Verifier (loop iterativo); LLM backend Ollama local; degrada cuando LangGraph/Ollama no disponibles (endpoint 503 / agente skip LLM).
 - Orquestacion: ScanProfile + ScanOrchestrator con ThreadPoolExecutor.
@@ -55,7 +56,7 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
 - Observabilidad: Prometheus (/metrics via prometheus-fastapi-instrumentator), Grafana (provisioning automatico en infra/grafana/), metricas custom en src/metrics/security_metrics.py.
 - ML Risk Scoring: XGBoost + scikit-learn (src/ml/risk_scorer.py). score_finding(finding) → float [0.0–1.0] con fallback por severidad. train_model(findings) → XGBClassifier persistido con joblib. POST /api/ml/train entrena en todos los findings de la DB; 400 si < 10 findings. Dashboard: badge/progress bar de risk_score por finding, sort-by-risk, botón "🧠 Reentrenar modelo".
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (150 tests passing, 2 skipped cuando LangGraph/prometheus_fastapi_instrumentator no instalados).
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (162 tests passing, 2 skipped cuando LangGraph/prometheus_fastapi_instrumentator no instalados).
 
 Dependencias en code/requirements.txt:
 
@@ -99,6 +100,9 @@ src/scanners/pylint_adapter.py        ← Python Quality
 src/scanners/eslint_adapter.py        ← Angular/TypeScript Quality
 src/scanners/sonarqube_adapter.py     ← SonarQube Community Quality REST
 src/scanners/zap_adapter.py           ← OWASP ZAP DAST (spider + active scan, graceful degrade)
+src/scanners/checkov_adapter.py       ← Checkov IaC scanner (Dockerfile/K8s/Helm/Terraform)
+src/scanners/trivy_adapter.py         ← Trivy filesystem CVE scanner (no Docker daemon)
+src/scanners/gitleaks_adapter.py      ← Gitleaks secret scanner (source + git history optional)
 src/dast_agent/__init__.py            ← Exposición de runner + LANGGRAPH_AVAILABLE flag
 src/dast_agent/state.py               ← DastAgentState TypedDict para LangGraph
 src/dast_agent/tools.py               ← Wrappers REST ZAP: spider_crawl, active_scan, get_alerts, verify_alert
@@ -165,6 +169,8 @@ class ScanProfile(SQLModel, table=True):
     dast_tool: Optional[str]     # "zap" | "agent_loop" | None
     quality_enabled: bool = False
     quality_tool: Optional[str]  # "sonarqube" | "pylint" | "eslint" | None
+    infra_enabled: bool = False
+    infra_tools: Optional[str]   # "checkov,trivy,gitleaks" CSV
     created_at: datetime
 ```
 
@@ -246,6 +252,15 @@ get_scanner_adapter(technology) en src/scanners/escaneo.py:
 
 ScanOrchestrator._run_sast() instancia adapters directamente segun sast_tools. ✅
 No usa os.environ ni helpers externos — thread-safe por diseno.
+
+ScanOrchestrator._run_infra() ejecuta los tres adapters de seguridad de infraestructura: ✅
+
+- infra_tools=checkov → CheckovAdapter: `checkov -d <target> --compact -o json`
+- infra_tools=trivy   → TrivyAdapter: `trivy fs --format json <target>`
+- infra_tools=gitleaks → GitleaksAdapter: `gitleaks detect --source <target> --report-format json --no-git`
+- Soporta CSV multi-tool ("checkov,trivy,gitleaks"). Retorna (findings, notices).
+- Binarios externos (trivy, gitleaks) degradan a [] + WARNING si no están en PATH.
+- Checkov está en requirements.txt (pip install checkov).
 
 ScanOrchestrator._run_quality() ejecuta adapters reales segun ScanProfile:
 
@@ -395,7 +410,10 @@ tests/test_dast_orchestrator.py            (6 tests) ← Phase 4 DAST: plumbing 
 tests/test_dast_agent.py                   (9 passed + 1 skip) ← Phase 4 Agentic DAST: should_continue + verify_alert + endpoint 400/503/404
 tests/test_metrics.py                      (7 tests) ← Phase 4: Prometheus metrics integration
 tests/test_risk_scorer.py                  (5 tests) ← Phase 4 ML: fallback severidad, train_model, POST /api/ml/train 400, risk_score en GET /api/findings, degradación sin ML libs
-Total: 150 passed, 2 skipped  ← verificado tras Phase 4 completa (2026-06-02)
+tests/test_checkov_adapter.py              (4 tests) ← Phase 4 Infra: single-framework JSON, multi-framework, missing binary, empty stdout
+tests/test_trivy_adapter.py                (4 tests) ← Phase 4 Infra: vulnerabilities normalized, CVSS fallback, missing binary, empty stdout
+tests/test_gitleaks_adapter.py             (4 tests) ← Phase 4 Infra: leaks normalized, no leaks, missing binary, FileNotFoundError
+Total: 162 passed, 2 skipped  ← verificado tras Phase 4 Infra (2026-06-02)
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -421,7 +439,22 @@ Reglas permanentes:
 
 ---
 
+## Phase 4 — Infraestructura: Seguridad de Infraestructura ✅
+
+1. ✅ CheckovAdapter: `checkov -d <target> --compact -o json`; parsea single y multi-framework JSON; severity desde top-level o `check.severity`; degradación graceful. Instalación: `pip install checkov` (ya en requirements.txt).
+2. ✅ TrivyAdapter: `trivy fs --format json <target>`; parsea `Results[].Vulnerabilities[]`; severity desde `Severity` o CVSS V3Score fallback; descripción incluye versión fija. Binario externo — ver README.
+3. ✅ GitleaksAdapter: `gitleaks detect --source <target> --report-format json --report-path <tmp> --no-git --exit-code 0`; lee JSON del archivo temporal; severity HIGH para todos los secretos. Binario externo — ver README.
+4. ✅ ScanProfile: `infra_enabled: bool` + `infra_tools: Optional[str]` CSV; migración SQLite en `ensure_sqlite_schema()`.
+5. ✅ ScanOrchestrator: `_run_infra()` runner con `_adapter_map` dinámico; misma interfaz tuple `(findings, notices)` que `_run_quality()`; activo cuando `profile.infra_enabled=True`.
+6. ✅ Dashboard: slot "infra" en profile-builder-state.js; STACK_ICON_META + TOOL_BADGE_COLOR + TOOL_CHIP_META + normalizeToolKey + CSS tones para checkov/trivy/gitleaks.
+7. kube-bench (CIS K8s benchmark) — PENDIENTE; requiere cluster K8s activo.
+
+---
+
 ## Riesgos Conocidos
+
+16. Trivy y Gitleaks son binarios externos — si no están en PATH el adapter retorna [] con WARNING. No crash, pero el usuario debe instalarlos manualmente (ver README). Checkov sí está en requirements.txt como dependencia pip.
+17. kube-bench requiere un cluster K8s activo para ejecutar los benchmarks CIS; no es viable en scans locales/offline. Candidato para la siguiente iteración cuando exista entorno de testing con K8s.
 
 1. ✅ RESUELTO — DAST runner real: `_run_dast` instancia `ZapAdapter` cuando `profile.dast_enabled=True` y se pasa `dast_target_url` válida. Sin URL → salta gracefully (no error). ZAP no disponible → adapter degrada a `[]`.
 2. Validacion Angular/Java es heuristica (brace-counting), no parser real.
@@ -443,6 +476,11 @@ Reglas permanentes:
 ---
 
 ## Proximos Pasos Recomendados
+
+Infra Security (siguiente iteracion):
+1. kube-bench: CIS Kubernetes Benchmark — siguiente scanner infra candidato. Requiere cluster K8s activo; implementar como adapter con graceful degrade cuando `kubectl` o el binario kube-bench no están disponibles.
+2. Remediation prompts para findings Checkov/Trivy/Gitleaks: actualmente no hay prompts LLM para IaC — agregar `build_infra_prompt()` en remediator.py.
+3. Validar scan real con un proyecto que tenga Dockerfile o terraform/ para confirmar que Checkov encuentra hallazgos end-to-end.
 
 Inmediato (proxima sesion):
 1. ✅ sonar-scanner CLI instalado y primer análisis real ejecutado (125 issues).

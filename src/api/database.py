@@ -98,6 +98,10 @@ def ensure_sqlite_schema() -> None:
         with engine.begin() as connection:
             if "technologies" not in profile_columns:
                 connection.execute(text("ALTER TABLE scanprofile ADD COLUMN technologies TEXT"))
+            if "infra_enabled" not in profile_columns:
+                connection.execute(text("ALTER TABLE scanprofile ADD COLUMN infra_enabled INTEGER NOT NULL DEFAULT 0"))
+            if "infra_tools" not in profile_columns:
+                connection.execute(text("ALTER TABLE scanprofile ADD COLUMN infra_tools TEXT"))
 
     if "findings" in inspector.get_table_names():
         finding_columns = {col["name"] for col in inspector.get_columns("findings")}

@@ -48,6 +48,9 @@ This platform runs the LLM on your own hardware via Ollama. The network boundary
 | Quality — Angular | ESLint (local `node_modules/.bin/eslint` or `npx`) |
 | Quality — Any | SonarQube Community REST (Bearer token, issues import) |
 | DAST | OWASP ZAP (spider + active scan, graceful degrade when ZAP unreachable) |
+| Infra Security — IaC | Checkov (Dockerfile, K8s YAML, Helm, Terraform) — pip install |
+| Infra Security — CVE | Trivy filesystem scan (no Docker daemon required) — binary |
+| Infra Security — Secrets | Gitleaks detect (source scan, git history optional) — binary |
 | Scan profiles | `ScanProfile` + `ScanOrchestrator` (ThreadPoolExecutor) |
 | Finding lifecycle | open / fixed / regression / accepted\_risk / false\_positive + audit trail |
 | SLA tracking | CRITICAL=3d · HIGH=7d · MEDIUM=30d · LOW=90d; API filter `?sla_status=` |
@@ -77,6 +80,9 @@ The platform uses a **profile-driven, multi-engine approach** for maximum covera
 | SonarQube Community REST | Any | Quality |
 | OWASP ZAP | Any HTTP/HTTPS target | DAST |
 | OWASP ZAP + LangGraph | Any HTTP/HTTPS target | Agentic DAST (Explorer → Attacker → Verifier loop) |
+| Checkov | IaC files (Dockerfile, K8s YAML, Helm, Terraform) | Infra Security |
+| Trivy | Any directory (filesystem scan, no Docker daemon) | Infra Security |
+| Gitleaks | Any directory or git repository | Infra Security — Secret scanning |
 
 ### Scan Profiles
 
@@ -196,6 +202,73 @@ Returns HTTP 400 if fewer than 10 findings exist in the database. The model is p
 ### Dashboard
 
 Each finding row shows a colour-coded progress bar (red ≥ 70 %, amber ≥ 40 %, blue otherwise) alongside the severity badge. The findings toolbar exposes a **Sort by risk** toggle and a **🧠 Reentrenar modelo** button that calls `POST /api/ml/train` and displays the returned metrics as feedback.
+
+---
+
+## Infrastructure Security Scanners
+
+Three adapters cover IaC, container/filesystem CVEs, and secret leaks. Each degrades gracefully when its binary is absent: it logs a warning and returns an empty finding list without crashing the scan.
+
+### Checkov (IaC)
+
+Scans Dockerfile, Kubernetes YAML, Helm charts, and Terraform. Installed via pip — already in `code/requirements.txt`.
+
+```bash
+pip install checkov
+```
+
+Findings carry the Checkov check ID as `rule_id` (e.g. `CKV_DOCKER_2`, `CKV_K8S_14`) and the severity Checkov assigns (HIGH/MEDIUM/LOW/CRITICAL).
+
+### Trivy (filesystem / CVE)
+
+Scans the project directory for known CVEs in Python, Node, Go, and other language ecosystems using a local vulnerability DB. **No Docker daemon required** — `trivy fs` operates entirely on the filesystem.
+
+```bash
+# Debian / Ubuntu
+sudo apt install trivy
+
+# macOS
+brew install aquasecurity/trivy/trivy
+
+# Direct binary (Linux x86_64)
+curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+```
+
+Findings use the CVE ID as `rule_id`. The description includes the affected package version and the suggested fixed version.
+
+### Gitleaks (secrets)
+
+Detects hardcoded secrets, API keys, and credentials in source files. Uses `gitleaks detect --no-git` for a pure filesystem scan; omit `--no-git` (or configure the adapter) if you want full git-history scanning.
+
+```bash
+# macOS
+brew install gitleaks
+
+# Debian / Ubuntu (from GitHub releases)
+GITLEAKS_VERSION=8.18.4
+curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz | tar -xz -C /usr/local/bin gitleaks
+```
+
+All secrets findings default to severity **HIGH** because exposed credentials are always critical-path risks.
+
+### kube-bench
+
+kube-bench (CIS Kubernetes benchmark) is planned as the next infra scanner. It is not included in this release because it requires a running Kubernetes cluster to operate, making it a poor fit for offline/local scans.
+
+### Activating infra scanners via ScanProfile
+
+Enable infra tools in the dashboard's profile builder (new **Infrastructure Security** slot) or via the API:
+
+```json
+POST /api/profiles
+{
+  "name": "Full Infra Scan",
+  "infra_enabled": true,
+  "infra_tools": "checkov,trivy,gitleaks",
+  "sast_enabled": true,
+  "sast_tools": "semgrep"
+}
+```
 
 ---
 
