@@ -12,7 +12,7 @@ import {
 import {
   getProjects, getProjectFindings, scanProject, getAiStatus, generateRemediation, getReport,
   runAgenticDastScan, getAgenticDastStatus,
-  getProfiles,
+  getProfiles, trainRiskModel,
 } from "/static/js/api.js";
 import {
   showRemediationModal, openReasonModal, openAuditModal, postLifecycle,
@@ -69,6 +69,7 @@ let scanProfilesLoaded = false;
 
 let activeFilter = "all";
 let activeScannerFilter = "all";
+let sortByRisk = false;
 let currentPage  = 1;
 const PAGE_SIZE  = 20;
 let filteredFindings = [];
@@ -84,6 +85,9 @@ const TOOL_CHIP_META = {
   zap:         { label: "OWASP ZAP",  short: "ZAP" },
   "pip-audit": { label: "pip-audit",  short: "pip" },
   odc:         { label: "ODC",        short: "DC"  },
+  checkov:     { label: "Checkov",    short: "Ck"  },
+  trivy:       { label: "Trivy",      short: "Tv"  },
+  gitleaks:    { label: "Gitleaks",   short: "GL"  },
   unknown:     { label: "Scanner",    short: "?"   },
 };
 
@@ -282,6 +286,36 @@ function buildSlaBadge(record) {
   return span;
 }
 
+function buildRiskBadge(record) {
+  const score = record.risk_score;
+  if (score == null) return document.createElement("span");
+
+  const pct = Math.round(score * 100);
+  let color;
+  if (pct >= 70) color = "#ef4444";
+  else if (pct >= 40) color = "#d29922";
+  else color = "#3b82f6";
+
+  const wrap = document.createElement("span");
+  wrap.style.cssText = "display:inline-flex;flex-direction:column;gap:2px;min-width:52px;";
+  wrap.title = `${t("lbl-risk-score")}: ${pct}%`;
+
+  const label = document.createElement("span");
+  label.style.cssText = `font-size:.62rem;font-weight:700;color:${color};line-height:1;`;
+  label.textContent = `${pct}%`;
+
+  const track = document.createElement("span");
+  track.style.cssText =
+    "display:block;height:3px;border-radius:2px;background:var(--surface-3,#21262d);overflow:hidden;";
+  const fill = document.createElement("span");
+  fill.style.cssText =
+    `display:block;height:100%;width:${pct}%;background:${color};border-radius:2px;`;
+  track.appendChild(fill);
+
+  wrap.append(label, track);
+  return wrap;
+}
+
 function buildActionButtons(record) {
   const wrap = document.createElement("span");
   wrap.style.cssText = "display:inline-flex;align-items:center;gap:6px;flex-wrap:nowrap;";
@@ -352,11 +386,15 @@ function getFilteredSorted(records, filter) {
   if (filter === "critical") result = result.filter((r) => String(r.severity || "").toUpperCase() === "CRITICAL");
   else if (filter === "high") result = result.filter((r) => String(r.severity || "").toUpperCase() === "HIGH");
   else if (filter === "breach") result = result.filter((r) => r.sla_deadline && new Date(r.sla_deadline) < new Date());
-  const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
-  result.sort((a, b) =>
-    (order[String(a.severity || "").toUpperCase()] ?? 4) -
-    (order[String(b.severity || "").toUpperCase()] ?? 4)
-  );
+  if (sortByRisk) {
+    result.sort((a, b) => (b.risk_score ?? 0) - (a.risk_score ?? 0));
+  } else {
+    const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+    result.sort((a, b) =>
+      (order[String(a.severity || "").toUpperCase()] ?? 4) -
+      (order[String(b.severity || "").toUpperCase()] ?? 4)
+    );
+  }
   return result;
 }
 
@@ -463,9 +501,10 @@ function renderPage() {
     `;
 
     const sla    = buildSlaBadge(record);
+    const risk   = buildRiskBadge(record);
     const action = buildActionButtons(record);
 
-    row.append(mark, body, sla, action);
+    row.append(mark, body, sla, risk, action);
     tableBody.appendChild(row);
   });
 
@@ -551,6 +590,9 @@ const TOOL_BADGE_COLOR = {
   zap:         "#ff7b72",
   "pip-audit": "#58a6ff",
   odc:         "#e3693e",
+  checkov:     "#7c5cbf",
+  trivy:       "#1b9cf2",
+  gitleaks:    "#e05c3a",
   unknown:     "#8b949e",
 };
 
@@ -656,6 +698,7 @@ export async function loadFindings() {
     updateScanStackIcons();
     renderScannerFilterIcons();
     renderRows(records);
+    renderMlControls();
     if (tableStatus) {
       tableStatus.textContent = `${records.length} ${t("findings-loaded")}`;
     }
@@ -774,6 +817,18 @@ const STACK_ICON_META = {
     label: "Dep Check", tone: "sca",
     icon: _SI(`<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M8 1.5L2.5 4.5V10C2.5 13 5.5 15 8 15 10.5 15 13.5 13 13.5 10V4.5L8 1.5Z"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M5.5 8.5l2 2 3.5-3.5"/>`)
   },
+  checkov: {
+    label: "Checkov", tone: "infra",
+    icon: _SI(`<rect x="2" y="2" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="2" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="2" y="9" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M9.5 11.5l1.5 1.5 3-3"/>`)
+  },
+  trivy: {
+    label: "Trivy", tone: "infra",
+    icon: _SI(`<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M8 1.5L2 5V11L8 14.5L14 11V5L8 1.5Z"/><path fill="currentColor" d="M8 5.5A2.5 2.5 0 118 10.5 2.5 2.5 0 018 5.5Z"/>`)
+  },
+  gitleaks: {
+    label: "Gitleaks", tone: "infra",
+    icon: _SI(`<circle cx="8" cy="6" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M8 9v5M6 12h4"/><circle cx="8" cy="6" r="1" fill="currentColor"/>`)
+  },
 };
 
 function addStackItem(items, key, source = "scan") {
@@ -792,6 +847,9 @@ function normalizeToolKey(value) {
   if (text.includes("sonar")) return "sonarqube";
   if (text.includes("pip")) return "pip-audit";
   if (text.includes("dependency") || text.includes("odc")) return "odc";
+  if (text.includes("checkov")) return "checkov";
+  if (text.includes("trivy")) return "trivy";
+  if (text.includes("gitleaks")) return "gitleaks";
   return "";
 }
 
@@ -812,6 +870,11 @@ function buildScanStackItems() {
   }
   if (profile?.dast_enabled) addStackItem(items, normalizeToolKey(profile.dast_tool || "zap"), "dast");
   if (profile?.quality_enabled) addStackItem(items, normalizeToolKey(profile.quality_tool), "quality");
+  if (profile?.infra_enabled && profile?.infra_tools) {
+    (profile.infra_tools).split(",").map((t) => t.trim()).filter(Boolean).forEach((t) => {
+      addStackItem(items, normalizeToolKey(t), "infra");
+    });
+  }
 
   addStackItem(items, normalizeToolKey(selectedProject.last_scan_tool), "scan");
   currentFindings.forEach((finding) => {
@@ -1356,6 +1419,70 @@ export async function exportToPDF() {
     }
     if (labelEl) labelEl.textContent = t("btn-export-pdf") || "Exportar como PDF";
   }
+}
+
+// ── ML risk controls ──────────────────────────────────────────────────────────
+async function retrainModel() {
+  const btn = document.getElementById("ml-retrain-btn");
+  const orig = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Entrenando…"; }
+  try {
+    const m = await trainRiskModel();
+    showFeedback(
+      `${t("retrain-success")}: P=${(m.precision * 100).toFixed(0)}% R=${(m.recall * 100).toFixed(0)}% AUC=${m.roc_auc.toFixed(2)} (n=${m.n_samples})`,
+      "success"
+    );
+    await loadFindings();
+  } catch (err) {
+    const detail = err?.detail || err?.message || "error desconocido";
+    showFeedback(`${t("retrain-error")}: ${detail}`, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
+}
+
+function renderMlControls() {
+  const existingWrap = document.getElementById("ml-controls-wrap");
+  if (existingWrap) existingWrap.remove();
+
+  if (!refreshButton?.parentElement) return;
+
+  const wrap = document.createElement("div");
+  wrap.id = "ml-controls-wrap";
+  wrap.style.cssText = "display:inline-flex;align-items:center;gap:8px;margin-left:8px;";
+
+  const btnBase =
+    "display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border-2);" +
+    "cursor:pointer;border-radius:8px;padding:5px 9px;font-size:11.5px;font-weight:500;" +
+    "transition:background .12s,color .12s,border-color .12s;background:var(--surface-2);";
+
+  const sortBtn = document.createElement("button");
+  sortBtn.type = "button";
+  sortBtn.id = "ml-sort-btn";
+  sortBtn.style.cssText = btnBase +
+    (sortByRisk
+      ? "color:var(--mint,#9effe0);border-color:rgba(158,255,224,.28);"
+      : "color:var(--t-dim);");
+  sortBtn.title = sortByRisk ? t("sort-severity") : t("sort-risk");
+  sortBtn.textContent = sortByRisk ? t("sort-severity") : t("sort-risk");
+  sortBtn.addEventListener("click", () => {
+    sortByRisk = !sortByRisk;
+    currentPage = 1;
+    filteredFindings = getFilteredSorted(currentFindings, activeFilter);
+    renderPage();
+    renderMlControls();
+  });
+  wrap.appendChild(sortBtn);
+
+  const retrainBtn = document.createElement("button");
+  retrainBtn.type = "button";
+  retrainBtn.id = "ml-retrain-btn";
+  retrainBtn.style.cssText = btnBase + "color:var(--t-dim);";
+  retrainBtn.textContent = t("btn-retrain-model");
+  retrainBtn.addEventListener("click", retrainModel);
+  wrap.appendChild(retrainBtn);
+
+  refreshButton.after(wrap);
 }
 
 // ── Event wiring (called from main.js) ───────────────────────────────────────

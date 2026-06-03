@@ -170,6 +170,13 @@ export async function getAgenticDastStatus(scanId) {
   return res.json();
 }
 
+export async function trainRiskModel() {
+  const res = await fetch("/api/ml/train", { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(), { detail: data.detail, status: res.status, data });
+  return data;
+}
+
 export async function triggerScan(projectId, profileId = null) {
   const body = { project_id: projectId };
   if (profileId !== null) body.profile_id = profileId;

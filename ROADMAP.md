@@ -366,9 +366,27 @@
 - [x] `code/requirements.txt`: `langgraph>=0.2.0`, `langchain-ollama>=0.1.0`, `langchain-core>=0.2.0`.
 - [x] `tests/test_dast_agent.py` (9 passed + 1 skip): `should_continue` con max iterations / sin rutas / on error / con rutas → loop; `verify_alert` XSS confirmado cuando payload reflejado / rechazado cuando ausente; `run_dast_agent` con ZAP mockeado retorna estructura correcta (skip si langgraph no instalado); endpoint 400 URL inválida, 503 cuando `LANGGRAPH_AVAILABLE=False`, 404 status desconocido.
 
-### Phase 4 — ML Risk Scoring (feat/ml-risk-scoring, PENDIENTE)
-- [ ] `src/ml/risk_scorer.py`: XGBoost + scikit-learn model. `train_model(findings)` → XGBClassifier persisted with joblib. `score_finding(finding)` → float [0.0–1.0]; severity fallback when no model.
-- [ ] `GET /api/findings` + `GET /api/projects/{id}/findings`: add `risk_score: float` per finding.
-- [ ] `POST /api/ml/train`: train on all DB findings, return `{precision, recall, roc_auc, n_samples}`; 400 if < 10 findings.
-- [ ] Dashboard: risk_score progress bar/badge alongside severity; sort by risk_score; "🧠 Reentrenar modelo" button.
-- [ ] `code/requirements.txt`: add `xgboost>=2.0.0`, `scikit-learn>=1.4.0`, `joblib>=1.3.0`.
+### Phase 4 — ML Risk Scoring (feat/ml-risk-scoring, 2026-06-02) ✅
+- [x] `src/ml/risk_scorer.py`: XGBoost + scikit-learn model. `train_model(findings)` → XGBClassifier persisted with joblib. `score_finding(finding)` → float [0.0–1.0]; severity fallback when no model.
+- [x] `GET /api/findings` + `GET /api/projects/{id}/findings`: add `risk_score: float` per finding.
+- [x] `POST /api/ml/train`: train on all DB findings, return `{precision, recall, roc_auc, n_samples}`; 400 if < 10 findings.
+- [x] Dashboard: risk_score progress bar/badge alongside severity; sort by risk_score; "🧠 Reentrenar modelo" button.
+- [x] `code/requirements.txt`: add `xgboost>=2.0.0`, `scikit-learn>=1.4.0`, `joblib>=1.3.0`.
+
+### Phase 4 — Infraestructura: Seguridad de Infraestructura (2026-06-02) ✅
+- [x] `src/scanners/checkov_adapter.py`: Checkov IaC scanner — `checkov -d <target> --compact -o json`; parsea `results.failed_checks` (single-framework dict) y lista multi-framework; severity desde campo top-level o `check.severity`; graceful degrade si binario ausente (pip install checkov).
+- [x] `src/scanners/trivy_adapter.py`: Trivy filesystem scanner — `trivy fs --format json <target>`; parsea `Results[].Vulnerabilities[]`; severity desde campo `Severity` o fallback CVSS V3Score; descripción incluye versión fija sugerida; graceful degrade si binario ausente (binario externo).
+- [x] `src/scanners/gitleaks_adapter.py`: Gitleaks secret scanner — `gitleaks detect --source <target> --report-format json --report-path <tmp> --no-git --exit-code 0`; parsea JSON del archivo de reporte temporal; severity HIGH por defecto para secretos; graceful degrade si binario ausente (binario externo).
+- [x] `src/api/models.py` `ScanProfile`: campos `infra_enabled: bool = False` y `infra_tools: Optional[str] = None` (CSV "checkov,trivy,gitleaks").
+- [x] `src/api/database.py` `ensure_sqlite_schema()`: migración SQLite para `infra_enabled` y `infra_tools` en tabla `scanprofile`.
+- [x] `src/scanners/orchestrator.py` `ScanOrchestrator._run_infra()`: runner análogo a `_run_quality()`; soporta CSV de herramientas infra; `_adapter_map` despacha a los tres adapters; retorna `(findings, notices)` tuple; RuntimeError solo si TODAS las herramientas fallan y 0 findings.
+- [x] `src/scanners/orchestrator.py` `run()`: activa `_run_infra` cuando `profile.infra_enabled=True`; las notices fluyen via el mismo path tuple existente.
+- [x] `src/dashboard/js/profile-builder-state.js`: slot "infra" añadido a `SCAN_SLOT_ORDER`; tres `SCANNER_ITEMS` nuevos (checkov/trivy/gitleaks, slot="infra", persisted=true); `COMPATIBILITY_MATRIX` con tecnologías para los tres; `createEmptyProfileBuilderState` y `cloneProfileBuilderState` inicializan `infra: []`; `toScanProfilePayload()` serializa `infra_enabled` + `infra_tools`; `profileScanners()` reconstruye infra desde `profile.infra_tools`.
+- [x] `src/dashboard/js/dashboard.js`: `TOOL_CHIP_META` con checkov/trivy/gitleaks; `TOOL_BADGE_COLOR` con colores; `STACK_ICON_META` con SVG icons (tono "infra"); `normalizeToolKey()` reconoce los tres nuevos; `buildScanStackItems()` itera `infra_tools` CSV del perfil.
+- [x] `src/dashboard/css/layout.css`: `.scan-stack-chip.infra` y `.scan-chip.checkov/.trivy/.gitleaks` con colores y estados `.on`.
+- [x] `code/requirements.txt`: añadido `checkov>=3.0.0` (pip). Trivy y Gitleaks son binarios externos — ver README para instalación.
+- [x] `tests/test_checkov_adapter.py` (4 tests): single-framework JSON, multi-framework JSON, missing binary graceful, empty stdout graceful.
+- [x] `tests/test_trivy_adapter.py` (4 tests): vulnerabilities normalized, severity from CVSS fallback, missing binary, empty stdout.
+- [x] `tests/test_gitleaks_adapter.py` (4 tests): leaks normalized, no leaks returns empty, missing binary graceful, FileNotFoundError graceful.
+- [ ] kube-bench (CIS Kubernetes benchmark) — pendiente; requiere cluster K8s activo, fuera de alcance para scans locales/offline.
+- [x] 162 tests passing (12 nuevos) — sin regresiones.

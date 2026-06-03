@@ -48,11 +48,15 @@ This platform runs the LLM on your own hardware via Ollama. The network boundary
 | Quality — Angular | ESLint (local `node_modules/.bin/eslint` or `npx`) |
 | Quality — Any | SonarQube Community REST (Bearer token, issues import) |
 | DAST | OWASP ZAP (spider + active scan, graceful degrade when ZAP unreachable) |
+| Infra Security — IaC | Checkov (Dockerfile, K8s YAML, Helm, Terraform) — pip install |
+| Infra Security — CVE | Trivy filesystem scan (no Docker daemon required) — binary |
+| Infra Security — Secrets | Gitleaks detect (source scan, git history optional) — binary |
 | Scan profiles | `ScanProfile` + `ScanOrchestrator` (ThreadPoolExecutor) |
 | Finding lifecycle | open / fixed / regression / accepted\_risk / false\_positive + audit trail |
 | SLA tracking | CRITICAL=3d · HIGH=7d · MEDIUM=30d · LOW=90d; API filter `?sla_status=` |
 | Local LLM | Ollama → `qwen2.5-coder:14b` (configurable via `OLLAMA_MODEL`) |
-| Agentic DAST | LangGraph StateGraph roadmap: Explorer Agent + Attacker Agent + Verifier Agent |
+| Agentic DAST | LangGraph StateGraph: Explorer Agent + Attacker Agent + Verifier Agent |
+| ML Risk Scoring | XGBoost binary classifier (`src/ml/risk_scorer.py`) · `risk_score` [0–1] per finding · `POST /api/ml/train` · severity fallback when untrained |
 | GitHub Integration | GitHub App (JWT RS256 + installation token) + PR webhook + Check Run |
 | CI/CD | GitHub Actions workflow (Bandit + pip-audit + Semgrep on every PR) |
 | Frontend | Modular ES6 JS (`api.js`, `modal.js`, `diff.js`, `dashboard.js`) + Chart.js |
@@ -76,6 +80,9 @@ The platform uses a **profile-driven, multi-engine approach** for maximum covera
 | SonarQube Community REST | Any | Quality |
 | OWASP ZAP | Any HTTP/HTTPS target | DAST |
 | OWASP ZAP + LangGraph | Any HTTP/HTTPS target | Agentic DAST (Explorer → Attacker → Verifier loop) |
+| Checkov | IaC files (Dockerfile, K8s YAML, Helm, Terraform) | Infra Security |
+| Trivy | Any directory (filesystem scan, no Docker daemon) | Infra Security |
+| Gitleaks | Any directory or git repository | Infra Security — Secret scanning |
 
 ### Scan Profiles
 
@@ -171,6 +178,97 @@ GET /api/dast/agent/scan/{scan_id}/status
 ### Dashboard integration
 
 The profile builder ships a scanner item **"OWASP ZAP + LangGraph (Agentic)"** that maps to `dast_tool="agent_loop"`. When the active profile uses this tool, `runScan()` first triggers the agentic endpoint and polls `/status` (Exploring → Attacking → Verifying → Done) before running the standard SAST/Quality scan.
+
+---
+
+## ML Risk Scoring
+
+Each finding returned by the API includes a `risk_score` field (float `[0.0 – 1.0]`) computed by an XGBoost binary classifier trained on the finding's feature vector: severity, tool, regression count, age in days, days to SLA deadline, and lifecycle status.
+
+### Training
+
+```json
+POST /api/ml/train
+→ { "precision": 0.87, "recall": 0.82, "roc_auc": 0.91, "n_samples": 142 }
+```
+
+Returns HTTP 400 if fewer than 10 findings exist in the database. The model is persisted to `models/risk_model.joblib` (configurable via `RISK_MODEL_PATH` env var).
+
+### Graceful degradation
+
+- **Model not trained yet** → `score_finding()` returns a deterministic severity-based fallback (CRITICAL=0.9, HIGH=0.7, MEDIUM=0.4, LOW=0.2).
+- **xgboost / scikit-learn absent** → same fallback, no error; the module's defensive `try/except` import keeps the API running without ML dependencies.
+
+### Dashboard
+
+Each finding row shows a colour-coded progress bar (red ≥ 70 %, amber ≥ 40 %, blue otherwise) alongside the severity badge. The findings toolbar exposes a **Sort by risk** toggle and a **🧠 Reentrenar modelo** button that calls `POST /api/ml/train` and displays the returned metrics as feedback.
+
+---
+
+## Infrastructure Security Scanners
+
+Three adapters cover IaC, container/filesystem CVEs, and secret leaks. Each degrades gracefully when its binary is absent: it logs a warning and returns an empty finding list without crashing the scan.
+
+### Checkov (IaC)
+
+Scans Dockerfile, Kubernetes YAML, Helm charts, and Terraform. Installed via pip — already in `code/requirements.txt`.
+
+```bash
+pip install checkov
+```
+
+Findings carry the Checkov check ID as `rule_id` (e.g. `CKV_DOCKER_2`, `CKV_K8S_14`) and the severity Checkov assigns (HIGH/MEDIUM/LOW/CRITICAL).
+
+### Trivy (filesystem / CVE)
+
+Scans the project directory for known CVEs in Python, Node, Go, and other language ecosystems using a local vulnerability DB. **No Docker daemon required** — `trivy fs` operates entirely on the filesystem.
+
+```bash
+# Debian / Ubuntu
+sudo apt install trivy
+
+# macOS
+brew install aquasecurity/trivy/trivy
+
+# Direct binary (Linux x86_64)
+curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+```
+
+Findings use the CVE ID as `rule_id`. The description includes the affected package version and the suggested fixed version.
+
+### Gitleaks (secrets)
+
+Detects hardcoded secrets, API keys, and credentials in source files. Uses `gitleaks detect --no-git` for a pure filesystem scan; omit `--no-git` (or configure the adapter) if you want full git-history scanning.
+
+```bash
+# macOS
+brew install gitleaks
+
+# Debian / Ubuntu (from GitHub releases)
+GITLEAKS_VERSION=8.18.4
+curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz | tar -xz -C /usr/local/bin gitleaks
+```
+
+All secrets findings default to severity **HIGH** because exposed credentials are always critical-path risks.
+
+### kube-bench
+
+kube-bench (CIS Kubernetes benchmark) is planned as the next infra scanner. It is not included in this release because it requires a running Kubernetes cluster to operate, making it a poor fit for offline/local scans.
+
+### Activating infra scanners via ScanProfile
+
+Enable infra tools in the dashboard's profile builder (new **Infrastructure Security** slot) or via the API:
+
+```json
+POST /api/profiles
+{
+  "name": "Full Infra Scan",
+  "infra_enabled": true,
+  "infra_tools": "checkov,trivy,gitleaks",
+  "sast_enabled": true,
+  "sast_tools": "semgrep"
+}
+```
 
 ---
 
@@ -356,16 +454,17 @@ See [ROADMAP.md](ROADMAP.md) for the full sprint plan with implementation detail
 | Diff viewer | LCS diff + GitHub unified diff · side-by-side Antes/Después · scroll sync |
 | Remediation cache | Lightweight cache check — no re-read of source file; Ollama called once per finding |
 
-### Phase 4 — Infrastructure & DAST 🔜
+### Phase 4 — Infrastructure & DAST ✅
 
 | Surface | Tool |
 |---|---|
-| DAST | OWASP ZAP adapter (real implementation pending) |
+| DAST | OWASP ZAP (spider + active scan, graceful degrade) |
 | Agentic DAST | LangGraph StateGraph: Explorer Agent → Attacker Agent → Verifier Agent |
-| Secret scanning | gitleaks |
-| Docker + K8s YAML | Checkov |
-| Container images | Trivy |
-| K8s cluster | kube-bench |
+| Observability | Prometheus metrics + Grafana dashboard (auto-provisioned) |
+| ML Risk Scoring | XGBoost per-finding risk score · `POST /api/ml/train` · dashboard retrain button |
+| Secret scanning | gitleaks (planned) |
+| Docker + K8s YAML | Checkov (planned) |
+| Container images | Trivy (planned) |
 
 ---
 
@@ -373,4 +472,4 @@ See [ROADMAP.md](ROADMAP.md) for the full sprint plan with implementation detail
 
 > "Working in the banking sector I was exposed to thousands of vulnerabilities managed through industrial tools (Fortify, SonarQube, Veracode). Outside of work I built the platform that automates that same cycle with local AI — because I understood the problem from the inside. The LLM runs on your infrastructure; code never crosses your network boundary."
 
-Relevant keywords: `DevSecOps` · `AppSec` · `SAST` · `SCA` · `DAST` · `AI Remediation` · `Local LLM Inference` · `FastAPI` · `Kubernetes` · `OpenShift` · `Helm` · `Bandit` · `Semgrep` · `OWASP ZAP` · `Ollama` · `LangGraph` · `Vulnerability Management` · `Security Automation` · `GitHub App`
+Relevant keywords: `DevSecOps` · `AppSec` · `SAST` · `SCA` · `DAST` · `AI Remediation` · `Local LLM Inference` · `ML Risk Scoring` · `XGBoost` · `FastAPI` · `Kubernetes` · `OpenShift` · `Helm` · `Bandit` · `Semgrep` · `OWASP ZAP` · `Ollama` · `LangGraph` · `Vulnerability Management` · `Security Automation` · `GitHub App`

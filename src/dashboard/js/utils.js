@@ -68,6 +68,12 @@ export const i18n = {
     "report-status-lbl":  "Por Estado",
     "report-rules-lbl":   "Top Reglas",
     "btn-export-pdf":     "Exportar como PDF",
+    "btn-retrain-model":  "🧠 Reentrenar modelo",
+    "lbl-risk-score":     "Riesgo ML",
+    "sort-risk":          "Ordenar por riesgo",
+    "sort-severity":      "Ordenar por severidad",
+    "retrain-success":    "Modelo entrenado",
+    "retrain-error":      "Error al entrenar modelo",
   },
   en: {
     "new-project":        "New Project",
@@ -135,6 +141,12 @@ export const i18n = {
     "report-status-lbl":  "By Status",
     "report-rules-lbl":   "Top Rules",
     "btn-export-pdf":     "Export as PDF",
+    "btn-retrain-model":  "🧠 Retrain model",
+    "lbl-risk-score":     "ML Risk",
+    "sort-risk":          "Sort by risk",
+    "sort-severity":      "Sort by severity",
+    "retrain-success":    "Model trained",
+    "retrain-error":      "Model training failed",
   },
 };
 

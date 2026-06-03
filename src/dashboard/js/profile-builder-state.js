@@ -3,7 +3,7 @@
 
 export const PROFILE_BUILDER_STORAGE_KEY = "ai-devsecops.profileBuilder.session";
 
-export const SCAN_SLOT_ORDER = ["sast", "dast", "sca", "quality"];
+export const SCAN_SLOT_ORDER = ["sast", "dast", "sca", "quality", "infra"];
 
 export const TECHNOLOGY_ITEMS = [
   {
@@ -126,6 +126,24 @@ export const SCANNER_ITEMS = [
     slot: "quality",
     persisted: true,
   },
+  {
+    id: "checkov",
+    label: "Checkov (IaC)",
+    slot: "infra",
+    persisted: true,
+  },
+  {
+    id: "trivy",
+    label: "Trivy (filesystem)",
+    slot: "infra",
+    persisted: true,
+  },
+  {
+    id: "gitleaks",
+    label: "Gitleaks (secrets)",
+    slot: "infra",
+    persisted: true,
+  },
 ];
 
 export const COMPATIBILITY_MATRIX = {
@@ -167,6 +185,18 @@ export const COMPATIBILITY_MATRIX = {
     technologies: ["python", "django", "flask", "angular", "typescript", "java", "java-spring"],
     message: "SonarQube esta integrado para Python, TypeScript/Angular y Java.",
   },
+  checkov: {
+    technologies: ["python", "django", "flask", "angular", "typescript", "java", "java-spring", "react"],
+    message: "Checkov analiza IaC: Dockerfile, Kubernetes YAML, Helm, Terraform.",
+  },
+  trivy: {
+    technologies: ["python", "django", "flask", "angular", "typescript", "java", "java-spring", "react"],
+    message: "Trivy escanea el filesystem en busca de CVEs en dependencias (sin daemon Docker).",
+  },
+  gitleaks: {
+    technologies: ["python", "django", "flask", "angular", "typescript", "java", "java-spring", "react"],
+    message: "Gitleaks detecta secretos y credenciales expuestas en el codigo fuente.",
+  },
 };
 
 export function createEmptyProfileBuilderState() {
@@ -177,6 +207,7 @@ export function createEmptyProfileBuilderState() {
       dast: [],
       sca: [],
       quality: [],
+      infra: [],
     },
     profileName: "",
     targetUrl: "",
@@ -200,6 +231,7 @@ export function cloneProfileBuilderState(state) {
       dast: [...(state.selectedScanners?.dast || [])],
       sca: [...(state.selectedScanners?.sca || [])],
       quality: [...(state.selectedScanners?.quality || [])],
+      infra: [...(state.selectedScanners?.infra || [])],
     },
     profileName: state.profileName || "",
     validation: {
@@ -391,6 +423,7 @@ export function toScanProfilePayload(state) {
   const sast = validated.selectedScanners.sast || [];
   const quality = validated.selectedScanners.quality || [];
   const dast = validated.selectedScanners.dast || [];
+  const infra = validated.selectedScanners.infra || [];
 
   return {
     name: String(validated.profileName || "").trim() || buildProfileName(validated),
@@ -402,6 +435,8 @@ export function toScanProfilePayload(state) {
     dast_tool: resolveDastTool(dast),
     quality_enabled: quality.length > 0,
     quality_tool: quality.length > 0 ? quality.join(",") : null,
+    infra_enabled: infra.length > 0,
+    infra_tools: infra.length > 0 ? infra.join(",") : null,
   };
 }
 
@@ -490,6 +525,12 @@ export function profileScanners(profile) {
   if (profile.quality_enabled && profile.quality_tool) {
     (profile.quality_tool).split(",").map((t) => t.trim()).filter(Boolean).forEach((tool) => {
       if (findScanner(tool)) scanners.quality.push(tool);
+    });
+  }
+
+  if (profile.infra_enabled && profile.infra_tools) {
+    (profile.infra_tools).split(",").map((t) => t.trim()).filter(Boolean).forEach((tool) => {
+      if (findScanner(tool)) scanners.infra.push(tool);
     });
   }
 

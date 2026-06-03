@@ -24,6 +24,9 @@ class ScanProfile(SQLModel, table=True):
     quality_enabled: bool = False
     quality_tool: Optional[str] = None  # "sonarqube" | "pylint" | "eslint" | None
 
+    infra_enabled: bool = False
+    infra_tools: Optional[str] = None   # "checkov,trivy,gitleaks" CSV
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

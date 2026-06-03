@@ -69,6 +69,7 @@ from src.metrics.security_metrics import (
     record_scan_duration,
     update_sla_breached_gauge,
 )
+from src.ml.risk_scorer import score_finding as _score_finding, train_model as _train_model
 
 load_env_file()
 
@@ -274,6 +275,7 @@ async def get_findings(sla_status: str | None = None):
                 if finding.id in remediated_finding_ids
                 else "Sin parche",
                 "sla_status": get_sla_status(finding, now),
+                "risk_score": _score_finding(finding),
             }
             for finding in findings
         ]
@@ -1060,6 +1062,7 @@ async def get_project_findings_endpoint(project_id: uuid.UUID):
                 else "Sin parche",
                 "project_source_type": project.source_type,
                 "sla_status": get_sla_status(finding, now),
+                "risk_score": _score_finding(finding),
             }
             for finding in findings
         ]
@@ -1393,6 +1396,38 @@ async def dast_agent_scan_status(scan_id: str):
     if snapshot is None:
         raise HTTPException(status_code=404, detail="scan_id not found")
     return {"scan_id": scan_id, **snapshot}
+
+
+@app.post("/api/ml/train")
+async def ml_train_model():
+    """Train the XGBoost risk scoring model on all findings in the database.
+
+    Returns: {precision, recall, roc_auc, n_samples}
+    HTTP 400 if fewer than 10 findings exist.
+    """
+    with Session(engine) as session:
+        findings = list(session.exec(select(Finding)).all())
+
+    if len(findings) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Not enough findings to train the model: {len(findings)} found, "
+                "minimum 10 required. Run scans to populate findings first."
+            ),
+        )
+
+    try:
+        metrics = await asyncio.to_thread(_train_model, findings)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        _logger.error("ml_train_model: unexpected error: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Training failed: {exc}") from exc
+
+    return metrics
 
 
 @app.get("/api/ai-status")
