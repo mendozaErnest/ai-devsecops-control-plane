@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-06-02 (Phase 4 DAST real + Agentic Loop: ZAP conectado al orquestador con `dast_target_url`, LangGraph Explorer/Attacker/Verifier en src/dast_agent/, endpoint POST /api/dast/agent/scan + status polling — 145 tests)
+Ultima actualizacion: 2026-06-02 (Phase 4 completa: DAST real ZAP + Agentic LangGraph + ML Risk Scoring (XGBoost, POST /api/ml/train, risk_score por finding, dashboard retrain button) — 150 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -54,7 +54,8 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - IA local: Ollama, modelo por defecto qwen2.5-coder:14b.
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
 - Observabilidad: Prometheus (/metrics via prometheus-fastapi-instrumentator), Grafana (provisioning automatico en infra/grafana/), metricas custom en src/metrics/security_metrics.py.
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (145 tests passing, 2 skipped cuando LangGraph/prometheus_fastapi_instrumentator no instalados).
+- ML Risk Scoring: XGBoost + scikit-learn (src/ml/risk_scorer.py). score_finding(finding) → float [0.0–1.0] con fallback por severidad. train_model(findings) → XGBClassifier persistido con joblib. POST /api/ml/train entrena en todos los findings de la DB; 400 si < 10 findings. Dashboard: badge/progress bar de risk_score por finding, sort-by-risk, botón "🧠 Reentrenar modelo".
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (150 tests passing, 2 skipped cuando LangGraph/prometheus_fastapi_instrumentator no instalados).
 
 Dependencias en code/requirements.txt:
 
@@ -72,6 +73,9 @@ semgrep>=1.163.0
 pytest>=8.0.0
 pylint>=3.0.0
 prometheus-fastapi-instrumentator>=6.1.0
+xgboost>=2.0.0
+scikit-learn>=1.4.0
+joblib>=1.3.0
 ```
 
 ---
@@ -114,6 +118,8 @@ src/dashboard/js/modal.js         ← all modal lifecycle
 src/dashboard/js/dashboard.js     ← findings, scan, report, PDF
 src/dashboard/js/main.js          ← entry point, event wiring
 src/metrics/security_metrics.py   ← Prometheus custom metrics (findings_total, remediations, SLA gauge, scan duration)
+src/ml/__init__.py                ← Package init
+src/ml/risk_scorer.py             ← XGBoost ML risk scorer (score_finding, train_model, severity fallback)
 infra/prometheus/prometheus.yml   ← Prometheus scrape config (scrapes api:8000/metrics)
 infra/grafana/provisioning/       ← Grafana datasource + dashboard JSON auto-provisioned
 code/requirements.txt
@@ -223,6 +229,7 @@ para parchear BanditAdapter y CombinedScannerAdapter en su modulo de origen.
 - GET  /metrics                             → Prometheus metrics (text/plain; auto-expuesto por prometheus_fastapi_instrumentator)
 - POST /api/dast/agent/scan                 → Agentic DAST (Explorer/Attacker/Verifier) — 400 URL inválida, 503 si LangGraph no instalado
 - GET  /api/dast/agent/scan/{scan_id}/status → polling de progreso para Agentic DAST en curso (exploring/attacking/verifying/done/error)
+- POST /api/ml/train                        → entrena XGBoost en todos los findings de la DB; retorna {precision, recall, roc_auc, n_samples}; 400 si < 10 findings
 
 ---
 
@@ -387,7 +394,8 @@ tests/test_zap_adapter.py                  (4 tests)
 tests/test_dast_orchestrator.py            (6 tests) ← Phase 4 DAST: plumbing dast_target_url end-to-end
 tests/test_dast_agent.py                   (9 passed + 1 skip) ← Phase 4 Agentic DAST: should_continue + verify_alert + endpoint 400/503/404
 tests/test_metrics.py                      (7 tests) ← Phase 4: Prometheus metrics integration
-Total: 145 passed, 2 skipped  ← verificado tras Phase 4 DAST real + Agentic Loop (2026-06-02)
+tests/test_risk_scorer.py                  (5 tests) ← Phase 4 ML: fallback severidad, train_model, POST /api/ml/train 400, risk_score en GET /api/findings, degradación sin ML libs
+Total: 150 passed, 2 skipped  ← verificado tras Phase 4 completa (2026-06-02)
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -521,13 +529,13 @@ Phase 4 — Observabilidad (feat/observability ✅):
 6. ✅ infra/grafana/provisioning/: datasource Prometheus + dashboard JSON con 6 paneles (findings por severidad, tasa regresión, SLA vencido, latencia p50/p95, ratio fuente remediación, duración escaneos).
 7. ✅ tests/test_metrics.py (7 tests): /metrics 200, record_finding no raise, record_regression no raise, persist_scan llama record_finding, cache hit llama db_cache, latencia ollama observada, SLA gauge refleja count real.
 
-Phase 4 — ML Risk Scoring (feat/ml-risk-scoring, PENDIENTE):
-- Crear src/ml/risk_scorer.py con XGBoost + scikit-learn.
-- train_model(findings) → XGBClassifier; score_finding(finding) → float [0.0–1.0].
-- Integrar risk_score en GET /api/findings y GET /api/projects/{id}/findings.
-- POST /api/ml/train: entrena y persiste modelo; retorna precision/recall/roc_auc.
-- Dashboard: barra de progreso risk_score junto a severity badge; botón "🧠 Reentrenar modelo".
-- Requiere: xgboost>=2.0.0, scikit-learn>=1.4.0, joblib>=1.3.0 en requirements.txt.
+Phase 4 — ML Risk Scoring (feat/ml-risk-scoring 2026-06-02) ✅:
+1. ✅ src/ml/risk_scorer.py: score_finding(finding) → float [0.0–1.0] con fallback por severidad (CRITICAL=0.9, HIGH=0.7, MEDIUM=0.4, LOW=0.2). train_model(findings) → XGBClassifier + joblib. Modelo en models/risk_model.joblib (configurable via RISK_MODEL_PATH).
+2. ✅ GET /api/findings + GET /api/projects/{id}/findings: incluyen risk_score: float por finding (score del modelo o fallback).
+3. ✅ POST /api/ml/train: entrena sobre todos los findings de la DB, persiste modelo, retorna {precision, recall, roc_auc, n_samples}; HTTP 400 si < 10 findings.
+4. ✅ Dashboard: buildRiskBadge() muestra progress bar + % por finding. Sort-by-risk toggle. Botón "🧠 Reentrenar modelo" con feedback de métricas. Controles inyectados por renderMlControls() junto al botón Refresh.
+5. ✅ code/requirements.txt: xgboost>=2.0.0, scikit-learn>=1.4.0, joblib>=1.3.0 instalados.
+6. ✅ tests/test_risk_scorer.py: 5 tests — fallback por severidad, train_model con dataset mínimo, POST /api/ml/train 400, risk_score en GET /api/findings, degradación cuando _ML_AVAILABLE=False.
 
 ---
 

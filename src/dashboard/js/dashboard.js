@@ -12,7 +12,7 @@ import {
 import {
   getProjects, getProjectFindings, scanProject, getAiStatus, generateRemediation, getReport,
   runAgenticDastScan, getAgenticDastStatus,
-  getProfiles,
+  getProfiles, trainRiskModel,
 } from "/static/js/api.js";
 import {
   showRemediationModal, openReasonModal, openAuditModal, postLifecycle,
@@ -69,6 +69,7 @@ let scanProfilesLoaded = false;
 
 let activeFilter = "all";
 let activeScannerFilter = "all";
+let sortByRisk = false;
 let currentPage  = 1;
 const PAGE_SIZE  = 20;
 let filteredFindings = [];
@@ -282,6 +283,36 @@ function buildSlaBadge(record) {
   return span;
 }
 
+function buildRiskBadge(record) {
+  const score = record.risk_score;
+  if (score == null) return document.createElement("span");
+
+  const pct = Math.round(score * 100);
+  let color;
+  if (pct >= 70) color = "#ef4444";
+  else if (pct >= 40) color = "#d29922";
+  else color = "#3b82f6";
+
+  const wrap = document.createElement("span");
+  wrap.style.cssText = "display:inline-flex;flex-direction:column;gap:2px;min-width:52px;";
+  wrap.title = `${t("lbl-risk-score")}: ${pct}%`;
+
+  const label = document.createElement("span");
+  label.style.cssText = `font-size:.62rem;font-weight:700;color:${color};line-height:1;`;
+  label.textContent = `${pct}%`;
+
+  const track = document.createElement("span");
+  track.style.cssText =
+    "display:block;height:3px;border-radius:2px;background:var(--surface-3,#21262d);overflow:hidden;";
+  const fill = document.createElement("span");
+  fill.style.cssText =
+    `display:block;height:100%;width:${pct}%;background:${color};border-radius:2px;`;
+  track.appendChild(fill);
+
+  wrap.append(label, track);
+  return wrap;
+}
+
 function buildActionButtons(record) {
   const wrap = document.createElement("span");
   wrap.style.cssText = "display:inline-flex;align-items:center;gap:6px;flex-wrap:nowrap;";
@@ -352,11 +383,15 @@ function getFilteredSorted(records, filter) {
   if (filter === "critical") result = result.filter((r) => String(r.severity || "").toUpperCase() === "CRITICAL");
   else if (filter === "high") result = result.filter((r) => String(r.severity || "").toUpperCase() === "HIGH");
   else if (filter === "breach") result = result.filter((r) => r.sla_deadline && new Date(r.sla_deadline) < new Date());
-  const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
-  result.sort((a, b) =>
-    (order[String(a.severity || "").toUpperCase()] ?? 4) -
-    (order[String(b.severity || "").toUpperCase()] ?? 4)
-  );
+  if (sortByRisk) {
+    result.sort((a, b) => (b.risk_score ?? 0) - (a.risk_score ?? 0));
+  } else {
+    const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+    result.sort((a, b) =>
+      (order[String(a.severity || "").toUpperCase()] ?? 4) -
+      (order[String(b.severity || "").toUpperCase()] ?? 4)
+    );
+  }
   return result;
 }
 
@@ -463,9 +498,10 @@ function renderPage() {
     `;
 
     const sla    = buildSlaBadge(record);
+    const risk   = buildRiskBadge(record);
     const action = buildActionButtons(record);
 
-    row.append(mark, body, sla, action);
+    row.append(mark, body, sla, risk, action);
     tableBody.appendChild(row);
   });
 
@@ -656,6 +692,7 @@ export async function loadFindings() {
     updateScanStackIcons();
     renderScannerFilterIcons();
     renderRows(records);
+    renderMlControls();
     if (tableStatus) {
       tableStatus.textContent = `${records.length} ${t("findings-loaded")}`;
     }
@@ -1356,6 +1393,70 @@ export async function exportToPDF() {
     }
     if (labelEl) labelEl.textContent = t("btn-export-pdf") || "Exportar como PDF";
   }
+}
+
+// ── ML risk controls ──────────────────────────────────────────────────────────
+async function retrainModel() {
+  const btn = document.getElementById("ml-retrain-btn");
+  const orig = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Entrenando…"; }
+  try {
+    const m = await trainRiskModel();
+    showFeedback(
+      `${t("retrain-success")}: P=${(m.precision * 100).toFixed(0)}% R=${(m.recall * 100).toFixed(0)}% AUC=${m.roc_auc.toFixed(2)} (n=${m.n_samples})`,
+      "success"
+    );
+    await loadFindings();
+  } catch (err) {
+    const detail = err?.detail || err?.message || "error desconocido";
+    showFeedback(`${t("retrain-error")}: ${detail}`, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
+}
+
+function renderMlControls() {
+  const existingWrap = document.getElementById("ml-controls-wrap");
+  if (existingWrap) existingWrap.remove();
+
+  if (!refreshButton?.parentElement) return;
+
+  const wrap = document.createElement("div");
+  wrap.id = "ml-controls-wrap";
+  wrap.style.cssText = "display:inline-flex;align-items:center;gap:8px;margin-left:8px;";
+
+  const btnBase =
+    "display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border-2);" +
+    "cursor:pointer;border-radius:8px;padding:5px 9px;font-size:11.5px;font-weight:500;" +
+    "transition:background .12s,color .12s,border-color .12s;background:var(--surface-2);";
+
+  const sortBtn = document.createElement("button");
+  sortBtn.type = "button";
+  sortBtn.id = "ml-sort-btn";
+  sortBtn.style.cssText = btnBase +
+    (sortByRisk
+      ? "color:var(--mint,#9effe0);border-color:rgba(158,255,224,.28);"
+      : "color:var(--t-dim);");
+  sortBtn.title = sortByRisk ? t("sort-severity") : t("sort-risk");
+  sortBtn.textContent = sortByRisk ? t("sort-severity") : t("sort-risk");
+  sortBtn.addEventListener("click", () => {
+    sortByRisk = !sortByRisk;
+    currentPage = 1;
+    filteredFindings = getFilteredSorted(currentFindings, activeFilter);
+    renderPage();
+    renderMlControls();
+  });
+  wrap.appendChild(sortBtn);
+
+  const retrainBtn = document.createElement("button");
+  retrainBtn.type = "button";
+  retrainBtn.id = "ml-retrain-btn";
+  retrainBtn.style.cssText = btnBase + "color:var(--t-dim);";
+  retrainBtn.textContent = t("btn-retrain-model");
+  retrainBtn.addEventListener("click", retrainModel);
+  wrap.appendChild(retrainBtn);
+
+  refreshButton.after(wrap);
 }
 
 // ── Event wiring (called from main.js) ───────────────────────────────────────

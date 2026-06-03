@@ -366,9 +366,9 @@
 - [x] `code/requirements.txt`: `langgraph>=0.2.0`, `langchain-ollama>=0.1.0`, `langchain-core>=0.2.0`.
 - [x] `tests/test_dast_agent.py` (9 passed + 1 skip): `should_continue` con max iterations / sin rutas / on error / con rutas → loop; `verify_alert` XSS confirmado cuando payload reflejado / rechazado cuando ausente; `run_dast_agent` con ZAP mockeado retorna estructura correcta (skip si langgraph no instalado); endpoint 400 URL inválida, 503 cuando `LANGGRAPH_AVAILABLE=False`, 404 status desconocido.
 
-### Phase 4 — ML Risk Scoring (feat/ml-risk-scoring, PENDIENTE)
-- [ ] `src/ml/risk_scorer.py`: XGBoost + scikit-learn model. `train_model(findings)` → XGBClassifier persisted with joblib. `score_finding(finding)` → float [0.0–1.0]; severity fallback when no model.
-- [ ] `GET /api/findings` + `GET /api/projects/{id}/findings`: add `risk_score: float` per finding.
-- [ ] `POST /api/ml/train`: train on all DB findings, return `{precision, recall, roc_auc, n_samples}`; 400 if < 10 findings.
-- [ ] Dashboard: risk_score progress bar/badge alongside severity; sort by risk_score; "🧠 Reentrenar modelo" button.
-- [ ] `code/requirements.txt`: add `xgboost>=2.0.0`, `scikit-learn>=1.4.0`, `joblib>=1.3.0`.
+### Phase 4 — ML Risk Scoring (feat/ml-risk-scoring, 2026-06-02) ✅
+- [x] `src/ml/risk_scorer.py`: XGBoost + scikit-learn model. `train_model(findings)` → XGBClassifier persisted with joblib. `score_finding(finding)` → float [0.0–1.0]; severity fallback when no model.
+- [x] `GET /api/findings` + `GET /api/projects/{id}/findings`: add `risk_score: float` per finding.
+- [x] `POST /api/ml/train`: train on all DB findings, return `{precision, recall, roc_auc, n_samples}`; 400 if < 10 findings.
+- [x] Dashboard: risk_score progress bar/badge alongside severity; sort by risk_score; "🧠 Reentrenar modelo" button.
+- [x] `code/requirements.txt`: add `xgboost>=2.0.0`, `scikit-learn>=1.4.0`, `joblib>=1.3.0`.
