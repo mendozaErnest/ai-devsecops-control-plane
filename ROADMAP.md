@@ -373,6 +373,15 @@
 - [x] Dashboard: risk_score progress bar/badge alongside severity; sort by risk_score; "🧠 Reentrenar modelo" button.
 - [x] `code/requirements.txt`: add `xgboost>=2.0.0`, `scikit-learn>=1.4.0`, `joblib>=1.3.0`.
 
+### Phase 4 — ML: Fix feature leakage en risk_scorer (2026-06-03) ✅
+- [x] **Root cause**: label viejo `severity in {CRITICAL,HIGH} AND status in {open,regression}` con `severity_enc` + `status_enc` dentro del vector de features → el modelo memorizaba la regla del label (precision/recall/roc_auc = 1.0)
+- [x] `risk_scorer.py` `_label_from_finding(finding)`: nuevo label = outcome real `1 si (regression_count > 0 OR status=="regression" OR sla_breached) else 0`; `sla_breached = sla_deadline is not None AND sla_deadline < ahora_utc`; no usa severity/confidence/tool
+- [x] `risk_scorer.py` `_features_from_finding()`: 5 features `[severity_enc, tool_enc, days_age, days_to_deadline, confidence_enc]` — eliminados `status_enc` (filtraba status=="regression") y `regression_count` (es parte del label); añadido `confidence_enc` (`_CONFIDENCE_ENCODE = {HIGH:3, MEDIUM:2, LOW:1}`); lógica days_age/days_to_deadline intacta
+- [x] `risk_scorer.py` `train_model()`: `y = [_label_from_finding(f) for f in findings]`; mensaje del ValueError de clase única reescrito ("no regressions or SLA breaches present"); resto del pipeline sin cambios
+- [x] `score_finding()` sin cambios de lógica; fallback por severidad intacto
+- [x] `tests/test_risk_scorer.py` (6 tests): `test_train_model_minimal_dataset` reconstruido (6 positivos regresión/SLA + 8 negativos); nuevo `test_features_exclude_leakage_columns` (vector len 5; mismo vector pese a status/regression_count distintos; label diferente)
+- [x] 163 passed, 2 skipped (165 passed con LangGraph + prometheus_fastapi_instrumentator instalados) — sin regresiones
+
 ### Phase 4 — Infraestructura: Seguridad de Infraestructura (2026-06-02) ✅
 - [x] `src/scanners/checkov_adapter.py`: Checkov IaC scanner — `checkov -d <target> --compact -o json`; parsea `results.failed_checks` (single-framework dict) y lista multi-framework; severity desde campo top-level o `check.severity`; graceful degrade si binario ausente (pip install checkov).
 - [x] `src/scanners/trivy_adapter.py`: Trivy filesystem scanner — `trivy fs --format json <target>`; parsea `Results[].Vulnerabilities[]`; severity desde campo `Severity` o fallback CVSS V3Score; descripción incluye versión fija sugerida; graceful degrade si binario ausente (binario externo).

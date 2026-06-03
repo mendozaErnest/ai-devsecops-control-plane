@@ -73,6 +73,9 @@ _SEVERITY_ENCODE: dict[str, int] = {
     "LOW":      1,
 }
 
+# ── confidence encoding ───────────────────────────────────────────────────────
+_CONFIDENCE_ENCODE: dict[str, int] = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
 
 def _get_attr(obj: Any, key: str, default: Any = None) -> Any:
     """Uniform attribute access for Finding ORM objects and plain dicts."""
@@ -84,22 +87,21 @@ def _get_attr(obj: Any, key: str, default: Any = None) -> Any:
 def _features_from_finding(finding: Any) -> list[float]:
     """Extract a fixed-length numeric feature vector from a finding.
 
-    Features (6 total):
+    Features (5 total) — deliberately excludes any column that leaks the label
+    (status, regression_count). See ``_label_from_finding`` for the outcome.
     0. severity_enc    — CRITICAL=4 … LOW=1, unknown=1
     1. tool_enc        — tool identity integer (unknown=0)
-    2. regression_count — direct int (0 if absent)
-    3. days_age        — days since first_seen_at (capped at 365)
-    4. days_to_deadline — days until SLA deadline; negative = overdue (capped ±365)
-    5. status_enc      — open=0 … false_positive=4, unknown=0
+    2. days_age        — days since first_seen_at (capped at 365)
+    3. days_to_deadline — days until SLA deadline; negative = overdue (capped ±365)
+    4. confidence_enc  — HIGH=3, MEDIUM=2, LOW=1, unknown=1
     """
     sev = str(_get_attr(finding, "severity") or "LOW").upper()
     tool = str(_get_attr(finding, "tool") or "").lower()
-    regression_count = int(_get_attr(finding, "regression_count") or 0)
-    status = str(_get_attr(finding, "status") or "open").lower()
+    confidence = str(_get_attr(finding, "confidence") or "LOW").upper()
 
     sev_enc = _SEVERITY_ENCODE.get(sev, 1)
     tool_enc = _TOOL_ENCODE.get(tool, 0)
-    status_enc = _STATUS_ENCODE.get(status, 0)
+    confidence_enc = _CONFIDENCE_ENCODE.get(confidence, 1)
 
     # age in days
     now = datetime.now(timezone.utc)
@@ -139,11 +141,31 @@ def _features_from_finding(finding: Any) -> list[float]:
     return [
         float(sev_enc),
         float(tool_enc),
-        float(regression_count),
         float(days_age),
         float(days_to_deadline),
-        float(status_enc),
+        float(confidence_enc),
     ]
+
+
+def _label_from_finding(finding: Any) -> int:
+    """Outcome real: el finding recurrió o incumplió SLA. No usa severity/confidence/tool."""
+    regression_count = int(_get_attr(finding, "regression_count") or 0)
+    status = str(_get_attr(finding, "status") or "open").lower()
+
+    sla_deadline = _get_attr(finding, "sla_deadline")
+    sla_breached = False
+    if sla_deadline is not None:
+        if isinstance(sla_deadline, str):
+            try:
+                sla_deadline = datetime.fromisoformat(sla_deadline.replace("Z", "+00:00"))
+            except ValueError:
+                sla_deadline = None
+        if sla_deadline is not None:
+            if sla_deadline.tzinfo is None:
+                sla_deadline = sla_deadline.replace(tzinfo=timezone.utc)
+            sla_breached = sla_deadline < datetime.now(timezone.utc)
+
+    return 1 if (regression_count > 0 or status == "regression" or sla_breached) else 0
 
 
 def _fallback_score(finding: Any) -> float:
@@ -178,8 +200,10 @@ def score_finding(finding: Any) -> float:
 def train_model(findings: list[Any]) -> dict:
     """Train an XGBClassifier on the given findings list.
 
-    Label definition: high-risk = severity in {CRITICAL, HIGH} AND
-    status in {open, regression}.
+    Label definition (real outcome, see ``_label_from_finding``):
+    problematic = regression_count > 0 OR status == "regression" OR SLA breached.
+    Features deliberately exclude status/regression_count so the model learns
+    signal instead of memorising the label.
 
     Persists the model to ``_model_path()`` with joblib.
 
@@ -203,24 +227,16 @@ def train_model(findings: list[Any]) -> dict:
         )
 
     X = [_features_from_finding(f) for f in findings]
-    y = [
-        1
-        if (
-            str(_get_attr(f, "severity") or "").upper() in {"CRITICAL", "HIGH"}
-            and str(_get_attr(f, "status") or "open").lower() in {"open", "regression"}
-        )
-        else 0
-        for f in findings
-    ]
+    y = [_label_from_finding(f) for f in findings]
 
     X_arr = np.array(X, dtype=float)
     y_arr = np.array(y, dtype=int)
 
     if len(set(y_arr)) < 2:
         raise ValueError(
-            "Training data has only one risk class. "
-            "Ensure there are both high-risk (CRITICAL/HIGH open) and "
-            "low-risk findings in the dataset."
+            "Training data has only one outcome class (no regressions or SLA breaches present). "
+            "The risk model needs findings that recurred after fixing or breached their SLA "
+            "deadline to learn. Current dataset has none — re-train once such findings exist."
         )
 
     test_size = max(0.2, min(0.4, 5 / len(findings)))

@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-06-02 (Phase 4 Infraestructura: Checkov + Trivy + Gitleaks adapters + infra slot en ScanProfile + dashboard integration — 162 tests)
+Ultima actualizacion: 2026-06-03 (ML Risk Scoring: eliminado feature leakage en risk_scorer — label rediseñado a outcome real (regresión / SLA vencido), features sin status/regression_count — 165 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -55,8 +55,8 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - IA local: Ollama, modelo por defecto qwen2.5-coder:14b.
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
 - Observabilidad: Prometheus (/metrics via prometheus-fastapi-instrumentator), Grafana (provisioning automatico en infra/grafana/), metricas custom en src/metrics/security_metrics.py.
-- ML Risk Scoring: XGBoost + scikit-learn (src/ml/risk_scorer.py). score_finding(finding) → float [0.0–1.0] con fallback por severidad. train_model(findings) → XGBClassifier persistido con joblib. POST /api/ml/train entrena en todos los findings de la DB; 400 si < 10 findings. Dashboard: badge/progress bar de risk_score por finding, sort-by-risk, botón "🧠 Reentrenar modelo".
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (162 tests passing, 2 skipped cuando LangGraph/prometheus_fastapi_instrumentator no instalados).
+- ML Risk Scoring: XGBoost + scikit-learn (src/ml/risk_scorer.py). score_finding(finding) → float [0.0–1.0] con fallback por severidad. train_model(findings) → XGBClassifier persistido con joblib. POST /api/ml/train entrena en todos los findings de la DB; 400 si < 10 findings. Dashboard: badge/progress bar de risk_score por finding, sort-by-risk, botón "🧠 Reentrenar modelo". Label = outcome real (regression_count>0 OR status=="regression" OR SLA vencido) vía `_label_from_finding()`; features (5): [severity_enc, tool_enc, days_age, days_to_deadline, confidence_enc] — sin status_enc ni regression_count para evitar feature leakage.
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (163 passing, 2 skipped cuando LangGraph/prometheus_fastapi_instrumentator no instalados; 165 passing cuando ambos están instalados).
 
 Dependencias en code/requirements.txt:
 
@@ -409,11 +409,11 @@ tests/test_zap_adapter.py                  (4 tests)
 tests/test_dast_orchestrator.py            (6 tests) ← Phase 4 DAST: plumbing dast_target_url end-to-end
 tests/test_dast_agent.py                   (9 passed + 1 skip) ← Phase 4 Agentic DAST: should_continue + verify_alert + endpoint 400/503/404
 tests/test_metrics.py                      (7 tests) ← Phase 4: Prometheus metrics integration
-tests/test_risk_scorer.py                  (5 tests) ← Phase 4 ML: fallback severidad, train_model, POST /api/ml/train 400, risk_score en GET /api/findings, degradación sin ML libs
+tests/test_risk_scorer.py                  (6 tests) ← Phase 4 ML: fallback severidad, train_model (label=outcome real), features sin leakage, POST /api/ml/train 400, risk_score en GET /api/findings, degradación sin ML libs
 tests/test_checkov_adapter.py              (4 tests) ← Phase 4 Infra: single-framework JSON, multi-framework, missing binary, empty stdout
 tests/test_trivy_adapter.py                (4 tests) ← Phase 4 Infra: vulnerabilities normalized, CVSS fallback, missing binary, empty stdout
 tests/test_gitleaks_adapter.py             (4 tests) ← Phase 4 Infra: leaks normalized, no leaks, missing binary, FileNotFoundError
-Total: 162 passed, 2 skipped  ← verificado tras Phase 4 Infra (2026-06-02)
+Total: 163 passed, 2 skipped (165 passed cuando LangGraph + prometheus_fastapi_instrumentator instalados)  ← verificado tras ML feature-leakage fix (2026-06-03)
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -455,6 +455,7 @@ Reglas permanentes:
 
 16. Trivy y Gitleaks son binarios externos — si no están en PATH el adapter retorna [] con WARNING. No crash, pero el usuario debe instalarlos manualmente (ver README). Checkov sí está en requirements.txt como dependencia pip.
 17. kube-bench requiere un cluster K8s activo para ejecutar los benchmarks CIS; no es viable en scans locales/offline. Candidato para la siguiente iteración cuando exista entorno de testing con K8s.
+18. ML risk model — el `models/risk_model.joblib` existente fue entrenado con 6 features; tras el fix de leakage `score_finding()` produce 5 features. Hasta que se re-entrene (`POST /api/ml/train`), `predict_proba` lanza por mismatch de shape → `score_finding` degrada con gracia al fallback por severidad (try/except ya existente). Re-entrenar regenera el .joblib con 5 features y resuelve el mismatch.
 
 1. ✅ RESUELTO — DAST runner real: `_run_dast` instancia `ZapAdapter` cuando `profile.dast_enabled=True` y se pasa `dast_target_url` válida. Sin URL → salta gracefully (no error). ZAP no disponible → adapter degrada a `[]`.
 2. Validacion Angular/Java es heuristica (brace-counting), no parser real.
@@ -574,6 +575,16 @@ Phase 4 — ML Risk Scoring (feat/ml-risk-scoring 2026-06-02) ✅:
 4. ✅ Dashboard: buildRiskBadge() muestra progress bar + % por finding. Sort-by-risk toggle. Botón "🧠 Reentrenar modelo" con feedback de métricas. Controles inyectados por renderMlControls() junto al botón Refresh.
 5. ✅ code/requirements.txt: xgboost>=2.0.0, scikit-learn>=1.4.0, joblib>=1.3.0 instalados.
 6. ✅ tests/test_risk_scorer.py: 5 tests — fallback por severidad, train_model con dataset mínimo, POST /api/ml/train 400, risk_score en GET /api/findings, degradación cuando _ML_AVAILABLE=False.
+
+Phase 4 — ML: Fix de feature leakage en risk_scorer (2026-06-03) ✅:
+1. ✅ Causa raíz: el label viejo era `severity in {CRITICAL,HIGH} AND status in {open,regression}`, y `severity_enc` (feature 0) + `status_enc` (feature 5) estaban en el vector → el modelo memorizaba la regla del label (precision/recall/roc_auc = 1.0).
+2. ✅ Nuevo label en `_label_from_finding(finding)`: `1 si (regression_count > 0 OR status=="regression" OR sla_breached) else 0`, donde `sla_breached = sla_deadline is not None AND sla_deadline < ahora_utc`. Outcome real "el finding recurrió o incumplió SLA"; no usa severity/confidence/tool.
+3. ✅ `_features_from_finding()` ahora devuelve 5 features: `[severity_enc, tool_enc, days_age, days_to_deadline, confidence_enc]`. ELIMINADOS `status_enc` (filtraba status=="regression") y `regression_count` (es parte del label). AÑADIDO `confidence_enc` (`_CONFIDENCE_ENCODE = {HIGH:3, MEDIUM:2, LOW:1}`). Lógica de days_age / days_to_deadline sin cambios.
+4. ✅ `train_model()`: `y = [_label_from_finding(f) for f in findings]`; mensaje del ValueError de clase única reescrito para explicar "no regressions or SLA breaches present" en vez de "CRITICAL/HIGH open". Resto del pipeline (split estratificado, hiperparámetros XGBClassifier, joblib.dump, return dict) sin cambios.
+5. ✅ `score_finding()` sin cambios de lógica (5 features consistentes con el modelo entrenado); fallback por severidad intacto.
+6. ✅ tests/test_risk_scorer.py → 6 tests: `test_train_model_minimal_dataset` reconstruido (6 positivos regresión/SLA + 8 negativos open); nuevo `test_features_exclude_leakage_columns` (vector longitud 5; mismo vector pese a status/regression_count distintos; label diferente).
+7. ℹ️ Nota de producción: al re-entrenar con `POST /api/ml/train` sobre la base real, es esperado y CORRECTO que (a) devuelva 400/ValueError de clase única si no hay findings con regresión ni SLA vencido, o (b) las métricas bajen de 1.0 a valores realistas. No reintroducir severity/status en el label para "arreglar" un 400.
+8. ✅ Modelo existente models/risk_model.joblib NO borrado desde código — se regenera re-entrenando (el .joblib viejo fue entrenado con 6 features y será reemplazado al próximo train).
 
 ---
 
