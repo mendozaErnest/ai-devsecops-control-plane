@@ -2,29 +2,41 @@
 
 # 🛡️ AI DevSecOps Control Plane
 
-**Self-hosted application security platform with local AI remediation.**
-*Your code never leaves your infrastructure.*
+### Self-hosted application security platform with local AI remediation.
+
+**Your code never leaves your infrastructure.**
 
 [![CI](https://github.com/mendozaErnest/ai-devsecops-control-plane/actions/workflows/devsecops-scan.yml/badge.svg)](https://github.com/mendozaErnest/ai-devsecops-control-plane/actions)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-005571?logo=fastapi)
 ![Ollama](https://img.shields.io/badge/LLM-100%25%20local%20(Ollama)-black)
+![Tests](https://img.shields.io/badge/tests-117%20passing-success)
 ![License](https://img.shields.io/badge/license-MIT-green)
+
+**12 security engines · AI-generated patches on local GPU · real GitHub PRs · zero cloud calls**
 
 [Quick Start](#-quick-start) · [Architecture](#-architecture) · [Security Engines](#-security-engines) · [AI Remediation](#-ai-remediation) · [Agentic DAST](#-agentic-dast) · [Roadmap](#-roadmap)
 
-<!-- TODO: Reemplazar con GIF real del dashboard (30s: scan → finding → remediación → PR) -->
+<!-- TODO: Replace with real dashboard GIF (30s: scan → finding → AI patch → PR opened) -->
 <!-- ![Demo](docs/assets/demo.gif) -->
 
 </div>
 
 ---
 
-## The Problem
+## Why This Exists
 
 Commercial AppSec platforms (Snyk, GitHub Copilot Autofix, SonarCloud) send your source code to external APIs to generate fixes. **In regulated industries — banking, fintech, healthcare, government — that is a regulatory and contractual blocker, not an inconvenience.**
 
 This platform runs the entire security lifecycle, including LLM-powered remediation, on your own hardware. The network boundary is your machine.
+
+| Capability | This platform | Typical cloud AppSec SaaS |
+|---|---|---|
+| AI-generated code fixes | ✅ Local LLM (Ollama, on-prem GPU) | ✅ Via external API |
+| Source code leaves your network | ❌ **Never** | ✅ Required for AI features |
+| Works in air-gapped / regulated environments | ✅ By design | ⚠️ Limited or contractually blocked |
+| Multi-engine orchestration (SAST · SCA · DAST · IaC · secrets) | ✅ 12 engines, one control plane | Usually per-product silos |
+| Inference cost | Your hardware, $0 marginal | Per-seat / per-scan subscription |
 
 ## What It Does
 
@@ -38,7 +50,31 @@ This platform runs the entire security lifecycle, including LLM-powered remediat
 - **Real GitHub Pull Requests** with patched code via GitHub App (JWT RS256), guarded by AST-level safety checks — nothing merges without human review
 - **Agentic DAST**: LangGraph multi-agent loop (Explorer → Attacker → Verifier) wrapping OWASP ZAP
 - **ML risk scoring**: XGBoost classifier ranks findings beyond raw severity
-- **Enterprise-grade governance**: finding lifecycle state machine, full audit trail, per-severity SLA tracking (3/7/30/90 days)
+- **Enterprise-grade governance**: finding lifecycle state machine, immutable audit trail, per-severity SLA tracking (3/7/30/90 days)
+
+## 🚀 Quick Start
+
+```bash
+git clone https://github.com/mendozaErnest/ai-devsecops-control-plane
+cd ai-devsecops-control-plane
+pip install -r code/requirements.txt
+cp .env.example .env          # add GitHub App credentials + Ollama URL
+
+# Local LLM (separate terminal)
+ollama pull qwen2.5-coder:14b && ollama serve
+
+# Run
+uvicorn src.api.main:app --reload
+# Dashboard → http://127.0.0.1:8000
+```
+
+Or with Docker Compose (API + Ollama auto-provisioned):
+
+```bash
+docker compose up -d
+```
+
+Full setup: [docs/api-reference.md](docs/api-reference.md) · GitHub App configuration: [docs/github-app-setup.md](docs/github-app-setup.md) · Threat model: [docs/threat-model.md](docs/threat-model.md)
 
 ## 🏗 Architecture
 
@@ -68,7 +104,7 @@ This platform runs the entire security lifecycle, including LLM-powered remediat
    └────────────────┘   └─────────────────┘   └─────────────────────┘
 ```
 
-<!-- TODO: Agregar screenshot del dashboard aquí -->
+<!-- TODO: Add dashboard screenshot here -->
 <!-- ![Dashboard](docs/assets/dashboard.png) -->
 
 ## 🔍 Security Engines
@@ -121,30 +157,6 @@ open ──► fixed ──► regression (re-detected after fix)
 
 Every state transition is recorded in an immutable audit trail. SLA deadlines are assigned per severity (CRITICAL 3d · HIGH 7d · MEDIUM 30d · LOW 90d) and exposed as API filters and dashboard badges. A GitHub Check Run blocks PR merges on critical findings.
 
-## 🚀 Quick Start
-
-```bash
-git clone https://github.com/mendozaErnest/ai-devsecops-control-plane
-cd ai-devsecops-control-plane
-pip install -r code/requirements.txt
-cp .env.example .env          # add GitHub App credentials + Ollama URL
-
-# Local LLM (separate terminal)
-ollama pull qwen2.5-coder:14b && ollama serve
-
-# Run
-uvicorn src.api.main:app --reload
-# Dashboard → http://127.0.0.1:8000
-```
-
-Or with Docker Compose (API + Ollama auto-provisioned):
-
-```bash
-docker compose up -d
-```
-
-Full setup details: [docs/api-reference.md](docs/api-reference.md) · GitHub App configuration: [docs/github-app-setup.md](docs/github-app-setup.md)
-
 ## 🔐 Security of the Platform Itself
 
 A security tool must hold itself to its own standard:
@@ -157,7 +169,7 @@ A security tool must hold itself to its own standard:
 
 Threat model: [docs/threat-model.md](docs/threat-model.md)
 
-## 🧪 Quality
+## 🧪 Quality & Engineering Discipline
 
 - **117 automated tests** across 15 files (scanners, orchestration, lifecycle, ML fallbacks, GitHub integration)
 - CI pipeline runs the platform's own security engines on every pull request
@@ -182,6 +194,12 @@ Detailed sprint plan: [ROADMAP.md](ROADMAP.md)
 **Security:** Bandit · Semgrep · pip-audit · OWASP Dependency-Check · OWASP ZAP · Checkov · Trivy · Gitleaks
 **Integration:** GitHub App (JWT RS256) · GitHub Actions · Prometheus + Grafana
 **Frontend:** Modular ES6 JavaScript · Chart.js · i18n (EN/ES)
+
+## 👤 Why I Built This
+
+I spent years doing application security inside a global bank (Santander), where I remediated thousands of critical and high-severity vulnerabilities in production using Fortify, Veracode, and SonarQube. I kept hitting the same wall: the AI tools that could have accelerated remediation were contractually off the table, because they ship source code to external APIs.
+
+So I built the platform I couldn't buy — the full AppSec lifecycle, including AI-generated fixes, running entirely on infrastructure you control. It is both a working security tool and a statement about how AI-assisted security should work in regulated environments.
 
 ## 📄 License
 
