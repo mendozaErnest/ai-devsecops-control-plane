@@ -193,3 +193,106 @@ def test_endpoint_returns_503_when_langgraph_missing(app_client, monkeypatch):
 def test_endpoint_status_returns_404_for_unknown_scan(app_client):
     response = app_client.get("/api/dast/agent/scan/does-not-exist/status")
     assert response.status_code == 404
+
+
+# ── active_scan: ZAP error payload propagation ──────────────────────────────
+
+
+def test_active_scan_propagates_zap_error_code(monkeypatch):
+    """When ZAP returns {"code": ..., "message": ...} instead of {"scan": ...},
+    the error string must contain both the code and message."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"code": "url_not_found", "message": "Provided URL is not in the Sites tree"},
+            headers={"content-type": "application/json"},
+        )
+
+    real_client_cls = httpx.Client
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_client_cls(*args, **kwargs)
+
+    monkeypatch.setattr(tools_module.httpx, "Client", fake_client)
+
+    result = tools_module.active_scan("http://target/api")
+    assert result["error"] is not None
+    assert "url_not_found" in result["error"]
+    assert result["scan_id"] is None
+    assert result["completed"] is False
+
+
+# ── target_reachable: connectivity pre-check ────────────────────────────────
+
+
+def test_target_reachable_returns_false_on_connect_error(monkeypatch):
+    """When ZAP cannot connect to the target, reachable=False with an informative error."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    real_client_cls = httpx.Client
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_client_cls(*args, **kwargs)
+
+    monkeypatch.setattr(tools_module.httpx, "Client", fake_client)
+
+    result = tools_module.target_reachable("http://127.0.0.1:9999/")
+    assert result["reachable"] is False
+    assert result["error"] is not None
+    assert "host.docker.internal" in result["error"]
+
+
+def test_target_reachable_returns_true_on_success(monkeypatch):
+    """When ZAP returns Result, reachable=True."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"Result": "OK"},
+            headers={"content-type": "application/json"},
+        )
+
+    real_client_cls = httpx.Client
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_client_cls(*args, **kwargs)
+
+    monkeypatch.setattr(tools_module.httpx, "Client", fake_client)
+
+    result = tools_module.target_reachable("http://target/")
+    assert result["reachable"] is True
+    assert result["error"] is None
+
+
+# ── explorer_agent: fail-fast on unreachable target ──────────────────────────
+
+
+def test_explorer_agent_terminates_on_unreachable_target(monkeypatch):
+    """Explorer must set status=error and skip spider when target is not reachable."""
+    from src.dast_agent import agents as agents_module
+
+    monkeypatch.setattr(
+        agents_module,
+        "target_reachable",
+        lambda url: {"reachable": False, "error": "ZAP cannot reach http://target — use host.docker.internal"},
+    )
+    # spider_crawl must NOT be called; monkeypatch it to raise if called
+    def should_not_be_called(*args, **kwargs):
+        raise AssertionError("spider_crawl was called despite unreachable target")
+
+    monkeypatch.setattr(agents_module, "spider_crawl", should_not_be_called)
+
+    state = empty_state("http://target", max_iterations=2)
+    out = agents_module.explorer_agent(state)
+
+    assert out["status"] == "error"
+    assert out["error"] is not None
+    assert "host.docker.internal" in out["error"]
+    # should_continue will terminate on error — verify
+    assert graph_module.should_continue(out) == graph_module.END

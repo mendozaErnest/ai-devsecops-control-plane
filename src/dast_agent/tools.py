@@ -67,6 +67,58 @@ def _poll_until_done(
     return False
 
 
+def _extract_zap_error(payload: Optional[dict], fallback: str) -> str:
+    """Extract a human-readable error from a ZAP JSON error payload."""
+    if not payload:
+        return fallback
+    code = payload.get("code") or payload.get("error")
+    message = payload.get("message") or payload.get("description")
+    if code and message:
+        return f"{fallback}: {code} — {message}"
+    if code:
+        return f"{fallback}: {code}"
+    if message:
+        return f"{fallback}: {message}"
+    return fallback
+
+
+def target_reachable(target_url: str) -> dict:
+    """Check whether ZAP can reach *target_url* before starting a scan.
+
+    Returns: {"reachable": bool, "error": str | None}
+    Uses ZAP's accessUrl action which fetches the URL through the proxy and
+    reports connectivity without requiring an active scan to be running.
+    """
+    result: dict = {"reachable": False, "error": None}
+    try:
+        with _client() as client:
+            payload = _request_json(
+                client,
+                "/JSON/core/action/accessUrl/",
+                {"apikey": _zap_api_key(), "url": target_url},
+            )
+            if payload is not None and "Result" in payload:
+                result["reachable"] = True
+                return result
+            # ZAP returned a response but accessUrl failed
+            err_msg = _extract_zap_error(
+                payload,
+                f"ZAP cannot reach {target_url}",
+            )
+            result["error"] = (
+                err_msg
+                + " — if the target runs on the host, use http://host.docker.internal:<port>"
+            )
+    except httpx.ConnectError:
+        result["error"] = (
+            f"ZAP cannot reach {target_url} (connection refused)"
+            " — if the target runs on the host, use http://host.docker.internal:<port>"
+        )
+    except httpx.HTTPError as exc:
+        result["error"] = f"target_reachable: {exc}"
+    return result
+
+
 def spider_crawl(target_url: str, max_children: int = 50) -> dict:
     """Run a ZAP spider and return discovered routes + forms.
 
@@ -89,7 +141,7 @@ def spider_crawl(target_url: str, max_children: int = 50) -> dict:
                 },
             )
             if not start or "scan" not in start:
-                result["error"] = "ZAP spider failed to start"
+                result["error"] = _extract_zap_error(start, "ZAP spider failed to start")
                 return result
 
             scan_id = str(start["scan"])
@@ -138,7 +190,7 @@ def active_scan(target_url: str, scope_urls: Optional[list[str]] = None) -> dict
                 },
             )
             if not start or "scan" not in start:
-                result["error"] = "ZAP active scan failed to start"
+                result["error"] = _extract_zap_error(start, "ZAP active scan failed to start")
                 return result
 
             scan_id = str(start["scan"])

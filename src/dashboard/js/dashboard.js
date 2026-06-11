@@ -953,15 +953,25 @@ async function runAgenticDastFlow(dastTargetUrl) {
     const result = await agenticPromise;
     lastScanId = result.scan_id;
 
+    // Fetch final status to get the most detailed error message from the tracker
+    const finalStatus = lastScanId
+      ? await getAgenticDastStatus(lastScanId).catch(() => null)
+      : null;
+    const detailedError = finalStatus?.error || result.error;
+
     if (result.status === "error") {
-      showFeedback(`Agentic DAST: ${result.error || "fallo desconocido"}`, "warning");
+      const iters = result.iterations_run || 0;
+      const errMsg = detailedError || "fallo desconocido";
+      const iterSuffix = iters > 0 ? " (" + iters + " iteración(es))" : "";
+      showFeedback(`Agentic DAST falló${iterSuffix}: ${errMsg}`, "warning");
     } else {
       const n = (result.confirmed_findings || []).length;
       const fp = result.false_positives_count || 0;
-      showFeedback(
-        `Agentic DAST OK — ${n} confirmados, ${fp} falsos positivos en ${result.iterations_run} iteración(es).`,
-        n > 0 ? "success" : "info",
-      );
+      const iters = result.iterations_run || 0;
+      const msg = n === 0 && iters === 0
+        ? "Agentic DAST — 0 iteraciones completadas (sin rutas descubiertas o target inalcanzable)"
+        : `Agentic DAST OK — ${n} confirmados · ${fp} falsos positivos · ${iters} iteración(es)`;
+      showFeedback(msg, n > 0 ? "success" : "info");
     }
   } catch (err) {
     const detail = err?.detail || err?.message || "error desconocido";

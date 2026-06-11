@@ -12,7 +12,7 @@ import os
 from typing import Optional
 
 from .state import DastAgentState
-from .tools import active_scan, get_alerts, spider_crawl, verify_alert
+from .tools import active_scan, get_alerts, spider_crawl, target_reachable, verify_alert
 
 
 LOGGER = logging.getLogger(__name__)
@@ -64,6 +64,13 @@ def _llm_invoke(prompt: str, max_chars: int = 4000) -> Optional[str]:
 def explorer_agent(state: DastAgentState) -> DastAgentState:
     """Discover attack surface via ZAP spider, then optionally rank routes with the LLM."""
     new_state: DastAgentState = {**state, "status": "exploring"}
+
+    reachability = target_reachable(state["target_url"])
+    if not reachability["reachable"]:
+        new_state["status"] = "error"
+        new_state["error"] = reachability["error"] or f"Target {state['target_url']} is not reachable from ZAP"
+        LOGGER.warning("Explorer: target not reachable: %s", new_state["error"])
+        return new_state
 
     crawl = spider_crawl(state["target_url"])
     routes = crawl.get("routes", []) or []
