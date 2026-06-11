@@ -70,6 +70,7 @@ from src.metrics.security_metrics import (
     update_sla_breached_gauge,
 )
 from src.ml.risk_scorer import score_finding as _score_finding, train_model as _train_model
+from typing import Annotated
 
 load_env_file()
 
