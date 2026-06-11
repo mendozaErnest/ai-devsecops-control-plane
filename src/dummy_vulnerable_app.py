@@ -82,7 +82,8 @@ def run_ping(host):
 
 def run_backup(user_supplied_path):
     # Vulnerability: command injection with subprocess.Popen and shell=True.
-    return subprocess.Popen("tar czf backup.tgz " + user_supplied_path, shell=True)
+    # Fixed: Use shell=False and pass the command as a list of arguments.
+    return subprocess.Popen(["tar", "czf", "backup.tgz", user_supplied_path], shell=False)
 
 
 def run_admin_task(task_name):
