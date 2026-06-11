@@ -70,6 +70,7 @@ from src.metrics.security_metrics import (
     update_sla_breached_gauge,
 )
 from src.ml.risk_scorer import score_finding as _score_finding, train_model as _train_model
+from typing import Annotated
 
 load_env_file()
 
@@ -528,7 +529,7 @@ def read_finding_source_file(file_path: str | None) -> str | None:
         return None
 
 
-def enrich_python_finding_context(details: dict) -> dict:
+def enrich_python_finding_context(details: Annotated[dict, "Details dictionary"]) -> dict:
     if normalize_patch_technology_for_finding(details) != "python":
         return details
 
