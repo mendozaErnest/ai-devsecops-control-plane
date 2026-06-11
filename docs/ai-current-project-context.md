@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-06-03 (ML Risk Scoring: eliminado feature leakage en risk_scorer — label rediseñado a outcome real (regresión / SLA vencido), features sin status/regression_count — 165 tests)
+Ultima actualizacion: 2026-06-10 (Fase 4 fixes: modal sin selects deprecated, Agentic DAST error propagation + reachability pre-check, diff remediacion unificado — 169 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -56,7 +56,7 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
 - Observabilidad: Prometheus (/metrics via prometheus-fastapi-instrumentator), Grafana (provisioning automatico en infra/grafana/), metricas custom en src/metrics/security_metrics.py.
 - ML Risk Scoring: XGBoost + scikit-learn (src/ml/risk_scorer.py). score_finding(finding) → float [0.0–1.0] con fallback por severidad. train_model(findings) → XGBClassifier persistido con joblib. POST /api/ml/train entrena en todos los findings de la DB; 400 si < 10 findings. Dashboard: badge/progress bar de risk_score por finding, sort-by-risk, botón "🧠 Reentrenar modelo". Label = outcome real (regression_count>0 OR status=="regression" OR SLA vencido) vía `_label_from_finding()`; features (5): [severity_enc, tool_enc, days_age, days_to_deadline, confidence_enc] — sin status_enc ni regression_count para evitar feature leakage.
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (163 passing, 2 skipped cuando LangGraph/prometheus_fastapi_instrumentator no instalados; 165 passing cuando ambos están instalados).
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (167 passing + 2 warnings cuando LangGraph/prometheus_fastapi_instrumentator instalados; 169 passing en total con los 4 tests nuevos del DAST agent).
 
 Dependencias en code/requirements.txt:
 
@@ -407,13 +407,13 @@ tests/test_target_path_validation.py       (4 tests)  ← valid path, path trave
 tests/test_technology_inference.py         (29 tests)
 tests/test_zap_adapter.py                  (4 tests)
 tests/test_dast_orchestrator.py            (6 tests) ← Phase 4 DAST: plumbing dast_target_url end-to-end
-tests/test_dast_agent.py                   (9 passed + 1 skip) ← Phase 4 Agentic DAST: should_continue + verify_alert + endpoint 400/503/404
+tests/test_dast_agent.py                   (13 passed + 1 skip) ← Phase 4 + Fase 4 fixes: should_continue + verify_alert + endpoint 400/503/404 + active_scan ZAP error propagation + target_reachable + explorer fail-fast
 tests/test_metrics.py                      (7 tests) ← Phase 4: Prometheus metrics integration
 tests/test_risk_scorer.py                  (6 tests) ← Phase 4 ML: fallback severidad, train_model (label=outcome real), features sin leakage, POST /api/ml/train 400, risk_score en GET /api/findings, degradación sin ML libs
 tests/test_checkov_adapter.py              (4 tests) ← Phase 4 Infra: single-framework JSON, multi-framework, missing binary, empty stdout
 tests/test_trivy_adapter.py                (4 tests) ← Phase 4 Infra: vulnerabilities normalized, CVSS fallback, missing binary, empty stdout
 tests/test_gitleaks_adapter.py             (4 tests) ← Phase 4 Infra: leaks normalized, no leaks, missing binary, FileNotFoundError
-Total: 163 passed, 2 skipped (165 passed cuando LangGraph + prometheus_fastapi_instrumentator instalados)  ← verificado tras ML feature-leakage fix (2026-06-03)
+Total: 169 passed, 2 warnings (167+2 cuando LangGraph + prometheus_fastapi_instrumentator instalados) ← verificado tras Fase 4 fixes (2026-06-10)
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -448,6 +448,41 @@ Reglas permanentes:
 5. ✅ ScanOrchestrator: `_run_infra()` runner con `_adapter_map` dinámico; misma interfaz tuple `(findings, notices)` que `_run_quality()`; activo cuando `profile.infra_enabled=True`.
 6. ✅ Dashboard: slot "infra" en profile-builder-state.js; STACK_ICON_META + TOOL_BADGE_COLOR + TOOL_CHIP_META + normalizeToolKey + CSS tones para checkov/trivy/gitleaks.
 7. kube-bench (CIS K8s benchmark) — PENDIENTE; requiere cluster K8s activo.
+
+---
+
+## Auditoria Fase 4 (2026-06-10)
+
+- Tests: 169 passed ✅
+- Servicios Docker: ZAP healthy (v2.17.0), Prometheus, Grafana, SonarQube OK. API corre como uvicorn local (no en Docker).
+- ZAP conectividad: `extra_hosts: host-gateway` ya estaba en docker-compose.yml ✅. ZAP no puede alcanzar http://host.docker.internal:8000 porque uvicorn escucha en 127.0.0.1 (no 0.0.0.0). Solución documentada en .env.example: usar `--host 0.0.0.0` para que ZAP alcance la app desde Docker.
+- Smoke test §3: ZIP→scan→remediation→preview ✅. PR bloqueado porque dummy_vulnerable_app.py no está en el repo remoto (esperado, no es falla de credenciales).
+- Bug nuevo documentado: la función `active_scan()` descartaba el body de error de ZAP (`{"code":…,"message":…}`) — corregido en esta sesión (ver Fase 4 fixes).
+
+## Fase 4 Fixes (2026-06-10) ✅
+
+### Fix 1 — Modal: select de tecnología deprecated eliminado
+- `src/dashboard/index.html`: `<select id="zip-technology">` y `<select id="repo-technology">` reemplazados por `<div id="zip-tech-chip" class="tech-readonly-chip">`.
+- `src/dashboard/css/modal.css`: nueva clase `.tech-readonly-chip` con badge visual de tecnología de solo lectura.
+- `src/dashboard/js/modal.js`: `uploadZipProject()` y `cloneRepoProject()` leen la tecnología de `getPrimaryApiTechnology(wizardProfileDraft)`; `syncTechnologySelectsFromProfile()` reemplazada por `renderTechChipsForStep2()` que rellena el chip desde el draft al entrar al paso 2.
+- `src/dashboard/js/utils.js`: claves i18n `tech-chip-label`, `tech-chip-primary`, `tech-chip-from-profile` (ES y EN).
+- Garantía: no se puede crear inconsistencia entre el select y el perfil — la tecnología siempre viene del perfil.
+
+### Fix 2 — Agentic DAST: propagación de errores ZAP + pre-check de alcanzabilidad
+- `src/dast_agent/tools.py`: nueva función `_extract_zap_error(payload, fallback)` extrae `code` y `message` del payload JSON de ZAP; `active_scan()` y `spider_crawl()` ahora incluyen el error real en `result["error"]` (ej. `"ZAP active scan failed to start: url_not_found — Provided URL is not in the Sites tree"`).
+- `src/dast_agent/tools.py`: nueva función `target_reachable(target_url) -> dict` — llama `accessUrl` de ZAP y devuelve `{"reachable": bool, "error": str|None}`; incluye hint `host.docker.internal` si falla.
+- `src/dast_agent/agents.py`: `explorer_agent()` llama `target_reachable()` ANTES del spider; si no es alcanzable → `state["status"]="error"`, `state["error"]=<mensaje detallado>`, retorna inmediatamente (el grafo `should_continue` termina en END).
+- `src/dashboard/js/dashboard.js`: `runAgenticDastFlow()` obtiene el status final del endpoint de polling para mostrar el error detallado; formato mejorado de feedback: `"X iteraciones · Y confirmados · Z falsos positivos"` o `"falló (N iter): <error>"`.
+- `.env.example`: sección nueva documentando que para targets en el host con uvicorn, usar `--host 0.0.0.0` y `http://host.docker.internal:<port>` como target URL.
+- `tests/test_dast_agent.py`: 4 tests nuevos — `active_scan` con error ZAP JSON, `target_reachable` failure y success, `explorer_agent` fail-fast con target inalcanzable.
+
+### Fix 3 — Diff de remediación unificado: preview = PR diff, sin panel en blanco
+- `src/dashboard/js/diff.js`: `renderPreviewDiff()` reescrita para usar el mismo renderer `buildPanel` que el diff real de GitHub — mismos colores, mismo formato de líneas `+`/`-`, scroll sincronizado, auto-scroll al primer cambio. Label actualizado: `"⚡ Vista previa del fix (lo que el PR aplicará)"`. `renderDiffView()` label actualizado: `"⚠ Vista aproximada — propuesta Ollama sin aplicar"`.
+- `src/dashboard/js/modal.js`:
+  - `showRemediationModal()`: `_usingGitHubDiff = false` siempre al abrir — el IIFE ahora renderiza el preview para TODOS los proyectos (incluyendo repo); agrega `console.warn` cuando el preview falla.
+  - `checkExistingPR()`: si no hay PR → devuelve sin renderizar (deja el preview del IIFE); si hay PR → establece `_usingGitHubDiff = true` ANTES de `renderGitHubPrDiff` para que el IIFE en vuelo salte el render.
+  - `renderGitHubPrDiff()`: elimina `renderDiffStatus("Cargando diff real desde GitHub...")` al inicio — el panel muestra el preview mientras el diff de GitHub carga; solo llama `renderDiffStatus` si el panel está vacío y el diff falla.
+- Diagnóstico: el endpoint `preview-diff` funciona correctamente para proyectos repo (`source_type="repo"`) — HTTP 200 con `original` y `patched`. El bug era puramente de frontend (`_usingGitHubDiff=true` impedía que el IIFE llamara `renderPreviewDiff`).
 
 ---
 

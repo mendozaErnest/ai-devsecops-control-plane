@@ -399,3 +399,16 @@
 - [x] `tests/test_gitleaks_adapter.py` (4 tests): leaks normalized, no leaks returns empty, missing binary graceful, FileNotFoundError graceful.
 - [ ] kube-bench (CIS Kubernetes benchmark) — pendiente; requiere cluster K8s activo, fuera de alcance para scans locales/offline.
 - [x] 162 tests passing (12 nuevos) — sin regresiones.
+
+### Fase 4 Bug Fixes (2026-06-10) ✅
+- [x] `src/dashboard/index.html` + `modal.js`: eliminados `<select id="zip-technology">` y `<select id="repo-technology">` — reemplazados por chip `.tech-readonly-chip`; tecnología siempre viene de `getPrimaryApiTechnology(wizardProfileDraft)`; `syncTechnologySelectsFromProfile()` eliminada.
+- [x] `src/dashboard/css/modal.css`: clase `.tech-readonly-chip` con `.tech-primary`, `.tech-secondary`, `.tech-label`.
+- [x] `src/dashboard/js/utils.js`: claves i18n `tech-chip-label`, `tech-chip-primary`, `tech-chip-from-profile` (ES+EN).
+- [x] `src/dast_agent/tools.py`: `_extract_zap_error()` propaga `code`+`message` del payload ZAP en `active_scan()` y `spider_crawl()`; nueva función `target_reachable()` con hint `host.docker.internal`.
+- [x] `src/dast_agent/agents.py`: `explorer_agent()` llama `target_reachable()` antes del spider — fail-fast con error detallado si target no alcanzable.
+- [x] `src/dashboard/js/dashboard.js`: `runAgenticDastFlow()` obtiene status final detallado; feedback mejorado con iteraciones/confirmados/falsos positivos.
+- [x] `.env.example`: documentada configuración de DAST target URL para host (uvicorn `--host 0.0.0.0` + `http://host.docker.internal:<port>`).
+- [x] `src/dashboard/js/diff.js`: `renderPreviewDiff()` reescrita usando `buildPanel` (mismos colores/formato que GitHub diff); label `"⚡ Vista previa del fix"`; `renderDiffView()` label `"⚠ Vista aproximada — propuesta Ollama sin aplicar"`.
+- [x] `src/dashboard/js/modal.js`: `_usingGitHubDiff=false` inicial; IIFE llama `renderPreviewDiff` para todos los proyectos (incluyendo repo); `checkExistingPR` establece `_usingGitHubDiff=true` solo cuando hay PR; `renderGitHubPrDiff` no borra el panel al cargar; `console.warn` para fallos de preview.
+- [x] `tests/test_dast_agent.py`: 4 tests nuevos — ZAP error propagation, `target_reachable` (failure + success), `explorer_agent` fail-fast.
+- [x] 169 tests passing — sin regresiones.
