@@ -74,6 +74,9 @@ export const i18n = {
     "sort-severity":      "Ordenar por severidad",
     "retrain-success":    "Modelo entrenado",
     "retrain-error":      "Error al entrenar modelo",
+    "tech-chip-label":    "Tecnología",
+    "tech-chip-primary":  "(primaria)",
+    "tech-chip-from-profile": "definida en el perfil",
   },
   en: {
     "new-project":        "New Project",
@@ -147,6 +150,9 @@ export const i18n = {
     "sort-severity":      "Sort by severity",
     "retrain-success":    "Model trained",
     "retrain-error":      "Model training failed",
+    "tech-chip-label":    "Technology",
+    "tech-chip-primary":  "(primary)",
+    "tech-chip-from-profile": "defined in profile",
   },
 };
 
