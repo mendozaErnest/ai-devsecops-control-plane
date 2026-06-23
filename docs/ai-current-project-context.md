@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-06-10 (Fase 4 fixes: modal sin selects deprecated, Agentic DAST error propagation + reachability pre-check, diff remediacion unificado — 169 tests)
+Ultima actualizacion: 2026-06-11 (Fase 5 fixes: URL_NOT_FOUND corregido con normalize+site tree+retry, alertas pasivas preservadas cuando ascan falla, warnings propagados a UI, DATABASE_URL anclada a raíz del proyecto — 184 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -42,7 +42,7 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 ## Stack Actual
 
 - Backend: FastAPI + Uvicorn.
-- Base de datos: SQLModel sobre SQLite (PostgreSQL-ready via DATABASE_URL).
+- Base de datos: SQLModel sobre SQLite (PostgreSQL-ready via DATABASE_URL). La URL se resuelve contra la raíz del repo via `_resolve_database_url()` en `database.py` — rutas relativas sqlite se anclan a `PROJECT_ROOT` independientemente del CWD de uvicorn.
 - Dashboard: SPA estatica HTML/JavaScript/Tailwind servida desde GET /; JS/CSS en src/dashboard/js/ y src/dashboard/css/ montados en /static via FastAPI StaticFiles.
 - Scanners SAST: Bandit + Semgrep (Python), Semgrep (Angular/Java).
 - Scanners SCA: pip-audit (Python), OWASP Dependency Check (Java).
@@ -56,7 +56,7 @@ VSCode + Claude Sonnet 4.6. Instalar siempre con el pip del entorno:
 - GitHub: GitHub App con JWT RS256; webhook PR con Check Run; GitHub Actions CI.
 - Observabilidad: Prometheus (/metrics via prometheus-fastapi-instrumentator), Grafana (provisioning automatico en infra/grafana/), metricas custom en src/metrics/security_metrics.py.
 - ML Risk Scoring: XGBoost + scikit-learn (src/ml/risk_scorer.py). score_finding(finding) → float [0.0–1.0] con fallback por severidad. train_model(findings) → XGBClassifier persistido con joblib. POST /api/ml/train entrena en todos los findings de la DB; 400 si < 10 findings. Dashboard: badge/progress bar de risk_score por finding, sort-by-risk, botón "🧠 Reentrenar modelo". Label = outcome real (regression_count>0 OR status=="regression" OR SLA vencido) vía `_label_from_finding()`; features (5): [severity_enc, tool_enc, days_age, days_to_deadline, confidence_enc] — sin status_enc ni regression_count para evitar feature leakage.
-- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (167 passing + 2 warnings cuando LangGraph/prometheus_fastapi_instrumentator instalados; 169 passing en total con los 4 tests nuevos del DAST agent).
+- Validacion: python3 -m compileall src + python3 -m pytest tests/ -v (184 passing, 2 warnings deprecation FastAPI on_event).
 
 Dependencias en code/requirements.txt:
 
@@ -139,14 +139,17 @@ tests/
 
 Entidades en src/api/models.py:
 
-- ScanProfile: configura que herramientas correr (SAST/DAST/Quality). PK int autoincrement. Tabla: scanprofile.
-- Project: proyecto escaneable con name, source_type, target_path, technology, scan_profile_id (FK scanprofile).
-- Target: entidad legacy de compatibilidad.
-- Scan: ejecucion de scanner asociada a Project.
-- Finding: hallazgo normalizado con status (open/fixed/regression/false_positive/accepted_risk), first_seen_at, sla_deadline, regression_count.
-- FindingAuditEvent: historial de cambios de estado de findings.
-- Remediation: remediacion generada por IA para un Finding.
-- MetricsSnapshot: metricas por target.
+- ScanProfile: configura que herramientas correr (SAST/DAST/Quality). PK int autoincrement. Tabla: **scanprofile** (singular — excepción al resto).
+- Project: proyecto escaneable con name, source_type, target_path, technology, scan_profile_id (FK scanprofile). Tabla: **projects**.
+- Target: entidad legacy de compatibilidad. Tabla: **targets**.
+- Scan: ejecucion de scanner asociada a Project. Tabla: **scans**.
+- Finding: hallazgo normalizado con status (open/fixed/regression/false_positive/accepted_risk), first_seen_at, sla_deadline, regression_count. Tabla: **findings**.
+- FindingAuditEvent: historial de cambios de estado de findings. Tabla: **finding_audit_events**.
+- Remediation: remediacion generada por IA para un Finding. Tabla: **remediations**.
+- MetricsSnapshot: metricas por target. Tabla: **metrics_snapshots**.
+
+Nombres reales de tablas SQLite (plurales, excepto `scanprofile`):
+`projects`, `findings`, `scans`, `remediations`, `targets`, `metrics_snapshots`, `finding_audit_events`, `scanprofile`.
 
 Relacion para remediacion dinamica:
   Finding -> Scan -> Project -> technology
@@ -407,13 +410,14 @@ tests/test_target_path_validation.py       (4 tests)  ← valid path, path trave
 tests/test_technology_inference.py         (29 tests)
 tests/test_zap_adapter.py                  (4 tests)
 tests/test_dast_orchestrator.py            (6 tests) ← Phase 4 DAST: plumbing dast_target_url end-to-end
-tests/test_dast_agent.py                   (13 passed + 1 skip) ← Phase 4 + Fase 4 fixes: should_continue + verify_alert + endpoint 400/503/404 + active_scan ZAP error propagation + target_reachable + explorer fail-fast
+tests/test_dast_agent.py                   (25 passed) ← Phase 4 + Fase 4 fixes + Fase 5: should_continue + verify_alert + endpoint 400/503/404 + active_scan error propagation + target_reachable + explorer fail-fast + normalize_target_url + resolve_site_url + active_scan retry URL_NOT_FOUND + attacker passive alerts on ascan fail + warnings en status endpoint
+tests/test_database_url.py                 (4 tests) ← Fase 5: _resolve_database_url relativa→absoluta, absoluta→sin cambio, postgresql→sin cambio, DATABASE_URL apunta a PROJECT_ROOT
 tests/test_metrics.py                      (7 tests) ← Phase 4: Prometheus metrics integration
 tests/test_risk_scorer.py                  (6 tests) ← Phase 4 ML: fallback severidad, train_model (label=outcome real), features sin leakage, POST /api/ml/train 400, risk_score en GET /api/findings, degradación sin ML libs
 tests/test_checkov_adapter.py              (4 tests) ← Phase 4 Infra: single-framework JSON, multi-framework, missing binary, empty stdout
 tests/test_trivy_adapter.py                (4 tests) ← Phase 4 Infra: vulnerabilities normalized, CVSS fallback, missing binary, empty stdout
 tests/test_gitleaks_adapter.py             (4 tests) ← Phase 4 Infra: leaks normalized, no leaks, missing binary, FileNotFoundError
-Total: 169 passed, 2 warnings (167+2 cuando LangGraph + prometheus_fastapi_instrumentator instalados) ← verificado tras Fase 4 fixes (2026-06-10)
+Total: 184 passed, 2 warnings (deprecation FastAPI on_event) ← verificado Fase 5 (2026-06-11)
 ```
 
 Fix del SQLite en-memoria para tests: usar poolclass=StaticPool para que
@@ -483,6 +487,55 @@ Reglas permanentes:
   - `checkExistingPR()`: si no hay PR → devuelve sin renderizar (deja el preview del IIFE); si hay PR → establece `_usingGitHubDiff = true` ANTES de `renderGitHubPrDiff` para que el IIFE en vuelo salte el render.
   - `renderGitHubPrDiff()`: elimina `renderDiffStatus("Cargando diff real desde GitHub...")` al inicio — el panel muestra el preview mientras el diff de GitHub carga; solo llama `renderDiffStatus` si el panel está vacío y el diff falla.
 - Diagnóstico: el endpoint `preview-diff` funciona correctamente para proyectos repo (`source_type="repo"`) — HTTP 200 con `original` y `patched`. El bug era puramente de frontend (`_usingGitHubDiff=true` impedía que el IIFE llamara `renderPreviewDiff`).
+
+---
+
+## Fase 5 — Fixes Agentic DAST (2026-06-11) ✅
+
+### Fix 1 — DATABASE_URL anclada a la raíz del proyecto (chore)
+- `src/api/database.py`: nueva función `_resolve_database_url(raw)` — si la URL env var es sqlite relativa (`sqlite:///./dev.db`), la resuelve contra `PROJECT_ROOT = Path(__file__).resolve().parents[2]`. URLs absolutas y otros engines pasan sin cambio. La lógica ya existía para el default, ahora también aplica al env var.
+- `tests/test_database_url.py` (4 tests): relativa→absoluta anclada a PROJECT_ROOT, absoluta→sin cambio, postgresql→sin cambio, DATABASE_URL apunta a PROJECT_ROOT.
+- `README.md`: nueva sección "Development — Database Inspection" con tabla de nombres reales de tablas y queries de inspección rápida.
+
+### Fix 2 — URL_NOT_FOUND: normalización + resolución contra site tree (fix crítico)
+- **Causa raíz**: ZAP registra el sitio como `http://host:8000` (sin slash final) pero `active_scan()` enviaba la URL cruda que podía tener slash, causando `URL_NOT_FOUND`.
+- `src/dast_agent/tools.py`:
+  - `normalize_target_url(url)`: agrega slash final cuando la URL no tiene path; deja intactas URLs con path, query string, o fragment.
+  - `resolve_site_url(target_url)`: llama `GET /JSON/core/view/sites/`, busca la entrada cuyo origen (scheme+host+port) coincide con el target, retorna la entrada exacta del site tree. Retorna `None` si no hay coincidencia.
+  - `active_scan()`: antes del scan, resuelve contra el site tree. Si `resolve_site_url` retorna `None` → error claro "El target no está en el site tree de ZAP". Si el primer intento retorna `URL_NOT_FOUND`, reintenta UNA vez alternando el slash. Si ambos fallan → error con ambas URLs intentadas.
+  - `_try_ascan()`, `_is_url_not_found()`: helpers internos para el retry.
+  - `normalize_target_url` aplicado también en `spider_crawl()`, `get_alerts()`, `target_reachable()`.
+  - `get_alerts()`: log `INFO` con conteo de alertas crudas devueltas por ZAP.
+- `src/scanners/zap_adapter.py`:
+  - `_normalize_url()`: misma lógica que `normalize_target_url` para el adapter no-agéntico.
+  - `scan()`: aplica `_normalize_url` a `target_url` antes del spider y ascan.
+  - `_start_active_scan()`: log `WARNING` con el error real de ZAP (code + message) cuando no hay clave `"scan"` en el payload — antes fallaba silenciosamente con `KeyError`.
+
+### Fix 3 — Alertas pasivas no se pierden cuando el ascan falla (fix crítico)
+- **Causa raíz**: `attacker_agent()` ponía `state["error"]` cuando el ascan fallaba, luego `get_alerts()` nunca era llamado, y el verifier procesaba 0 alertas mostrando "sin hallazgos nuevos".
+- `src/dast_agent/state.py`: campo `warnings: list[str]` añadido a `DastAgentState` y a `empty_state()`.
+- `src/dast_agent/agents.py` (`attacker_agent`): si `active_scan` falla → agrega el error a `state["warnings"]` (NO a `state["error"]`) → llama igualmente `get_alerts()`. El verifier procesa todas las alertas pasivas del spider normalmente.
+- `src/dast_agent/agents.py` (`verifier_agent`): propaga `warnings` en el nuevo estado.
+- `src/dast_agent/runner.py`: `_wrap_node()` expone `warnings` en el tracker. `run_dast_agent()` incluye `warnings` en el resultado. La lógica de `status="done"` ahora aplica incluso cuando hay warnings (ascan falló pero se confirmaron alertas pasivas).
+- `src/api/main.py` (`POST /api/dast/agent/scan`): incluye `warnings` en la respuesta. La persistencia ahora se activa cuando hay `confirmed` aunque `error` no sea None (alertas pasivas confirmadas se persisten).
+- `src/dashboard/js/dashboard.js`:
+  - `_DAST_STATUS_LABELS`: mapa de labels por estado extraído a constante.
+  - `_showDastFeedback(result, finalStatus)`: helper que encapsula toda la lógica de feedback — reduce cognitive complexity de `runAgenticDastFlow` de 20 a <15.
+  - `done` sin warnings → resumen normal (`N confirmados · M falsos positivos · K iteraciones`).
+  - `done` CON warnings → banner amarillo: `Agentic DAST completado con avisos: <primer warning> · N confirmados`.
+  - `error` → banner rojo con mensaje detallado (comportamiento anterior, sin cambio).
+  - Nunca muestra "sin hallazgos nuevos" cuando el ascan tuvo un fallo no-fatal.
+
+### Evidencia de la causa raíz original (URL_NOT_FOUND)
+```
+# ZAP site tree antes del fix:
+curl http://localhost:8090/JSON/core/view/sites/
+{ "sites": [ "http://host.docker.internal:8000" ] }   ← SIN slash
+
+# ZAP tenía alertas pasivas que nunca llegaron al dashboard:
+#   - "Missing Anti-clickjacking Header" (pluginId 10020, CWE-1021, risk Medium)
+#   - "Content Security Policy Header Not Set" (pluginId 10038, CWE-693, risk Medium)
+```
 
 ---
 

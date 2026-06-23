@@ -199,10 +199,20 @@ def test_endpoint_status_returns_404_for_unknown_scan(app_client):
 
 
 def test_active_scan_propagates_zap_error_code(monkeypatch):
-    """When ZAP returns {"code": ..., "message": ...} instead of {"scan": ...},
-    the error string must contain both the code and message."""
+    """When ascan returns URL_NOT_FOUND on both attempts, the error is surfaced clearly.
 
+    The mock returns the site tree so resolve_site_url succeeds, then returns
+    URL_NOT_FOUND for every ascan attempt, exercising the retry path.
+    """
     def handler(request: httpx.Request) -> httpx.Response:
+        path = str(request.url.path)
+        if "/core/view/sites/" in path:
+            return httpx.Response(
+                200,
+                json={"sites": ["http://target"]},
+                headers={"content-type": "application/json"},
+            )
+        # Both ascan attempts fail with URL_NOT_FOUND
         return httpx.Response(
             200,
             json={"code": "url_not_found", "message": "Provided URL is not in the Sites tree"},
@@ -217,9 +227,9 @@ def test_active_scan_propagates_zap_error_code(monkeypatch):
 
     monkeypatch.setattr(tools_module.httpx, "Client", fake_client)
 
-    result = tools_module.active_scan("http://target/api")
+    result = tools_module.active_scan("http://target/")
     assert result["error"] is not None
-    assert "url_not_found" in result["error"]
+    assert "URL_NOT_FOUND" in result["error"]
     assert result["scan_id"] is None
     assert result["completed"] is False
 
@@ -296,3 +306,233 @@ def test_explorer_agent_terminates_on_unreachable_target(monkeypatch):
     assert "host.docker.internal" in out["error"]
     # should_continue will terminate on error — verify
     assert graph_module.should_continue(out) == graph_module.END
+
+
+# ── attacker_agent: passive alerts preserved when ascan fails ────────────────
+
+
+def test_attacker_agent_keeps_passive_alerts_when_ascan_fails(monkeypatch):
+    """When active_scan returns an error, get_alerts is still called and raw_alerts populated."""
+    from src.dast_agent import agents as agents_module
+
+    monkeypatch.setattr(
+        agents_module,
+        "active_scan",
+        lambda url: {"scan_id": None, "completed": False, "error": "ZAP active scan returned URL_NOT_FOUND"},
+    )
+    monkeypatch.setattr(
+        agents_module,
+        "get_alerts",
+        lambda url, **_: {
+            "alerts": [
+                {"pluginId": "10020", "name": "Missing Anti-clickjacking Header", "risk": "Medium",
+                 "url": "http://target/", "description": "X-Frame-Options missing", "evidence": "", "cweid": "1021"},
+                {"pluginId": "10038", "name": "Content Security Policy Header Not Set", "risk": "Medium",
+                 "url": "http://target/", "description": "CSP missing", "evidence": "", "cweid": "693"},
+            ],
+            "error": None,
+        },
+    )
+
+    state = {
+        **__import__("src.dast_agent.state", fromlist=["empty_state"]).empty_state("http://target/", max_iterations=1),
+        "discovered_routes": ["http://target/"],
+        "discovered_forms": [],
+    }
+    out = agents_module.attacker_agent(state)
+
+    assert len(out["raw_alerts"]) == 2
+    assert len(out.get("warnings", [])) == 1
+    assert "URL_NOT_FOUND" in out["warnings"][0]
+    assert out.get("error") is None  # error NOT set — flow continues to verifier
+
+
+def test_attacker_agent_no_warnings_when_ascan_succeeds(monkeypatch):
+    """When active_scan succeeds, warnings stay empty."""
+    from src.dast_agent import agents as agents_module
+
+    monkeypatch.setattr(
+        agents_module,
+        "active_scan",
+        lambda url: {"scan_id": "1", "completed": True, "error": None},
+    )
+    monkeypatch.setattr(
+        agents_module,
+        "get_alerts",
+        lambda url, **_: {"alerts": [], "error": None},
+    )
+
+    state = __import__("src.dast_agent.state", fromlist=["empty_state"]).empty_state("http://target/", max_iterations=1)
+    out = agents_module.attacker_agent(state)
+
+    assert out.get("warnings", []) == []
+    assert out.get("error") is None
+
+
+# ── status endpoint includes warnings ────────────────────────────────────────
+
+
+def test_endpoint_status_includes_warnings(app_client, monkeypatch):
+    """GET /api/dast/agent/scan/{id}/status must include warnings from the tracker."""
+    import src.dast_agent as _agent_pkg
+    from src.dast_agent import runner as _runner
+
+    scan_id = "test-warnings-scan"
+    _runner._set_scan_status(
+        scan_id,
+        status="done",
+        warnings=["Active scan failed: URL_NOT_FOUND"],
+        confirmed_count=1,
+    )
+
+    response = app_client.get(f"/api/dast/agent/scan/{scan_id}/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert "warnings" in data
+    assert len(data["warnings"]) == 1
+    assert "URL_NOT_FOUND" in data["warnings"][0]
+
+
+# ── normalize_target_url ─────────────────────────────────────────────────────
+
+
+def test_normalize_target_url_adds_slash_when_no_path():
+    assert tools_module.normalize_target_url("http://host:8000") == "http://host:8000/"
+
+
+def test_normalize_target_url_keeps_existing_slash():
+    assert tools_module.normalize_target_url("http://host:8000/") == "http://host:8000/"
+
+
+def test_normalize_target_url_does_not_touch_path():
+    assert tools_module.normalize_target_url("http://host:8000/api/v1") == "http://host:8000/api/v1"
+
+
+def test_normalize_target_url_does_not_touch_query_string():
+    url = "http://host:8000/search?q=test"
+    assert tools_module.normalize_target_url(url) == url
+
+
+# ── resolve_site_url ─────────────────────────────────────────────────────────
+
+
+def test_resolve_site_url_matches_site_tree_entry(monkeypatch):
+    """When ZAP site tree has 'http://host:8000', target with slash resolves to that entry."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"sites": ["http://host:8000"]},
+            headers={"content-type": "application/json"},
+        )
+
+    real_client_cls = httpx.Client
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_client_cls(*args, **kwargs)
+
+    monkeypatch.setattr(tools_module.httpx, "Client", fake_client)
+
+    result = tools_module.resolve_site_url("http://host:8000/")
+    assert result == "http://host:8000"
+
+
+def test_resolve_site_url_returns_none_when_not_in_tree(monkeypatch):
+    """When ZAP has no matching site, None is returned."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"sites": ["http://other-host:9000"]},
+            headers={"content-type": "application/json"},
+        )
+
+    real_client_cls = httpx.Client
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_client_cls(*args, **kwargs)
+
+    monkeypatch.setattr(tools_module.httpx, "Client", fake_client)
+
+    assert tools_module.resolve_site_url("http://host:8000/") is None
+
+
+# ── active_scan: site-tree resolution + retry ────────────────────────────────
+
+
+def test_active_scan_retry_succeeds_on_url_not_found(monkeypatch):
+    """If first attempt returns URL_NOT_FOUND, retry with alt slash form must succeed."""
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = str(request.url.path)
+        if "/core/view/sites/" in path:
+            # Site tree has URL without slash
+            return httpx.Response(
+                200,
+                json={"sites": ["http://target"]},
+                headers={"content-type": "application/json"},
+            )
+        if "/ascan/action/scan/" in path:
+            calls.append(str(request.url))
+            if len(calls) == 1:
+                # First attempt: URL_NOT_FOUND
+                return httpx.Response(
+                    200,
+                    json={"code": "url_not_found", "message": "Provided URL is not in the Sites tree"},
+                    headers={"content-type": "application/json"},
+                )
+            # Second attempt succeeds
+            return httpx.Response(
+                200,
+                json={"scan": "42"},
+                headers={"content-type": "application/json"},
+            )
+        if "/ascan/view/status/" in path:
+            return httpx.Response(200, json={"status": "100"}, headers={"content-type": "application/json"})
+        return httpx.Response(200, json={}, headers={"content-type": "application/json"})
+
+    real_client_cls = httpx.Client
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_client_cls(*args, **kwargs)
+
+    monkeypatch.setattr(tools_module.httpx, "Client", fake_client)
+
+    result = tools_module.active_scan("http://target/")
+    assert result["error"] is None
+    assert result["completed"] is True
+    assert len(calls) == 2  # first failed, second succeeded
+
+
+def test_active_scan_both_attempts_fail_returns_error(monkeypatch):
+    """When both slash and no-slash attempts return URL_NOT_FOUND, error must name both URLs."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = str(request.url.path)
+        if "/core/view/sites/" in path:
+            return httpx.Response(
+                200,
+                json={"sites": ["http://target"]},
+                headers={"content-type": "application/json"},
+            )
+        if "/ascan/action/scan/" in path:
+            return httpx.Response(
+                200,
+                json={"code": "url_not_found", "message": "not in Sites tree"},
+                headers={"content-type": "application/json"},
+            )
+        return httpx.Response(200, json={}, headers={"content-type": "application/json"})
+
+    real_client_cls = httpx.Client
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_client_cls(*args, **kwargs)
+
+    monkeypatch.setattr(tools_module.httpx, "Client", fake_client)
+
+    result = tools_module.active_scan("http://target/")
+    assert result["error"] is not None
+    assert "URL_NOT_FOUND" in result["error"]
+    assert result["completed"] is False

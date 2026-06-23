@@ -1326,7 +1326,8 @@ async def dast_agent_scan(request: DastAgentScanRequest):
 
     saved = 0
     confirmed = result.get("confirmed_findings", []) or []
-    if confirmed and not result.get("error"):
+    # Persist when there are confirmed findings, even if ascan had non-fatal warnings
+    if confirmed:
         try:
             saved = await asyncio.to_thread(
                 _persist_agentic_findings, confirmed, request.project_id, target_url
@@ -1338,6 +1339,7 @@ async def dast_agent_scan(request: DastAgentScanRequest):
         "scan_id": result["scan_id"],
         "status": result["status"],
         "error": result.get("error"),
+        "warnings": result.get("warnings") or [],
         "confirmed_findings": confirmed,
         "false_positives_count": result.get("false_positives_count", 0),
         "iterations_run": result.get("iterations_run", 0),

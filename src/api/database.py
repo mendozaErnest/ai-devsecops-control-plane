@@ -7,7 +7,27 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATABASE_URL = f"sqlite:///{PROJECT_ROOT / 'dev_database.db'}"
-DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
+
+
+def _resolve_database_url(raw: str) -> str:
+    """Resolve a relative sqlite:/// path against the project root.
+
+    Relative sqlite paths (e.g. sqlite:///./dev.db) are resolved against
+    PROJECT_ROOT so the database location is stable regardless of which
+    directory uvicorn is launched from.  Absolute sqlite paths and all
+    other engines are returned unchanged.
+    """
+    prefix = "sqlite:///"
+    if not raw.startswith(prefix):
+        return raw
+    path_part = raw[len(prefix):]
+    p = Path(path_part)
+    if p.is_absolute():
+        return raw
+    return f"{prefix}{(PROJECT_ROOT / p).resolve()}"
+
+
+DATABASE_URL = _resolve_database_url(os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL))
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)

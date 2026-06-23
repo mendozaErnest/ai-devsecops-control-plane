@@ -412,3 +412,20 @@
 - [x] `src/dashboard/js/modal.js`: `_usingGitHubDiff=false` inicial; IIFE llama `renderPreviewDiff` para todos los proyectos (incluyendo repo); `checkExistingPR` establece `_usingGitHubDiff=true` solo cuando hay PR; `renderGitHubPrDiff` no borra el panel al cargar; `console.warn` para fallos de preview.
 - [x] `tests/test_dast_agent.py`: 4 tests nuevos — ZAP error propagation, `target_reachable` (failure + success), `explorer_agent` fail-fast.
 - [x] 169 tests passing — sin regresiones.
+
+### Fase 5 — Agentic DAST: URL_NOT_FOUND + alertas pasivas + DATABASE_URL (2026-06-11) ✅
+- [x] `src/api/database.py` `_resolve_database_url()`: resuelve rutas sqlite relativas del env var contra `PROJECT_ROOT` — previene BD huérfana si uvicorn arranca desde otro directorio. URLs absolutas y otros engines intactos.
+- [x] `tests/test_database_url.py` (4 tests): relativa→absoluta anclada a PROJECT_ROOT; absoluta→sin cambio; postgresql→sin cambio; DATABASE_URL default apunta a PROJECT_ROOT.
+- [x] `README.md`: sección "Development — Database Inspection" — tabla de nombres reales de tablas (plurales + `scanprofile` singular) + queries de inspección rápida.
+- [x] `src/dast_agent/tools.py` `normalize_target_url(url)`: garantiza slash final cuando URL sin path (`http://host:8000` → `http://host:8000/`); con path/query → sin cambio. Aplicado en `spider_crawl`, `active_scan`, `get_alerts`, `target_reachable`.
+- [x] `src/dast_agent/tools.py` `resolve_site_url(target_url)`: llama `GET /JSON/core/view/sites/`; busca entrada con origen coincidente; retorna URL exacta del site tree o `None`.
+- [x] `src/dast_agent/tools.py` `active_scan()`: resuelve contra site tree antes del ascan; retry con slash alternado si primer intento retorna `URL_NOT_FOUND`; error claro si ambos intentos fallan; `_try_ascan()` y `_is_url_not_found()` como helpers privados.
+- [x] `src/scanners/zap_adapter.py` `_normalize_url()`: misma normalización para el adapter no-agéntico. `_start_active_scan()` loggea `WARNING` con error real de ZAP en lugar de silenciar `KeyError`.
+- [x] `src/dast_agent/state.py`: campo `warnings: list[str]` en `DastAgentState` y `empty_state()`.
+- [x] `src/dast_agent/agents.py` `attacker_agent()`: ascan fallido → `state["warnings"].append(msg)` (NO `state["error"]`) → `get_alerts()` se llama igual; alertas pasivas del spider no se pierden. Log `INFO` con conteo de alertas crudas.
+- [x] `src/dast_agent/agents.py` `verifier_agent()`: propaga `warnings` en nuevo estado.
+- [x] `src/dast_agent/runner.py`: `_wrap_node()` expone `warnings` en tracker; `run_dast_agent()` incluye `warnings` en resultado; `status="done"` se setea incluso con warnings (ascan falló pero alertas pasivas confirmadas).
+- [x] `src/api/main.py` `POST /api/dast/agent/scan`: incluye `warnings` en respuesta; persiste hallazgos cuando hay `confirmed` independientemente de `error`.
+- [x] `src/dashboard/js/dashboard.js`: `_DAST_STATUS_LABELS` extraído; `_showDastFeedback()` encapsula lógica — banner amarillo en `done+warnings`, banner rojo en `error`, resumen normal en `done` limpio. Nunca "sin hallazgos" cuando hubo fallo de ascan.
+- [x] `tests/test_dast_agent.py` (12 tests nuevos): `normalize_target_url` (4), `resolve_site_url` (2), `active_scan` retry y ambos-fallan (2), attacker passive alerts on ascan fail (2), status endpoint incluye warnings (1) + test anterior URL_NOT_FOUND actualizado.
+- [x] 184 tests passing — sin regresiones.

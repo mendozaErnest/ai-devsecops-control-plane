@@ -119,21 +119,33 @@ def _parse_url_lines(text: str, fallback: list) -> list[str]:
 
 
 def attacker_agent(state: DastAgentState) -> DastAgentState:
-    """Trigger ZAP active scan on the target then read the raw alerts."""
+    """Trigger ZAP active scan on the target then read the raw alerts.
+
+    If the active scan fails (e.g. URL_NOT_FOUND), the error is recorded as a
+    warning and the flow continues: the spider already populated passive alerts
+    (missing security headers, cookies, etc.) that the verifier can confirm.
+    Cutting the flow on ascan failure would silently discard those findings.
+    """
+    warnings = list(state.get("warnings") or [])
     new_state: DastAgentState = {
         **state,
         "status": "attacking",
         "iteration": state.get("iteration", 0) + 1,
+        "warnings": warnings,
     }
 
     scan_result = active_scan(state["target_url"])
     if scan_result.get("error"):
-        new_state["error"] = scan_result["error"]
+        warning_msg = f"Active scan failed (passive alerts still collected): {scan_result['error']}"
+        warnings.append(warning_msg)
+        new_state["warnings"] = warnings
+        # Do NOT set new_state["error"] — the flow continues to get_alerts
         LOGGER.warning("Attacker: %s", scan_result["error"])
 
     alerts_result = get_alerts(state["target_url"])
     raw_alerts = alerts_result.get("alerts", []) or []
     new_state["raw_alerts"] = list(raw_alerts)
+    LOGGER.info("Attacker: ZAP returned %d raw alerts for verifier", len(raw_alerts))
 
     forms = state.get("discovered_forms", [])
     payloads: list[dict] = []
@@ -175,7 +187,7 @@ def attacker_agent(state: DastAgentState) -> DastAgentState:
 
 def verifier_agent(state: DastAgentState) -> DastAgentState:
     """Confirm or reject each ZAP alert via re-request + LLM reasoning."""
-    new_state: DastAgentState = {**state, "status": "verifying"}
+    new_state: DastAgentState = {**state, "status": "verifying", "warnings": list(state.get("warnings") or [])}
 
     confirmed: list[dict] = []
     false_positives: list[dict] = []
