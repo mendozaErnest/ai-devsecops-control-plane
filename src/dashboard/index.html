@@ -355,12 +355,7 @@
           <div id="panel-zip" class="form-panel visible-panel" style="padding:16px 20px 20px;">
             <form id="upload-project-form" class="space-y-3">
               <input id="zip-name" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="Nombre del proyecto" data-i18n-placeholder="project-name">
-              <select id="zip-technology" style="width:100%;padding:8px 12px;font-size:.83rem;">
-                <option value="python">Python</option>
-                <option value="angular">Angular</option>
-                <option value="typescript">TypeScript</option>
-                <option value="java">Java</option>
-              </select>
+              <div id="zip-tech-chip" class="tech-readonly-chip" style="display:none;"></div>
               <input id="zip-file" type="file" accept=".zip" style="width:100%;padding:8px 12px;font-size:.83rem;">
               <div style="display:flex;gap:8px;">
                 <button type="button" id="wizard-back-zip"
@@ -386,12 +381,7 @@
                 </button>
               </div>
               <input id="repo-url" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="https://github.com/usuario/repo.git">
-              <select id="repo-technology" style="width:100%;padding:8px 12px;font-size:.83rem;">
-                <option value="python">Python</option>
-                <option value="angular">Angular</option>
-                <option value="typescript">TypeScript</option>
-                <option value="java">Java</option>
-              </select>
+              <div id="repo-tech-chip" class="tech-readonly-chip" style="display:none;"></div>
               <div style="display:flex;gap:8px;">
                 <button type="button" id="wizard-back-clone"
                   style="padding:9px 16px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);font-size:.83rem;font-weight:600;cursor:pointer;">← Atrás</button>

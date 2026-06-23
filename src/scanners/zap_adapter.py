@@ -19,6 +19,14 @@ POLL_INTERVAL = 5
 SCAN_TIMEOUT = 300
 
 
+def _normalize_url(url: str) -> str:
+    """Ensure trailing slash when URL has no path — matches ZAP site-tree convention."""
+    parsed = urlparse(url)
+    if not parsed.path or parsed.path == "/":
+        return parsed._replace(path="/").geturl()
+    return url
+
+
 class ZapAdapter(BaseScannerAdapter):
     tool_name = "zap"
 
@@ -51,15 +59,16 @@ class ZapAdapter(BaseScannerAdapter):
             self.returncode = 0
             return []
 
+        canonical_url = _normalize_url(target_url)
         created_client = self.client is None
         client = self.client or httpx.Client(base_url=self.base_url, timeout=30.0)
 
         try:
-            spider_id = self._start_spider(client, target_url)
+            spider_id = self._start_spider(client, canonical_url)
             if not self._poll_status(client, "spider", spider_id):
                 return []
 
-            ascan_id = self._start_active_scan(client, target_url)
+            ascan_id = self._start_active_scan(client, canonical_url)
             if not self._poll_status(client, "ascan", ascan_id):
                 return []
 
@@ -68,7 +77,7 @@ class ZapAdapter(BaseScannerAdapter):
                 "/JSON/alert/view/alerts/",
                 {
                     "apikey": self.api_key,
-                    "baseurl": target_url,
+                    "baseurl": canonical_url,
                     "start": "0",
                     "count": "200",
                 },
@@ -124,6 +133,13 @@ class ZapAdapter(BaseScannerAdapter):
             "/JSON/ascan/action/scan/",
             {"apikey": self.api_key, "url": target_url, "recurse": "true"},
         )
+        if "scan" not in payload:
+            code = payload.get("code") or payload.get("error", "unknown")
+            message = payload.get("message") or payload.get("description", "")
+            LOGGER.warning(
+                "ZAP active scan rejected URL %r — code=%s message=%s", target_url, code, message
+            )
+            raise ValueError(f"ZAP ascan error {code}: {message}")
         return str(payload["scan"])
 
     def _poll_status(self, client: httpx.Client, scanner: str, scan_id: str) -> bool:

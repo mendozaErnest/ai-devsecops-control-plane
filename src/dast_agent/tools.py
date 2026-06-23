@@ -11,6 +11,7 @@ import logging
 import os
 import time
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -32,6 +33,56 @@ def _zap_api_key() -> str:
 
 def _client(timeout: float = DEFAULT_TIMEOUT) -> httpx.Client:
     return httpx.Client(base_url=_zap_base_url(), timeout=timeout)
+
+
+def normalize_target_url(url: str) -> str:
+    """Ensure a canonical form for URLs passed to ZAP.
+
+    ZAP registers sites without a trailing slash when no path is given (e.g.
+    ``http://host:8000``).  The active-scan endpoint requires the URL to match
+    the site-tree entry exactly, so we keep the form consistent: add a trailing
+    slash only when the URL has no path component (empty or bare ``/``).
+    URLs with an explicit path, query string, or fragment are left unchanged.
+    """
+    parsed = urlparse(url)
+    if not parsed.path or parsed.path == "/":
+        # Reconstruct with explicit "/" so ZAP gets a consistent form
+        return parsed._replace(path="/").geturl()
+    return url
+
+
+def resolve_site_url(target_url: str) -> Optional[str]:
+    """Return the exact site-tree entry ZAP holds for *target_url*.
+
+    ZAP's ``core/view/sites`` endpoint lists every origin it has crawled.
+    This function finds the entry whose scheme+host+port matches *target_url*
+    and returns it verbatim — that is the only URL the active-scan endpoint
+    will accept without raising ``URL_NOT_FOUND``.
+
+    Returns ``None`` when the target is not in the site tree (spider hasn't
+    crawled it yet) or when ZAP is unreachable.
+    """
+    parsed = urlparse(target_url)
+    # Build the canonical origin to match against (scheme://host[:port])
+    target_origin = f"{parsed.scheme}://{parsed.netloc}".lower()
+
+    try:
+        with _client() as client:
+            payload = _request_json(client, "/JSON/core/view/sites/", {"apikey": _zap_api_key()})
+            if not payload:
+                return None
+            sites = payload.get("sites") or []
+            if isinstance(sites, str):
+                # Older ZAP versions return a single string
+                sites = [sites]
+            for site in sites:
+                site_origin = urlparse(str(site)).netloc
+                candidate_origin = f"{urlparse(str(site)).scheme}://{site_origin}".lower()
+                if candidate_origin == target_origin:
+                    return str(site)
+    except httpx.HTTPError as exc:
+        LOGGER.warning("resolve_site_url: ZAP request failed: %s", exc)
+    return None
 
 
 def _request_json(
@@ -67,6 +118,59 @@ def _poll_until_done(
     return False
 
 
+def _extract_zap_error(payload: Optional[dict], fallback: str) -> str:
+    """Extract a human-readable error from a ZAP JSON error payload."""
+    if not payload:
+        return fallback
+    code = payload.get("code") or payload.get("error")
+    message = payload.get("message") or payload.get("description")
+    if code and message:
+        return f"{fallback}: {code} — {message}"
+    if code:
+        return f"{fallback}: {code}"
+    if message:
+        return f"{fallback}: {message}"
+    return fallback
+
+
+def target_reachable(target_url: str) -> dict:
+    """Check whether ZAP can reach *target_url* before starting a scan.
+
+    Returns: {"reachable": bool, "error": str | None}
+    Uses ZAP's accessUrl action which fetches the URL through the proxy and
+    reports connectivity without requiring an active scan to be running.
+    """
+    canonical = normalize_target_url(target_url)
+    result: dict = {"reachable": False, "error": None}
+    try:
+        with _client() as client:
+            payload = _request_json(
+                client,
+                "/JSON/core/action/accessUrl/",
+                {"apikey": _zap_api_key(), "url": canonical},
+            )
+            if payload is not None and "Result" in payload:
+                result["reachable"] = True
+                return result
+            # ZAP returned a response but accessUrl failed
+            err_msg = _extract_zap_error(
+                payload,
+                f"ZAP cannot reach {canonical}",
+            )
+            result["error"] = (
+                err_msg
+                + " — if the target runs on the host, use http://host.docker.internal:<port>"
+            )
+    except httpx.ConnectError:
+        result["error"] = (
+            f"ZAP cannot reach {canonical} (connection refused)"
+            " — if the target runs on the host, use http://host.docker.internal:<port>"
+        )
+    except httpx.HTTPError as exc:
+        result["error"] = f"target_reachable: {exc}"
+    return result
+
+
 def spider_crawl(target_url: str, max_children: int = 50) -> dict:
     """Run a ZAP spider and return discovered routes + forms.
 
@@ -74,6 +178,7 @@ def spider_crawl(target_url: str, max_children: int = 50) -> dict:
     Forms are inferred from URLs containing query strings — full form
     introspection requires ZAP's URL search which is exposed separately.
     """
+    canonical = normalize_target_url(target_url)
     result: dict = {"routes": [], "forms": [], "error": None}
 
     try:
@@ -83,13 +188,13 @@ def spider_crawl(target_url: str, max_children: int = 50) -> dict:
                 "/JSON/spider/action/scan/",
                 {
                     "apikey": _zap_api_key(),
-                    "url": target_url,
+                    "url": canonical,
                     "recurse": "true",
                     "maxChildren": str(max_children),
                 },
             )
             if not start or "scan" not in start:
-                result["error"] = "ZAP spider failed to start"
+                result["error"] = _extract_zap_error(start, "ZAP spider failed to start")
                 return result
 
             scan_id = str(start["scan"])
@@ -118,27 +223,50 @@ def spider_crawl(target_url: str, max_children: int = 50) -> dict:
     return result
 
 
-def active_scan(target_url: str, scope_urls: Optional[list[str]] = None) -> dict:
+def active_scan(target_url: str) -> dict:
     """Trigger a ZAP active scan and wait for completion.
+
+    Before starting the scan this function resolves *target_url* against ZAP's
+    site tree so the URL matches the exact entry registered by the spider.  If
+    the first attempt returns ``URL_NOT_FOUND`` it retries once with the
+    alternate form (with ↔ without trailing slash).
 
     Returns: {"scan_id": str | None, "completed": bool, "error": str | None}
     The actual alerts are fetched separately via get_alerts().
     """
     result: dict = {"scan_id": None, "completed": False, "error": None}
 
+    # Resolve against the ZAP site tree — this is the URL ZAP registered
+    site_url = resolve_site_url(target_url)
+    if site_url is None:
+        result["error"] = (
+            "El target no está en el site tree de ZAP — "
+            "el spider no lo crawleó o la URL difiere. "
+            f"target_url={target_url!r}"
+        )
+        LOGGER.warning("active_scan: %s", result["error"])
+        return result
+
     try:
         with _client() as client:
-            start = _request_json(
-                client,
-                "/JSON/ascan/action/scan/",
-                {
-                    "apikey": _zap_api_key(),
-                    "url": target_url,
-                    "recurse": "true",
-                },
-            )
+            start = _try_ascan(client, site_url)
+            if _is_url_not_found(start):
+                # Retry with opposite slash form
+                alt_url = site_url.rstrip("/") if site_url.endswith("/") else site_url + "/"
+                LOGGER.warning(
+                    "active_scan: URL_NOT_FOUND for %r, retrying with %r", site_url, alt_url
+                )
+                start = _try_ascan(client, alt_url)
+                if _is_url_not_found(start):
+                    result["error"] = (
+                        f"ZAP active scan returned URL_NOT_FOUND for both "
+                        f"{site_url!r} and {alt_url!r}"
+                    )
+                    LOGGER.warning("active_scan: %s", result["error"])
+                    return result
+
             if not start or "scan" not in start:
-                result["error"] = "ZAP active scan failed to start"
+                result["error"] = _extract_zap_error(start, "ZAP active scan failed to start")
                 return result
 
             scan_id = str(start["scan"])
@@ -153,8 +281,27 @@ def active_scan(target_url: str, scope_urls: Optional[list[str]] = None) -> dict
     return result
 
 
+def _try_ascan(client: httpx.Client, url: str) -> Optional[dict]:
+    """Fire one ascan request and return the raw ZAP payload."""
+    return _request_json(
+        client,
+        "/JSON/ascan/action/scan/",
+        {"apikey": _zap_api_key(), "url": url, "recurse": "true"},
+    )
+
+
+def _is_url_not_found(payload: Optional[dict]) -> bool:
+    """Return True when ZAP responded with a URL_NOT_FOUND error."""
+    if not payload:
+        return False
+    code = str(payload.get("code") or "").lower()
+    message = str(payload.get("message") or "").lower()
+    return "url_not_found" in code or "url_not_found" in message
+
+
 def get_alerts(base_url: str, max_alerts: int = 200) -> dict:
     """Read ZAP alerts filtered by base URL."""
+    canonical = normalize_target_url(base_url)
     result: dict = {"alerts": [], "error": None}
 
     try:
@@ -164,7 +311,7 @@ def get_alerts(base_url: str, max_alerts: int = 200) -> dict:
                 "/JSON/alert/view/alerts/",
                 {
                     "apikey": _zap_api_key(),
-                    "baseurl": base_url,
+                    "baseurl": canonical,
                     "start": "0",
                     "count": str(max_alerts),
                 },
@@ -173,6 +320,7 @@ def get_alerts(base_url: str, max_alerts: int = 200) -> dict:
                 alerts = payload.get("alerts", [])
                 if isinstance(alerts, list):
                     result["alerts"] = alerts
+                    LOGGER.info("get_alerts: ZAP returned %d raw alerts for %s", len(alerts), canonical)
     except httpx.HTTPError as exc:
         LOGGER.warning("get_alerts error: %s", exc)
         result["error"] = f"get_alerts: {exc}"

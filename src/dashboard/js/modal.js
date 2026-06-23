@@ -183,9 +183,8 @@ function renderDiffStatus(message) {
 async function renderGitHubPrDiff(findingId, epoch) {
   if (epoch !== undefined && epoch !== _modalEpoch) return false;
 
-  _usingGitHubDiff = true;
-  renderDiffStatus("Cargando diff real desde GitHub...");
-
+  // Do NOT clear the panel here — keep the preview visible while GitHub diff loads.
+  // Only replace content when the real diff arrives (or if there's nothing yet).
   try {
     const diffData = await getPRDiff(findingId);
     if (epoch !== undefined && epoch !== _modalEpoch) return false;
@@ -195,10 +194,16 @@ async function renderGitHubPrDiff(findingId, epoch) {
       return true;
     }
 
-    renderDiffStatus(diffData?.message || "No se pudo cargar el diff real del PR en GitHub.");
+    // GitHub diff unavailable: preserve existing content (preview) if present,
+    // otherwise show an error placeholder.
+    if (!diffView.querySelector("table")) {
+      renderDiffStatus(diffData?.message || "No se pudo cargar el diff real del PR en GitHub.");
+    }
   } catch (_) {
     if (epoch !== undefined && epoch !== _modalEpoch) return false;
-    renderDiffStatus("No se pudo cargar el diff real del PR en GitHub.");
+    if (!diffView.querySelector("table")) {
+      renderDiffStatus("No se pudo cargar el diff real del PR en GitHub.");
+    }
   }
 
   return false;
@@ -215,7 +220,9 @@ export function showRemediationModal(record, patch, selectedProject) {
   // finding's data bleed into the new one even for a single frame.
   currentRemediationFindingId = record.id;
   currentPrBranch = undefined;
-  _usingGitHubDiff = shouldCheckExistingPr;
+  // Always start with false; checkExistingPR sets it to true only when a PR
+  // is confirmed, so the IIFE can always render the preview first.
+  _usingGitHubDiff = false;
   _diffFileData = null;
   _diffHunkInfo = null;
 
@@ -325,6 +332,11 @@ export function showRemediationModal(record, patch, selectedProject) {
 
     if (!_usingGitHubDiff) {
       const preview = previewResult.status === "fulfilled" ? previewResult.value : null;
+      if (previewResult.status === "rejected") {
+        console.warn("[diff preview] rejected:", previewResult.reason);
+      } else if (!preview?.original || !preview?.patched) {
+        console.warn("[diff preview] unavailable — original:", preview?.original !== undefined, "patched:", preview?.patched !== undefined);
+      }
       if (preview?.original !== undefined && preview?.patched !== undefined) {
         renderPreviewDiff(diffView, preview.original, preview.patched);
       } else {
@@ -351,18 +363,22 @@ async function checkExistingPR(record, cleanPatch, epoch) {
     const data = await getRemediationPr(findingId);
     if (epoch !== _modalEpoch) return; // stale — newer finding opened
     if (!data || !data.pr_url) {
+      // No existing PR — the IIFE has already rendered (or will render) the preview.
+      // Do NOT call renderDiffView here; that would overwrite a successful preview.
       _usingGitHubDiff = false;
-      renderDiffView(diffView, record.code_snippet || "", cleanPatch, _diffFileData);
       return;
     }
 
+    // PR found: mark flag BEFORE awaiting so the IIFE skips rendering if it hasn't run yet.
+    _usingGitHubDiff = true;
     currentPrBranch = data.branch;
     renderPullRequestSuccess(data.pr_url, data.pr_type);
     await renderGitHubPrDiff(findingId, epoch);
-  } catch (_) {
+  } catch (err) {
     if (epoch !== _modalEpoch) return;
+    console.warn("[checkExistingPR] error:", err);
+    // Let the IIFE's preview stand; just ensure flag is consistent.
     _usingGitHubDiff = false;
-    renderDiffView(diffView, record.code_snippet || "", cleanPatch, _diffFileData);
   }
 }
 
@@ -889,14 +905,27 @@ function slotHint(slot) {
   }[slot] || "Configura scanners";
 }
 
-function syncTechnologySelectsFromProfile() {
-  if (!wizardProfileDraft.selectedTechnologies?.length) return;
-  const apiTechnology = getPrimaryApiTechnology(wizardProfileDraft);
-  [document.getElementById("zip-technology"), document.getElementById("repo-technology")]
-    .filter(Boolean)
-    .forEach((select) => {
-      select.value = apiTechnology;
+function renderTechChipsForStep2() {
+  const techs = wizardProfileDraft.selectedTechnologies || [];
+  const primary = getPrimaryApiTechnology(wizardProfileDraft);
+  ["zip-tech-chip", "repo-tech-chip"].forEach((id) => {
+    const chip = document.getElementById(id);
+    if (!chip) return;
+    if (!techs.length) { chip.style.display = "none"; return; }
+    const items = techs.map((tech) => {
+      const isPrimary = tech === primary;
+      const primarySuffix = isPrimary && techs.length > 1
+        ? ` <span class="tech-label">${t("tech-chip-primary")}</span>`
+        : "";
+      const cls = isPrimary ? "primary" : "secondary";
+      return `<span class="tech-${cls}">${escapeHtml(tech)}${primarySuffix}</span>`;
     });
+    chip.innerHTML =
+      `<span class="tech-label">${t("tech-chip-label")}:</span> ` +
+      items.join(" · ") +
+      ` <span class="tech-label">· ${t("tech-chip-from-profile")}</span>`;
+    chip.style.display = "";
+  });
 }
 
 async function renderCompatibleProjects() {
@@ -984,7 +1013,7 @@ export function setWizardStep(step) {
       renderProfileCards();
       return;
     }
-    syncTechnologySelectsFromProfile();
+    renderTechChipsForStep2();
   }
   wizardStep1.style.display = onStep1 ? "" : "none";
   wizardStep2.style.display = onStep1 ? "none" : "";
@@ -1054,7 +1083,7 @@ export function showProjectModal(profile = null) {
   if (backZip) backZip.style.display = "none";
   if (backClone) backClone.style.display = "none";
   projectModal.style.display = "flex";
-  syncTechnologySelectsFromProfile();
+  renderTechChipsForStep2();
   setWizardStep(2);
 }
 
@@ -1087,7 +1116,7 @@ export async function uploadZipProject(event) {
   btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Cargando…`;
 
   try {
-    const technology = document.getElementById("zip-technology").value;
+    const technology = getPrimaryApiTechnology(wizardProfileDraft) || "python";
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
     formData.append("name", document.getElementById("zip-name").value);
@@ -1117,7 +1146,7 @@ export async function cloneRepoProject(event) {
   const payload = {
     name:      document.getElementById("repo-name").value,
     repo_url:  document.getElementById("repo-url").value,
-    technology: document.getElementById("repo-technology").value,
+    technology: getPrimaryApiTechnology(wizardProfileDraft) || "python",
   };
   if (!payload.name.trim() || !payload.repo_url.trim()) {
     showFeedback("Nombre y URL del repositorio son obligatorios.", "error"); return;

@@ -373,6 +373,15 @@
 - [x] Dashboard: risk_score progress bar/badge alongside severity; sort by risk_score; "🧠 Reentrenar modelo" button.
 - [x] `code/requirements.txt`: add `xgboost>=2.0.0`, `scikit-learn>=1.4.0`, `joblib>=1.3.0`.
 
+### Phase 4 — ML: Fix feature leakage en risk_scorer (2026-06-03) ✅
+- [x] **Root cause**: label viejo `severity in {CRITICAL,HIGH} AND status in {open,regression}` con `severity_enc` + `status_enc` dentro del vector de features → el modelo memorizaba la regla del label (precision/recall/roc_auc = 1.0)
+- [x] `risk_scorer.py` `_label_from_finding(finding)`: nuevo label = outcome real `1 si (regression_count > 0 OR status=="regression" OR sla_breached) else 0`; `sla_breached = sla_deadline is not None AND sla_deadline < ahora_utc`; no usa severity/confidence/tool
+- [x] `risk_scorer.py` `_features_from_finding()`: 5 features `[severity_enc, tool_enc, days_age, days_to_deadline, confidence_enc]` — eliminados `status_enc` (filtraba status=="regression") y `regression_count` (es parte del label); añadido `confidence_enc` (`_CONFIDENCE_ENCODE = {HIGH:3, MEDIUM:2, LOW:1}`); lógica days_age/days_to_deadline intacta
+- [x] `risk_scorer.py` `train_model()`: `y = [_label_from_finding(f) for f in findings]`; mensaje del ValueError de clase única reescrito ("no regressions or SLA breaches present"); resto del pipeline sin cambios
+- [x] `score_finding()` sin cambios de lógica; fallback por severidad intacto
+- [x] `tests/test_risk_scorer.py` (6 tests): `test_train_model_minimal_dataset` reconstruido (6 positivos regresión/SLA + 8 negativos); nuevo `test_features_exclude_leakage_columns` (vector len 5; mismo vector pese a status/regression_count distintos; label diferente)
+- [x] 163 passed, 2 skipped (165 passed con LangGraph + prometheus_fastapi_instrumentator instalados) — sin regresiones
+
 ### Phase 4 — Infraestructura: Seguridad de Infraestructura (2026-06-02) ✅
 - [x] `src/scanners/checkov_adapter.py`: Checkov IaC scanner — `checkov -d <target> --compact -o json`; parsea `results.failed_checks` (single-framework dict) y lista multi-framework; severity desde campo top-level o `check.severity`; graceful degrade si binario ausente (pip install checkov).
 - [x] `src/scanners/trivy_adapter.py`: Trivy filesystem scanner — `trivy fs --format json <target>`; parsea `Results[].Vulnerabilities[]`; severity desde campo `Severity` o fallback CVSS V3Score; descripción incluye versión fija sugerida; graceful degrade si binario ausente (binario externo).
@@ -390,3 +399,33 @@
 - [x] `tests/test_gitleaks_adapter.py` (4 tests): leaks normalized, no leaks returns empty, missing binary graceful, FileNotFoundError graceful.
 - [ ] kube-bench (CIS Kubernetes benchmark) — pendiente; requiere cluster K8s activo, fuera de alcance para scans locales/offline.
 - [x] 162 tests passing (12 nuevos) — sin regresiones.
+
+### Fase 4 Bug Fixes (2026-06-10) ✅
+- [x] `src/dashboard/index.html` + `modal.js`: eliminados `<select id="zip-technology">` y `<select id="repo-technology">` — reemplazados por chip `.tech-readonly-chip`; tecnología siempre viene de `getPrimaryApiTechnology(wizardProfileDraft)`; `syncTechnologySelectsFromProfile()` eliminada.
+- [x] `src/dashboard/css/modal.css`: clase `.tech-readonly-chip` con `.tech-primary`, `.tech-secondary`, `.tech-label`.
+- [x] `src/dashboard/js/utils.js`: claves i18n `tech-chip-label`, `tech-chip-primary`, `tech-chip-from-profile` (ES+EN).
+- [x] `src/dast_agent/tools.py`: `_extract_zap_error()` propaga `code`+`message` del payload ZAP en `active_scan()` y `spider_crawl()`; nueva función `target_reachable()` con hint `host.docker.internal`.
+- [x] `src/dast_agent/agents.py`: `explorer_agent()` llama `target_reachable()` antes del spider — fail-fast con error detallado si target no alcanzable.
+- [x] `src/dashboard/js/dashboard.js`: `runAgenticDastFlow()` obtiene status final detallado; feedback mejorado con iteraciones/confirmados/falsos positivos.
+- [x] `.env.example`: documentada configuración de DAST target URL para host (uvicorn `--host 0.0.0.0` + `http://host.docker.internal:<port>`).
+- [x] `src/dashboard/js/diff.js`: `renderPreviewDiff()` reescrita usando `buildPanel` (mismos colores/formato que GitHub diff); label `"⚡ Vista previa del fix"`; `renderDiffView()` label `"⚠ Vista aproximada — propuesta Ollama sin aplicar"`.
+- [x] `src/dashboard/js/modal.js`: `_usingGitHubDiff=false` inicial; IIFE llama `renderPreviewDiff` para todos los proyectos (incluyendo repo); `checkExistingPR` establece `_usingGitHubDiff=true` solo cuando hay PR; `renderGitHubPrDiff` no borra el panel al cargar; `console.warn` para fallos de preview.
+- [x] `tests/test_dast_agent.py`: 4 tests nuevos — ZAP error propagation, `target_reachable` (failure + success), `explorer_agent` fail-fast.
+- [x] 169 tests passing — sin regresiones.
+
+### Fase 5 — Agentic DAST: URL_NOT_FOUND + alertas pasivas + DATABASE_URL (2026-06-11) ✅
+- [x] `src/api/database.py` `_resolve_database_url()`: resuelve rutas sqlite relativas del env var contra `PROJECT_ROOT` — previene BD huérfana si uvicorn arranca desde otro directorio. URLs absolutas y otros engines intactos.
+- [x] `tests/test_database_url.py` (4 tests): relativa→absoluta anclada a PROJECT_ROOT; absoluta→sin cambio; postgresql→sin cambio; DATABASE_URL default apunta a PROJECT_ROOT.
+- [x] `README.md`: sección "Development — Database Inspection" — tabla de nombres reales de tablas (plurales + `scanprofile` singular) + queries de inspección rápida.
+- [x] `src/dast_agent/tools.py` `normalize_target_url(url)`: garantiza slash final cuando URL sin path (`http://host:8000` → `http://host:8000/`); con path/query → sin cambio. Aplicado en `spider_crawl`, `active_scan`, `get_alerts`, `target_reachable`.
+- [x] `src/dast_agent/tools.py` `resolve_site_url(target_url)`: llama `GET /JSON/core/view/sites/`; busca entrada con origen coincidente; retorna URL exacta del site tree o `None`.
+- [x] `src/dast_agent/tools.py` `active_scan()`: resuelve contra site tree antes del ascan; retry con slash alternado si primer intento retorna `URL_NOT_FOUND`; error claro si ambos intentos fallan; `_try_ascan()` y `_is_url_not_found()` como helpers privados.
+- [x] `src/scanners/zap_adapter.py` `_normalize_url()`: misma normalización para el adapter no-agéntico. `_start_active_scan()` loggea `WARNING` con error real de ZAP en lugar de silenciar `KeyError`.
+- [x] `src/dast_agent/state.py`: campo `warnings: list[str]` en `DastAgentState` y `empty_state()`.
+- [x] `src/dast_agent/agents.py` `attacker_agent()`: ascan fallido → `state["warnings"].append(msg)` (NO `state["error"]`) → `get_alerts()` se llama igual; alertas pasivas del spider no se pierden. Log `INFO` con conteo de alertas crudas.
+- [x] `src/dast_agent/agents.py` `verifier_agent()`: propaga `warnings` en nuevo estado.
+- [x] `src/dast_agent/runner.py`: `_wrap_node()` expone `warnings` en tracker; `run_dast_agent()` incluye `warnings` en resultado; `status="done"` se setea incluso con warnings (ascan falló pero alertas pasivas confirmadas).
+- [x] `src/api/main.py` `POST /api/dast/agent/scan`: incluye `warnings` en respuesta; persiste hallazgos cuando hay `confirmed` independientemente de `error`.
+- [x] `src/dashboard/js/dashboard.js`: `_DAST_STATUS_LABELS` extraído; `_showDastFeedback()` encapsula lógica — banner amarillo en `done+warnings`, banner rojo en `error`, resumen normal en `done` limpio. Nunca "sin hallazgos" cuando hubo fallo de ascan.
+- [x] `tests/test_dast_agent.py` (12 tests nuevos): `normalize_target_url` (4), `resolve_site_url` (2), `active_scan` retry y ambos-fallan (2), attacker passive alerts on ascan fail (2), status endpoint incluye warnings (1) + test anterior URL_NOT_FOUND actualizado.
+- [x] 184 tests passing — sin regresiones.

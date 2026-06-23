@@ -30,6 +30,7 @@ class DastAgentState(TypedDict, total=False):
     status: str  # exploring | attacking | verifying | done | error
     error: Optional[str]
     scan_id: Optional[str]
+    warnings: list[str]  # non-fatal issues (e.g. ascan failed but passive alerts retrieved)
 
 
 def empty_state(
@@ -53,4 +54,5 @@ def empty_state(
         "status": "exploring",
         "error": None,
         "scan_id": scan_id,
+        "warnings": [],
     }

@@ -203,7 +203,7 @@ export function renderDiffView(diffViewEl, snippetCode, proposedCode, fileData) 
   const rightCol = buildColumn(allRightRows, startLine, "transparent");
 
   diffViewEl.style.flexDirection = "column";
-  const toolbar = buildDiffToolbar("⚠ Propuesta AI", "#b8860b");
+  const toolbar = buildDiffToolbar("⚠ Vista aproximada — propuesta Ollama sin aplicar", "#b8860b");
   const columnsRow = document.createElement("div");
   columnsRow.style.cssText =
     "display:flex;align-items:stretch;flex:1;min-height:0;overflow:hidden;";
@@ -215,8 +215,8 @@ export function renderDiffView(diffViewEl, snippetCode, proposedCode, fileData) 
 
 /**
  * Render a diff between full file contents (original vs patched).
- * Used for the "Propuesta AI" panel when the server can compute the exact change.
- * Falls back to renderDiffView when preview data is unavailable.
+ * Uses the same buildPanel renderer as renderGitHubDiff so the visual style
+ * is identical before and after PR creation.
  *
  * @param {HTMLElement} diffViewEl
  * @param {string} originalContent  - full original file text
@@ -229,14 +229,11 @@ export function renderPreviewDiff(diffViewEl, originalContent, patchedContent) {
   const patchLines = normalizeLines(patchedContent);
   const ops = computeDiff(origLines, patchLines);
 
-  // Collapse context: keep at most CONTEXT equal lines around changes
+  // Collapse equal lines: keep CONTEXT lines around each change
   const CONTEXT = 5;
-  const changeIdx = ops.reduce((acc, op, i) => {
-    if (op.type !== "equal") { acc.push(i); }
-    return acc;
-  }, []);
+  const changeIdx = new Set();
+  ops.forEach((op, i) => { if (op.type !== "equal") changeIdx.add(i); });
 
-  // Determine which indices to show
   const visible = new Set();
   changeIdx.forEach((ci) => {
     for (let k = Math.max(0, ci - CONTEXT); k <= Math.min(ops.length - 1, ci + CONTEXT); k++) {
@@ -244,106 +241,83 @@ export function renderPreviewDiff(diffViewEl, originalContent, patchedContent) {
     }
   });
 
-  // Build side rows with gap markers between collapsed regions
+  // Build rows in buildPanel format: {line, lineNum, t}
   const leftRows = [], rightRows = [];
+  let leftLine = 1, rightLine = 1;
   let prevVisible = true;
+
   ops.forEach((op, idx) => {
     if (!visible.has(idx)) {
       if (prevVisible) {
-        leftRows.push({ line: "···", type: "gap" });
-        rightRows.push({ line: "···", type: "gap" });
+        leftRows.push({ line: "···", lineNum: "", t: "spacer" });
+        rightRows.push({ line: "···", lineNum: "", t: "spacer" });
       }
       prevVisible = false;
+      if (op.type === "equal") { leftLine++; rightLine++; }
+      else if (op.type === "delete") { leftLine++; }
+      else { rightLine++; }
       return;
     }
     prevVisible = true;
     if (op.type === "equal") {
-      leftRows.push({ line: op.left, type: "equal" });
-      rightRows.push({ line: op.right, type: "equal" });
+      leftRows.push({ line: op.left, lineNum: leftLine++, t: "eq" });
+      rightRows.push({ line: op.right, lineNum: rightLine++, t: "eq" });
     } else if (op.type === "delete") {
-      leftRows.push({ line: op.left, type: "delete" });
-      rightRows.push({ line: "", type: "pad" });
+      leftRows.push({ line: op.left, lineNum: leftLine++, t: "del" });
+      rightRows.push({ line: "", lineNum: "", t: "pad" });
     } else {
-      leftRows.push({ line: "", type: "pad" });
-      rightRows.push({ line: op.right, type: "insert" });
+      leftRows.push({ line: "", lineNum: "", t: "pad" });
+      rightRows.push({ line: op.right, lineNum: rightLine++, t: "ins" });
     }
   });
   if (!prevVisible) {
-    leftRows.push({ line: "···", type: "gap" });
-    rightRows.push({ line: "···", type: "gap" });
-  }
-
-  const STYLE = {
-    equal:  { rowBg: "transparent", numBg: "#0d1117", codeFg: "#c9d1d9", numFg: "#484f58", signCh: " " },
-    delete: { rowBg: "#1c1010",     numBg: "#1c1010", codeFg: "#cd7070", numFg: "#5e2828", signCh: "−" },
-    insert: { rowBg: "#0f1a0e",     numBg: "#0f1a0e", codeFg: "#5ca870", numFg: "#1a3a1a", signCh: "+" },
-    gap:    { rowBg: "#161b22",     numBg: "#161b22", codeFg: "#484f58", numFg: "#30363d", signCh: "" },
-    pad:    { rowBg: "#161b22",     numBg: "#161b22", codeFg: "transparent", numFg: "transparent", signCh: "" },
-  };
-
-  function buildCol(rows, borderColor) {
-    const col = document.createElement("div");
-    col.style.cssText =
-      `flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;` +
-      `border-right:1px solid ${borderColor};overflow:hidden;`;
-    const scroll = document.createElement("div");
-    scroll.style.cssText = "flex:1;min-height:0;overflow-x:auto;overflow-y:auto;background:#0d1117;";
-    const table = document.createElement("table");
-    table.style.cssText =
-      "border-collapse:collapse;min-width:100%;width:max-content;" +
-      "font-family:'Courier New',monospace;font-size:.8rem;line-height:1.7;";
-
-    let lineNum = 1;
-    rows.forEach(({ line, type }) => {
-      const s = STYLE[type] || STYLE.equal;
-      const isGap = type === "gap";
-      const isPad = type === "pad";
-      const showNum = !isGap && !isPad;
-
-      const tr = document.createElement("tr");
-      tr.style.backgroundColor = s.rowBg;
-
-      const tdNum = document.createElement("td");
-      tdNum.style.cssText =
-        `min-width:42px;padding:0 8px;color:${s.numFg};font-size:.7rem;user-select:none;` +
-        `text-align:right;white-space:nowrap;position:sticky;left:0;background:${s.numBg};` +
-        `z-index:1;border-right:1px solid rgba(255,255,255,0.04);`;
-      tdNum.textContent = showNum ? lineNum : "";
-
-      const tdSign = document.createElement("td");
-      let signColor = "#484f58";
-      if (type === "delete") signColor = "#cd7070";
-      else if (type === "insert") signColor = "#5ca870";
-      tdSign.style.cssText =
-        `min-width:18px;padding:0 4px;color:${signColor};font-weight:700;white-space:nowrap;`;
-      tdSign.textContent = s.signCh;
-
-      const tdCode = document.createElement("td");
-      tdCode.style.cssText = `color:${s.codeFg};padding:0 16px 0 2px;white-space:pre;`;
-      let codeText = line;
-      if (isGap) codeText = "···";
-      else if (isPad) codeText = "";
-      tdCode.textContent = codeText;
-
-      tr.append(tdNum, tdSign, tdCode);
-      table.appendChild(tr);
-      if (showNum) lineNum++;
-    });
-
-    scroll.appendChild(table);
-    col.appendChild(scroll);
-    return col;
+    leftRows.push({ line: "···", lineNum: "", t: "spacer" });
+    rightRows.push({ line: "···", lineNum: "", t: "spacer" });
   }
 
   diffViewEl.style.flexDirection = "column";
-  const toolbar = buildDiffToolbar("✓ Vista previa exacta del PR", "#3fb950");
-  const columnsRow = document.createElement("div");
-  columnsRow.style.cssText =
-    "display:flex;align-items:stretch;flex:1;min-height:0;overflow:hidden;";
-  columnsRow.appendChild(buildCol(leftRows, "#3a1515"));
-  columnsRow.appendChild(buildCol(rightRows, "transparent"));
-  diffViewEl.appendChild(toolbar);
-  diffViewEl.appendChild(columnsRow);
+
+  const hdr = document.createElement("div");
+  hdr.style.cssText =
+    "display:flex;align-items:center;justify-content:space-between;padding:5px 12px;" +
+    "background:#161b22;border-bottom:1px solid #21262d;flex-shrink:0;";
+  hdr.innerHTML =
+    '<span style="font-size:.7rem;font-weight:700;color:#f85149;text-transform:uppercase;letter-spacing:.08em;">— Antes</span>' +
+    '<span style="color:#d29922;font-size:.7rem;letter-spacing:.04em;white-space:nowrap;">⚡ Vista previa del fix (lo que el PR aplicará)</span>' +
+    '<span style="font-size:.7rem;font-weight:700;color:#3fb950;text-transform:uppercase;letter-spacing:.08em;">+ Después</span>';
+
+  const firstChangedLeft = leftRows.findIndex((r, i) => r.t === "del" || rightRows[i]?.t === "ins");
+  const panelAntes = buildPanel(leftRows, "#3a1515");
+  const panelDespues = buildPanel(rightRows, "transparent");
+
+  const panelsRow = document.createElement("div");
+  panelsRow.style.cssText = "display:grid;grid-template-columns:1fr 1fr;flex:1;min-height:0;overflow:hidden;";
+  panelsRow.append(panelAntes, panelDespues);
+
+  requestAnimationFrame(() => {
+    const top = Math.max(0, firstChangedLeft - 4) * 22;
+    panelAntes.scrollTop = top;
+    panelDespues.scrollTop = top;
+  });
+
+  let syncing = false;
+  panelAntes.addEventListener("scroll", () => {
+    if (syncing) return;
+    syncing = true;
+    panelDespues.scrollTop = panelAntes.scrollTop;
+    panelDespues.scrollLeft = panelAntes.scrollLeft;
+    requestAnimationFrame(() => { syncing = false; });
+  });
+  panelDespues.addEventListener("scroll", () => {
+    if (syncing) return;
+    syncing = true;
+    panelAntes.scrollTop = panelDespues.scrollTop;
+    panelAntes.scrollLeft = panelDespues.scrollLeft;
+    requestAnimationFrame(() => { syncing = false; });
+  });
+
+  diffViewEl.appendChild(hdr);
+  diffViewEl.appendChild(panelsRow);
 }
 
 function parseHunks(diff) {

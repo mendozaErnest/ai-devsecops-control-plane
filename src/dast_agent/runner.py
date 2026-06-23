@@ -62,6 +62,7 @@ def _wrap_node(node_fn, scan_id: str, label: str):
             confirmed_count=len(out.get("confirmed_findings", []) or []),
             false_positives_count=len(out.get("false_positives", []) or []),
             error=out.get("error"),
+            warnings=list(out.get("warnings") or []),
         )
         return out
 
@@ -148,7 +149,9 @@ async def run_dast_agent(
     confirmed = list(final_state.get("confirmed_findings", []) or [])
     false_positives = list(final_state.get("false_positives", []) or [])
     iterations_run = int(final_state.get("iteration", 0) or 0)
-    status = "error" if final_state.get("error") else "done"
+    warnings = list(final_state.get("warnings") or [])
+    # "done" even when ascan failed — passive alerts may have been confirmed
+    status = "error" if final_state.get("error") and not confirmed and not warnings else "done"
 
     _set_scan_status(
         scan_id,
@@ -158,12 +161,14 @@ async def run_dast_agent(
         iteration=iterations_run,
         completed_at=_now(),
         error=final_state.get("error"),
+        warnings=warnings,
     )
 
     return {
         "scan_id": scan_id,
         "status": status,
         "error": final_state.get("error"),
+        "warnings": warnings,
         "confirmed_findings": confirmed,
         "false_positives_count": len(false_positives),
         "false_positives": false_positives,

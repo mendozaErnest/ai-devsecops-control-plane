@@ -9,7 +9,7 @@ Coverage:
   when _ML_AVAILABLE is False (i.e. when xgboost/sklearn are absent at install time).
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -64,13 +64,21 @@ def test_train_model_minimal_dataset(tmp_path, monkeypatch):
 
     from src.ml.risk_scorer import train_model
 
-    # 8 CRITICAL/open (label=1) + 6 LOW/fixed (label=0) → two classes, ≥10 total
+    # New label = outcome (regression OR SLA breach), NOT severity/status leakage.
+    # 6 positives (3 regression + 3 SLA-breached) + 8 negatives → two classes, ≥10 total.
+    past = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
     findings = [
-        {"severity": "CRITICAL", "status": "open",  "tool": "bandit",  "regression_count": 0,
-         "first_seen_at": None, "sla_deadline": None}
-        if i < 8 else
-        {"severity": "LOW",      "status": "fixed", "tool": "semgrep", "regression_count": 0,
-         "first_seen_at": None, "sla_deadline": None}
+        # 3 positives via regression
+        {"severity": "HIGH", "status": "regression", "tool": "bandit", "confidence": "HIGH",
+         "regression_count": 2, "first_seen_at": None, "sla_deadline": None}
+        if i < 3 else
+        # 3 positives via SLA breach (deadline in the past, still open)
+        {"severity": "MEDIUM", "status": "open", "tool": "semgrep", "confidence": "MEDIUM",
+         "regression_count": 0, "first_seen_at": None, "sla_deadline": past}
+        if i < 6 else
+        # 8 negatives: open, no regression, no overdue deadline
+        {"severity": "LOW", "status": "open", "tool": "pylint", "confidence": "LOW",
+         "regression_count": 0, "first_seen_at": None, "sla_deadline": None}
         for i in range(14)
     ]
 
@@ -79,6 +87,37 @@ def test_train_model_minimal_dataset(tmp_path, monkeypatch):
     assert set(result.keys()) == {"precision", "recall", "roc_auc", "n_samples"}
     assert result["n_samples"] == 14
     assert (tmp_path / "risk_model.joblib").exists()
+
+
+# ── test 2b: features exclude leakage columns (status / regression_count) ────
+
+def test_features_exclude_leakage_columns():
+    """Feature vector is length 5 and ignores the columns that define the label.
+
+    Two findings identical except for `status` (open vs regression) and
+    `regression_count` (0 vs 5) must produce the SAME feature vector — because
+    those columns are no longer features — yet a DIFFERENT label.
+    """
+    from src.ml.risk_scorer import _features_from_finding, _label_from_finding
+
+    base = {
+        "severity": "HIGH", "confidence": "HIGH", "tool": "bandit",
+        "first_seen_at": None, "sla_deadline": None,
+    }
+    negative = {**base, "status": "open",       "regression_count": 0}
+    positive = {**base, "status": "regression", "regression_count": 5}
+
+    feats_neg = _features_from_finding(negative)
+    feats_pos = _features_from_finding(positive)
+
+    assert len(feats_neg) == 5
+    assert len(feats_pos) == 5
+    # status / regression_count are NOT features → identical vectors
+    assert feats_neg == feats_pos
+
+    # but the label distinguishes them via the real outcome
+    assert _label_from_finding(negative) == 0
+    assert _label_from_finding(positive) == 1
 
 
 # ── test 3: POST /api/ml/train returns 400 with < 10 findings ────────────────
