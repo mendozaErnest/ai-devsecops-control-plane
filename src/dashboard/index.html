@@ -41,25 +41,6 @@
           </div>
         </div>
 
-        <div class="repo-wrap">
-          <div class="repo" title="Project">
-            <span class="sl">/</span>
-            <select id="project-select" class="project-select" aria-label="Project">
-              <option>loading-projects</option>
-            </select>
-            <span id="repo-branch-chip" class="br">main</span>
-          </div>
-          <button type="button" id="new-project" class="btn" data-i18n="new-project">Nuevo Proyecto</button>
-          <div id="projects-popover" class="project-menu">
-            <div class="project-menu-head">
-              <div>
-                <div style="font-size:13px;font-weight:500;color:var(--t-hi);" data-i18n="projects">Proyectos</div>
-                <div id="project-status" style="font-size:12px;color:var(--t-dim);margin-top:2px;">Cargando proyectos…</div>
-              </div>
-            </div>
-            <div id="projects-list" style="max-height:420px;overflow-y:auto;"></div>
-          </div>
-        </div>
 
         <div class="links">
           <a href="#" class="on" data-app-view-link="configuration">Configuración</a>
@@ -92,8 +73,7 @@
             <p>Arrastra tecnologías y scanners para crear una configuración reusable en los siguientes proyectos.</p>
           </div>
           <div class="profile-home-actions">
-            <button type="button" id="go-projects-view" class="btn">Ver proyectos escaneados</button>
-            <button type="button" id="builder-new-project" class="btn primary">Agregar proyecto</button>
+            <button type="button" id="go-projects-view" class="btn primary">Ver proyectos escaneados</button>
           </div>
         </header>
 
@@ -301,98 +281,6 @@
           </div>
         </section>
       </main>
-      </section>
-    </div>
-
-    <!-- ══════════════ PROJECT MODAL — 2-step wizard ══════════════ -->
-    <div id="project-modal" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);padding:24px;"
-      role="dialog" aria-modal="true" aria-labelledby="project-modal-title">
-      <section style="width:100%;max-width:760px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
-
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 20px;border-bottom:1px solid var(--border);">
-          <div>
-            <h2 id="project-modal-title" style="color:var(--text);font-size:1rem;font-weight:700;" data-i18n="new-project">Nuevo Proyecto</h2>
-            <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
-              <span id="bc-step1" style="font-size:.7rem;font-weight:700;color:var(--accent);">Paso 1: Configurar</span>
-              <span style="font-size:.7rem;color:var(--muted);">›</span>
-              <span id="bc-step2" style="font-size:.7rem;font-weight:600;color:var(--muted);">Paso 2: Agregar proyecto</span>
-            </div>
-          </div>
-          <button type="button" id="close-project-modal"
-            style="width:32px;height:32px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;"
-            aria-label="Cerrar">✕</button>
-        </div>
-
-        <!-- STEP 1: Scan Profile selection -->
-        <div id="wizard-step-1" style="padding:20px;">
-          <p style="font-size:.78rem;color:var(--muted);margin-bottom:14px;">Arrastra tecnologías y scanners para armar un perfil de análisis personalizado.</p>
-          <div id="profile-cards" class="profile-builder"></div>
-          <div id="custom-profile-panel" style="display:none;"></div>
-
-          <button type="button" id="wizard-next-btn"
-            style="width:100%;padding:9px;border-radius:6px;background:var(--accent);color:#fff;font-size:.83rem;font-weight:700;border:none;cursor:pointer;transition:background .15s;">
-            Siguiente →
-          </button>
-        </div>
-
-        <!-- STEP 2: Add project (ZIP / Clone) -->
-        <div id="wizard-step-2" style="display:none;">
-          <section class="compatible-projects-panel">
-            <div class="compatible-projects-head">
-              <div>
-                <h3>Proyectos subidos compatibles</h3>
-                <p id="compatible-projects-status">Selecciona un proyecto existente o agrega uno nuevo.</p>
-              </div>
-            </div>
-            <div id="compatible-projects-list" class="compatible-projects-list"></div>
-          </section>
-
-          <div style="display:flex;gap:8px;padding:16px 20px 0;">
-            <button type="button" id="tab-zip" class="tab-btn tab-active">📦 <span data-i18n="upload-zip">Subir ZIP</span></button>
-            <button type="button" id="tab-clone" class="tab-btn tab-inactive">🔗 <span data-i18n="clone-repo">Clonar Repo</span></button>
-          </div>
-
-          <div id="panel-zip" class="form-panel visible-panel" style="padding:16px 20px 20px;">
-            <form id="upload-project-form" class="space-y-3">
-              <input id="zip-name" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="Nombre del proyecto" data-i18n-placeholder="project-name">
-              <div id="zip-tech-chip" class="tech-readonly-chip" style="display:none;"></div>
-              <input id="zip-file" type="file" accept=".zip" style="width:100%;padding:8px 12px;font-size:.83rem;">
-              <div style="display:flex;gap:8px;">
-                <button type="button" id="wizard-back-zip"
-                  style="padding:9px 16px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);font-size:.83rem;font-weight:600;cursor:pointer;">← Atrás</button>
-                <button type="submit"
-                  style="flex:1;padding:9px;border-radius:6px;background:var(--accent);color:#fff;font-size:.83rem;font-weight:700;border:none;cursor:pointer;transition:background .15s;"
-                  data-i18n="create-from-zip">Crear desde ZIP</button>
-              </div>
-            </form>
-          </div>
-
-          <div id="panel-clone" class="form-panel hidden-panel" style="padding:16px 20px 20px;">
-            <form id="clone-project-form" class="space-y-3">
-              <input id="repo-name" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="Nombre del proyecto" data-i18n-placeholder="project-name">
-              <div style="display:flex;gap:6px;">
-                <button type="button" id="clone-gh" class="tab-btn tab-active" style="flex:1;padding:5px 8px;font-size:.76rem;display:inline-flex;align-items:center;justify-content:center;gap:5px;">
-                  <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-                  GitHub
-                </button>
-                <button type="button" id="clone-gl" class="tab-btn tab-inactive" style="flex:1;padding:5px 8px;font-size:.76rem;display:inline-flex;align-items:center;justify-content:center;gap:5px;">
-                  <svg width="13" height="13" viewBox="0 0 380 380" fill="currentColor"><path fill="#e24329" d="M380 228.5L323.9 55.7C321.6 48.5 315.3 43.5 308 43.5c-7.3 0-13.6 5-15.9 12.2L190 354.7 87.9 55.7C85.6 48.5 79.3 43.5 72 43.5c-7.3 0-13.6 5-15.9 12.2L0 228.5l190 126.2L380 228.5z"/></svg>
-                  GitLab
-                </button>
-              </div>
-              <input id="repo-url" style="width:100%;padding:8px 12px;font-size:.83rem;" placeholder="https://github.com/usuario/repo.git">
-              <div id="repo-tech-chip" class="tech-readonly-chip" style="display:none;"></div>
-              <div style="display:flex;gap:8px;">
-                <button type="button" id="wizard-back-clone"
-                  style="padding:9px 16px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);font-size:.83rem;font-weight:600;cursor:pointer;">← Atrás</button>
-                <button type="submit"
-                  style="flex:1;padding:9px;border-radius:6px;background:var(--bg-hover);border:1px solid var(--border);color:var(--text);font-size:.83rem;font-weight:700;cursor:pointer;transition:background .15s;"
-                  data-i18n="clone-scan">Clonar y Escanear</button>
-              </div>
-            </form>
-          </div>
-        </div>
-
       </section>
     </div>
 

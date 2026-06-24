@@ -16,7 +16,6 @@ import {
 } from "/static/js/api.js";
 import {
   showRemediationModal, openReasonModal, openAuditModal, postLifecycle,
-  showProjectModal,
 } from "/static/js/modal.js";
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
@@ -604,8 +603,8 @@ function buildScannerIconBadge(toolKey) {
 
 // ── Project rendering ─────────────────────────────────────────────────────────
 export function renderProjects() {
-  projectsList.innerHTML = "";
-  projectStatus.textContent = `${projects.length} ${t("registered-projects")}`;
+  if (projectsList) projectsList.innerHTML = "";
+  if (projectStatus) projectStatus.textContent = `${projects.length} ${t("registered-projects")}`;
   setText("repo-branch-chip", selectedProject?.source_type === "repo" ? "main" : selectedProject?.technology || "main");
   if (projectSelect) projectSelect.innerHTML = "";
 
@@ -615,10 +614,12 @@ export function renderProjects() {
       option.textContent = "no-project";
       projectSelect.appendChild(option);
     }
-    const empty = document.createElement("p");
-    empty.style.cssText = "padding:32px 20px;font-size:.83rem;color:var(--muted);text-align:center;";
-    empty.textContent = "Aún no hay proyectos. Carga un ZIP o clona un repositorio.";
-    projectsList.appendChild(empty);
+    if (projectsList) {
+      const empty = document.createElement("p");
+      empty.style.cssText = "padding:32px 20px;font-size:.83rem;color:var(--muted);text-align:center;";
+      empty.textContent = "Aún no hay proyectos. Carga un ZIP o clona un repositorio.";
+      projectsList.appendChild(empty);
+    }
     return;
   }
 
@@ -673,7 +674,7 @@ export function renderProjects() {
       <p style="margin-top:5px;font-size:.7rem;color:var(--muted);">${escapeHtml(createdAt)}</p>
     `;
     btn.addEventListener("click", () => selectProject(project));
-    projectsList.appendChild(btn);
+    projectsList?.appendChild(btn);
   });
 }
 
@@ -719,7 +720,7 @@ export async function loadProjects(selectFirst = true) {
   try {
     projects = await getProjects();
     await ensureScanProfilesLoaded(true);
-    if (selectedProject) selectedProject = projects.find((p) => p.id === selectedProject.id) || null;
+    if (selectedProject) selectedProject = projects.find((p) => p.id === selectedProject.id) || (selectFirst ? null : selectedProject);
     if (!selectedProject && selectFirst && projects.length > 0) selectedProject = projects[0];
     renderProjects();
     updateScanStackIcons();

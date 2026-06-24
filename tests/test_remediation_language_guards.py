@@ -209,3 +209,11 @@ def test_angular_prompt_forbids_new_class_creation():
 
     # Must contain the anti-hallucination constraint
     assert "nueva clase" in prompt or "NUNCA" in prompt
+
+def test_is_safe_to_apply_rejects_noop_patch():
+    source = "def vulnerable(value):\n    return eval(value)"
+
+    safe, reason = is_safe_to_apply(source, source)
+
+    assert safe is False
+    assert "no cambia" in reason

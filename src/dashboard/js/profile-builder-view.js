@@ -24,7 +24,6 @@ const builderRoot = document.getElementById("home-profile-builder");
 const savedProfilesList = document.getElementById("saved-profiles-list");
 const refreshProfilesButton = document.getElementById("refresh-profiles");
 const resetBuilderButton = document.getElementById("profile-builder-reset");
-const builderNewProjectButton = document.getElementById("builder-new-project");
 const goProjectsButton = document.getElementById("go-projects-view");
 
 let profileDraft = createEmptyProfileBuilderState();
@@ -52,11 +51,9 @@ export function initProfileBuilderView(options = {}) {
     renderProfileBuilder();
     renderSavedProfiles();
   });
-  // CAMBIO 4: header button uses the active saved profile, not the builder draft
-  builderNewProjectButton?.addEventListener("click", () => {
+  goProjectsButton?.addEventListener("click", () => {
     if (activeProfile) onAddProject?.(activeProfile);
   });
-  goProjectsButton?.addEventListener("click", () => onOpenProjectsView?.());
 
   updateActionButtons(); // CAMBIO 4: disabled until a profile is activated
 }
@@ -73,15 +70,12 @@ export async function loadSavedProfiles() {
   }
 }
 
-// CAMBIO 4: habilita/deshabilita botones del header según si hay perfil activo
 function updateActionButtons() {
   const hasActive = Boolean(activeProfileId);
-  [builderNewProjectButton, goProjectsButton].forEach((btn) => {
-    if (!btn) return;
-    btn.disabled = !hasActive;
-    btn.style.opacity = hasActive ? "1" : ".45";
-    btn.style.cursor = hasActive ? "pointer" : "not-allowed";
-  });
+  if (!goProjectsButton) return;
+  goProjectsButton.disabled = !hasActive;
+  goProjectsButton.style.opacity = hasActive ? "1" : ".45";
+  goProjectsButton.style.cursor = hasActive ? "pointer" : "not-allowed";
 }
 
 // CAMBIO 3: activar un perfil guardado sin abrir modal ni rellenar el builder

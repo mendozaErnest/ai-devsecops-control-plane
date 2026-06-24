@@ -413,6 +413,17 @@
 - [x] `tests/test_dast_agent.py`: 4 tests nuevos — ZAP error propagation, `target_reachable` (failure + success), `explorer_agent` fail-fast.
 - [x] 169 tests passing — sin regresiones.
 
+### Fase 5 — UX: Project nav simplification (2026-06-23) ✅
+- [x] `index.html`: eliminado div `.repo-wrap` (contenía `<select id="project-select">`, botón "Nuevo Proyecto" y `#projects-popover`)
+- [x] `index.html`: eliminado botón `#builder-new-project` ("Agregar proyecto"); botón `#go-projects-view` es ahora el único punto de entrada unificado y navega a `/projects-select`
+- [x] `profile-builder-view.js`: `goProjectsButton` ahora llama `onAddProject` (navega a `/projects-select`) en lugar de `onOpenProjectsView`; `updateActionButtons()` simplificado a solo `goProjectsButton`
+- [x] `main.js`: eliminado listener del botón `#new-project` (ya eliminado del HTML)
+- [x] `dashboard.js` `renderProjects()`: añadidos null-guards en `projectsList` y `projectStatus` (elementos eliminados del DOM)
+- [x] `api.js`: nueva función `forkProject(projectId, payload)` → `POST /api/projects/{id}/fork`
+- [x] `project-selector.js`: `selectExistingProject()` ahora llama `forkProject` en lugar de `assignProjectProfile` — crea proyecto nuevo (mismo código, perfil nuevo, sin hallazgos) en vez de reutilizar el existente con datos de escaneo anteriores
+- [x] `main.py`: nuevo modelo `ProjectForkRequest`; nuevo endpoint `POST /api/projects/{project_id}/fork` — crea Project con mismo target_path/source_type/technology, nuevo scan_profile_id, retorna proyecto vacío listo para escanear
+- [x] 184 tests — sin regresiones
+
 ### Fase 5 — Agentic DAST: URL_NOT_FOUND + alertas pasivas + DATABASE_URL (2026-06-11) ✅
 - [x] `src/api/database.py` `_resolve_database_url()`: resuelve rutas sqlite relativas del env var contra `PROJECT_ROOT` — previene BD huérfana si uvicorn arranca desde otro directorio. URLs absolutas y otros engines intactos.
 - [x] `tests/test_database_url.py` (4 tests): relativa→absoluta anclada a PROJECT_ROOT; absoluta→sin cambio; postgresql→sin cambio; DATABASE_URL default apunta a PROJECT_ROOT.

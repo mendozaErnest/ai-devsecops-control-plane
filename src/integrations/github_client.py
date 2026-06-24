@@ -12,6 +12,7 @@ from pathlib import Path
 import httpx
 import jwt
 
+from src.ai_engine.patch_validation import validate_python_security_semantics
 
 GITHUB_API_URL = "https://api.github.com"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -33,12 +34,14 @@ class GitHubClientError(RuntimeError):
         user_message: str | None = None,
         retryable: bool = False,
         details: dict | None = None,
+        http_status: int | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.user_message = user_message or message
         self.retryable = retryable
         self.details = details or {}
+        self.http_status = http_status
 
     def to_dict(self) -> dict:
         return {
@@ -137,7 +140,8 @@ async def github_request(
         status_code = exc.response.status_code
         body = exc.response.text
         raise GitHubClientError(
-            f"GitHub API {method} {path} failed with {status_code}: {body}"
+            f"GitHub API {method} {path} failed with {status_code}: {body}",
+            http_status=status_code,
         ) from exc
     except httpx.HTTPError as exc:
         raise GitHubClientError(f"GitHub API {method} {path} failed: {exc}") from exc
@@ -1948,6 +1952,12 @@ def is_safe_to_apply(original_content: str, patched_content: str) -> tuple[bool,
     original_lines = original_content.splitlines()
     patched_lines  = patched_content.splitlines()
 
+    if original_content == patched_content:
+        return False, (
+            "La remediación no cambia el archivo; el hallazgo seguiría presente. "
+            "Debe regenerarse o pasar a revisión manual."
+        )
+
     # 1 — Excessive line removal
     lines_removed = len(original_lines) - len(patched_lines)
     if original_lines and lines_removed > len(original_lines) * 0.20:
@@ -2309,12 +2319,27 @@ async def create_security_pr(finding_details: dict, remediation_text: str) -> di
         await ensure_security_branch(client, repo, branch_name, base_sha)
 
         encoded_path = urllib.parse.quote(file_path, safe="/")
-        source_file = await github_request(
-            client,
-            "GET",
-            f"/repos/{repo}/contents/{encoded_path}",
-            params={"ref": branch_name},
-        )
+        try:
+            source_file = await github_request(
+                client,
+                "GET",
+                f"/repos/{repo}/contents/{encoded_path}",
+                params={"ref": branch_name},
+            )
+        except GitHubClientError as exc:
+            if exc.http_status == 404:
+                raise GitHubClientError(
+                    f"File not found in GitHub repository: {file_path}",
+                    code="file_not_found_in_repo",
+                    user_message=(
+                        f"El archivo '{file_path}' no existe en el repositorio de GitHub "
+                        f"({repo}). Verifica que el proyecto fue clonado desde el repositorio "
+                        "correcto y que la ruta del archivo coincide con la estructura del repo."
+                    ),
+                    retryable=False,
+                    http_status=404,
+                ) from exc
+            raise
 
         if not isinstance(source_file, dict):
             raise GitHubClientError(f"GitHub source path {file_path} did not resolve to a file.")
@@ -2382,6 +2407,19 @@ async def create_security_pr(finding_details: dict, remediation_text: str) -> di
                 retryable=False,
                 details={"safety_reason": safety_reason, "finding_id": finding_id},
             )
+
+        if technology == "python":
+            semantic_safe, semantic_reason = validate_python_security_semantics(
+                original_content, patched_content, finding_details
+            )
+            if not semantic_safe:
+                raise GitHubClientError(
+                    f"Semantic safety check failed: {semantic_reason}",
+                    code="semantic_safety_check_failed",
+                    user_message=semantic_reason,
+                    retryable=True,
+                    details={"safety_reason": semantic_reason, "finding_id": finding_id},
+                )
 
         source_sha = source_file["sha"]
 

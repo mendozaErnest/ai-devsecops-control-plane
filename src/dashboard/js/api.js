@@ -23,6 +23,17 @@ export async function assignProjectProfile(projectId, profileId) {
   return data;
 }
 
+export async function forkProject(projectId, payload) {
+  const res = await fetch(`/api/projects/${projectId}/fork`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(), { detail: data.detail, status: res.status, data });
+  return data;
+}
+
 export async function scanProject(projectId, dastTargetUrl = null) {
   const body = { project_id: projectId };
   if (dastTargetUrl) body.dast_target_url = dastTargetUrl;
