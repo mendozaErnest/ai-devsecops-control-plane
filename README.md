@@ -1,5 +1,7 @@
 <div align="center">
 
+![AI DevSecOps Control Plane](header.png)
+
 # 🛡️ AI DevSecOps Control Plane
 
 ### Self-hosted application security platform with local AI remediation.
@@ -74,7 +76,39 @@ Or with Docker Compose (API + Ollama auto-provisioned):
 docker compose up -d
 ```
 
+### Development — Database Inspection
+
+The SQLite database lives at `dev_database.db` in the project root (always resolved against the project root regardless of uvicorn's launch directory).
+
+Real table names (use these in sqlite3 queries — plural except `scanprofile`):
+
+| Table | Contents |
+|---|---|
+| `projects` | Registered source-code projects |
+| `findings` | Normalized security findings |
+| `scans` | Scan executions |
+| `remediations` | AI-generated patches and PR links |
+| `targets` | Legacy compatibility entity |
+| `metrics_snapshots` | Per-target metric snapshots |
+| `finding_audit_events` | Audit trail for finding status changes |
+| `scanprofile` | Scan profiles (singular — SQLModel default) |
+
+Quick inspection queries:
+
+```bash
+# Verify which database file the running server is using
+python -c "from src.api.database import DATABASE_URL; print(DATABASE_URL)"
+
+# Last 3 projects
+sqlite3 dev_database.db "SELECT name, technology FROM projects ORDER BY rowid DESC LIMIT 3;"
+
+# Last 10 findings (most useful after a DAST run)
+sqlite3 dev_database.db "SELECT rule_id, severity, file_path FROM findings ORDER BY rowid DESC LIMIT 10;"
+```
+
 Full setup: [docs/api-reference.md](docs/api-reference.md) · GitHub App configuration: [docs/github-app-setup.md](docs/github-app-setup.md) · Threat model: [docs/threat-model.md](docs/threat-model.md)
+
+---
 
 ## 🏗 Architecture
 
