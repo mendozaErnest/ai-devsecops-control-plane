@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 
 import requests
 import yaml
+import re
 
 
 # Vulnerability: hardcoded password.
@@ -81,8 +82,15 @@ def run_ping(host):
 
 
 def run_backup(user_supplied_path):
-    # Vulnerability: command injection with subprocess.Popen and shell=True.
-    return subprocess.Popen("tar czf backup.tgz " + user_supplied_path, shell=True)
+    # Validate the user-supplied path to prevent command injection
+    if not re.fullmatch(r'^[a-zA-Z0-9.\-_]+$', user_supplied_path):
+        raise ValueError("Invalid path provided")
+
+    # Use subprocess.run with a list form and specify a timeout
+    result = subprocess.run(["tar", "czf", "backup.tgz", user_supplied_path], timeout=30)
+
+    # Return the exit code of the subprocess
+    return result.returncode
 
 
 def run_admin_task(task_name):
