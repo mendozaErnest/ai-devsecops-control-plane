@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Proyectos · AI DevSecOps Control Plane</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/base.css">
+    <link rel="stylesheet" href="/static/css/layout.css">
+    <link rel="stylesheet" href="/static/css/modal.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      .ps-layout {
+        max-width: 920px;
+        margin: 36px auto;
+        padding: 0 24px;
+      }
+      .ps-header { margin-bottom: 28px; }
+      .ps-header .lbl {
+        font-size: .73rem;
+        font-weight: 600;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+        color: var(--t-dim);
+        margin-bottom: 6px;
+      }
+      .ps-header h1 {
+        font-size: 1.45rem;
+        font-weight: 700;
+        color: var(--t-hi);
+        margin: 0 0 6px;
+      }
+      .ps-header p {
+        font-size: .84rem;
+        color: var(--t-dim);
+        margin: 0;
+      }
+      .ps-section-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+      .ps-section-head h2 {
+        font-size: .9rem;
+        font-weight: 700;
+        color: var(--t-hi);
+        margin: 0;
+      }
+      .ps-section-head .count {
+        font-size: .75rem;
+        color: var(--t-dim);
+        margin: 3px 0 0;
+      }
+      .ps-projects-grid {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      }
+      .ps-divider {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 28px 0;
+        position: relative;
+      }
+      .ps-divider::after {
+        content: "o agrega un nuevo proyecto";
+        position: absolute;
+        top: -10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--bg);
+        padding: 0 14px;
+        font-size: .72rem;
+        color: var(--t-dim);
+        white-space: nowrap;
+      }
+      .ps-form-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 20px;
+      }
+      .ps-field {
+        width: 100%;
+        padding: 9px 12px;
+        font-size: .84rem;
+        background: var(--bg-hover);
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        color: var(--t-hi);
+        outline: none;
+        transition: border-color .15s;
+        font-family: var(--f-sans);
+      }
+      .ps-field:focus { border-color: var(--accent); }
+      .ps-btn-primary {
+        width: 100%;
+        padding: 10px;
+        border-radius: 7px;
+        background: var(--accent);
+        color: #fff;
+        font-size: .84rem;
+        font-weight: 700;
+        border: none;
+        cursor: pointer;
+        transition: background .15s;
+        font-family: var(--f-sans);
+      }
+      .ps-btn-primary:hover { background: #388bfd; }
+      .ps-btn-primary:disabled { opacity: .55; cursor: not-allowed; }
+      .ps-tech-chip {
+        font-size: .74rem;
+        color: var(--t-dim);
+        padding: 5px 10px;
+        background: rgba(47,129,247,.08);
+        border: 1px solid rgba(47,129,247,.22);
+        border-radius: 6px;
+        display: none;
+      }
+      .ps-form-gap { display: flex; flex-direction: column; gap: 11px; }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <symbol id="logo" viewBox="0 0 22 22">
+          <path d="M11 2 L19 5.2 L19 11.8 C19 16 15.5 19.3 11 20.5 C6.5 19.3 3 16 3 11.8 L3 5.2 Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M7.5 11 L10 13.5 L14.5 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+      </defs>
+    </svg>
+
+    <div class="atmos">
+      <div class="bloom-mint"></div>
+      <div class="bloom-violet"></div>
+      <div class="grain"></div>
+    </div>
+
+    <div class="app">
+      <nav class="nav" aria-label="AI DevSecOps Control Plane">
+        <div class="brand">
+          <div class="mk"><svg><use href="#logo"/></svg></div>
+          <div class="wordmark">
+            <span class="ey">AI DevSecOps</span>
+            <span class="nm">Control Plane</span>
+          </div>
+        </div>
+        <a href="/"
+          style="font-size:.82rem;color:var(--t-dim);text-decoration:none;
+                 display:flex;align-items:center;gap:5px;
+                 padding:5px 12px;border-radius:6px;
+                 border:1px solid var(--border);background:var(--bg-hover);
+                 transition:color .15s,border-color .15s;">
+          ← Volver al panel
+        </a>
+      </nav>
+
+      <section id="feedback" class="hidden" aria-live="polite"></section>
+
+      <div class="ps-layout">
+        <header class="ps-header">
+          <div class="lbl">Proyectos · Selección</div>
+          <h1>Seleccionar o crear proyecto</h1>
+          <p id="profile-context-line">Selecciona un proyecto existente o agrega uno nuevo.</p>
+        </header>
+
+        <!-- Compatible projects -->
+        <section>
+          <div class="ps-section-head">
+            <div>
+              <h2>Proyectos subidos compatibles</h2>
+              <p id="compatible-count" class="count">Cargando proyectos...</p>
+            </div>
+          </div>
+          <div id="projects-grid" class="ps-projects-grid compatible-projects-list" style="max-height:none;"></div>
+        </section>
+
+        <hr class="ps-divider">
+
+        <!-- New project forms -->
+        <section>
+          <h2 style="font-size:.9rem;font-weight:700;color:var(--t-hi);margin:0 0 14px;">Nuevo proyecto</h2>
+
+          <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <button type="button" id="tab-zip" class="tab-btn tab-active">📦 Subir ZIP</button>
+            <button type="button" id="tab-clone" class="tab-btn tab-inactive">🔗 Clonar Repo</button>
+          </div>
+
+          <!-- ZIP panel -->
+          <div id="panel-zip" class="form-panel visible-panel ps-form-card">
+            <form id="upload-project-form" class="ps-form-gap">
+              <input id="zip-name" class="ps-field" placeholder="Nombre del proyecto">
+              <div id="zip-tech-chip" class="ps-tech-chip"></div>
+              <input id="zip-file" type="file" accept=".zip" class="ps-field">
+              <button type="submit" class="ps-btn-primary">Crear desde ZIP</button>
+            </form>
+          </div>
+
+          <!-- Clone panel -->
+          <div id="panel-clone" class="form-panel hidden-panel ps-form-card">
+            <form id="clone-project-form" class="ps-form-gap">
+              <input id="repo-name" class="ps-field" placeholder="Nombre del proyecto">
+              <div style="display:flex;gap:6px;">
+                <button type="button" id="clone-gh" class="tab-btn tab-active"
+                  style="flex:1;padding:5px 8px;font-size:.76rem;display:inline-flex;align-items:center;justify-content:center;gap:5px;">
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                  </svg>
+                  GitHub
+                </button>
+                <button type="button" id="clone-gl" class="tab-btn tab-inactive"
+                  style="flex:1;padding:5px 8px;font-size:.76rem;display:inline-flex;align-items:center;justify-content:center;gap:5px;">
+                  <svg width="13" height="13" viewBox="0 0 380 380" fill="currentColor">
+                    <path fill="#e24329" d="M380 228.5L323.9 55.7C321.6 48.5 315.3 43.5 308 43.5c-7.3 0-13.6 5-15.9 12.2L190 354.7 87.9 55.7C85.6 48.5 79.3 43.5 72 43.5c-7.3 0-13.6 5-15.9 12.2L0 228.5l190 126.2L380 228.5z"/>
+                  </svg>
+                  GitLab
+                </button>
+              </div>
+              <input id="repo-url" class="ps-field" placeholder="https://github.com/usuario/repo.git">
+              <div id="repo-tech-chip" class="ps-tech-chip"></div>
+              <button type="submit" class="ps-btn-primary">Clonar y Escanear</button>
+            </form>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script type="module" src="/static/js/project-selector.js"></script>
+  </body>
+</html>

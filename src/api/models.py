@@ -52,6 +52,7 @@ class Project(SQLModel, table=True):
     target_path: str
     technology: str
     scan_profile_id: Optional[int] = Field(default=None, foreign_key="scanprofile.id")
+    source_project_id: Optional[str] = Field(default=None, sa_column=Column(String(36), nullable=True))
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     scans: List["Scan"] = Relationship(back_populates="project")

@@ -1,6 +1,6 @@
 # AI DevSecOps Control Plane - Contexto Actual Para Handoff
 
-Ultima actualizacion: 2026-06-11 (Fase 5 fixes: URL_NOT_FOUND corregido con normalize+site tree+retry, alertas pasivas preservadas cuando ascan falla, warnings propagados a UI, DATABASE_URL anclada a raíz del proyecto — 184 tests)
+Ultima actualizacion: 2026-06-23 (UX: eliminados project-select dropdown y projects-popover del nav; eliminado botón "Agregar proyecto"; "Ver proyectos escaneados" ahora navega a /projects-select con funcionalidad unificada; "Proyectos subidos compatibles" hace fork vía POST /api/projects/{id}/fork en lugar de reusar proyecto existente — 184 tests)
 
 Este documento esta pensado para entregar a Claude Sonnet 4.6 en VSCode como agente tecnico para que pueda continuar el proyecto sin perder contexto. Distingue entre lo implementado actualmente en el repo y los siguientes pasos recomendados.
 
@@ -111,16 +111,18 @@ src/dast_agent/graph.py               ← build_dast_graph() + should_continue()
 src/dast_agent/runner.py              ← run_dast_agent(target_url, project_id, max_iterations) + status tracking
 src/ai_engine/remediator.py
 src/integrations/github_client.py
-src/dashboard/index.html          ← HTML-only shell (no inline JS/CSS)
-src/dashboard/css/base.css        ← CSS variables, reset, animations
-src/dashboard/css/layout.css      ← nav, bento, cards, table
-src/dashboard/css/modal.css       ← modal, tabs, form panels
-src/dashboard/js/utils.js         ← i18n, helpers, tool badges
-src/dashboard/js/api.js           ← all fetch() calls centralised
-src/dashboard/js/diff.js          ← diff view rendering (LCS + GitHub)
-src/dashboard/js/modal.js         ← all modal lifecycle
-src/dashboard/js/dashboard.js     ← findings, scan, report, PDF
-src/dashboard/js/main.js          ← entry point, event wiring
+src/dashboard/index.html              ← HTML-only shell (no inline JS/CSS)
+src/dashboard/projects.html           ← Página autónoma de selección de proyecto (/projects-select)
+src/dashboard/css/base.css            ← CSS variables, reset, animations
+src/dashboard/css/layout.css          ← nav, bento, cards, table
+src/dashboard/css/modal.css           ← modal, tabs, form panels
+src/dashboard/js/utils.js             ← i18n, helpers, tool badges
+src/dashboard/js/api.js               ← all fetch() calls centralised
+src/dashboard/js/diff.js              ← diff view rendering (LCS + GitHub)
+src/dashboard/js/modal.js             ← remediation, audit, reason, branch-confirm modals
+src/dashboard/js/project-selector.js  ← JS para projects.html (grid de proyectos + ZIP/Clone)
+src/dashboard/js/dashboard.js         ← findings, scan, report, PDF
+src/dashboard/js/main.js              ← entry point, event wiring
 src/metrics/security_metrics.py   ← Prometheus custom metrics (findings_total, remediations, SLA gauge, scan duration)
 src/ml/__init__.py                ← Package init
 src/ml/risk_scorer.py             ← XGBoost ML risk scorer (score_finding, train_model, severity fallback)
@@ -208,7 +210,8 @@ para parchear BanditAdapter y CombinedScannerAdapter en su modulo de origen.
 
 ## API Actual
 
-- GET  /                                    → dashboard
+- GET  /                                    → dashboard (index.html)
+- GET  /projects-select                     → project selector page (projects.html)
 - GET  /api/findings                        → lista hallazgos (acepta ?sla_status=ok|warning|breached|exempt|unknown; incluye sla_status + sla_deadline en cada finding)
 - GET  /api/projects                        → lista proyectos
 - GET  /api/projects/{id}                   → proyecto por id
@@ -216,6 +219,7 @@ para parchear BanditAdapter y CombinedScannerAdapter en su modulo de origen.
 - POST /api/projects/{id}/scan              → re-escanear proyecto
 - POST /api/projects/upload-zip             → ZIP + crear proyecto + scan
 - POST /api/projects/clone-repo             → clonar repo + scan
+- POST /api/projects/{id}/fork              → crea nuevo proyecto con mismo target_path/technology/source_type y nuevo scan_profile_id; sin findings (listo para nuevo escaneo)
 - POST /api/scan                            → scan legacy por path
 - GET  /api/ai-status                       → estado Ollama
 - POST /api/remediate/{finding_id}          → genera remediacion
@@ -356,14 +360,27 @@ Dashboard refactored (2026-05-26) — index.html is now pure HTML; all JS and CS
 - src/dashboard/js/modal.js: project modal wizard, remediation modal, branch-confirm modal, reason/audit modals
 - src/dashboard/js/dashboard.js: findings render + pagination, scan trigger, report/PDF export, chart rendering
 - src/dashboard/js/main.js: entry point — imports all modules, wires events, boot sequence
-- src/api/main.py: StaticFiles mount at /static → src/dashboard/ directory
+- src/api/main.py: StaticFiles mount at /static → src/dashboard/; rutas GET / → index.html, GET /projects-select → projects.html
 
 src/dashboard/index.html capacidades actuales:
 - Vista de proyectos con contador de findings + mini-badges de severidad C/H/M/L por proyecto.
   - Backend: GET /api/projects incluye findings_summary: {CRITICAL, HIGH, MEDIUM, LOW, total}.
-- Modal 2 pasos: Paso 1 = seleccion de ScanProfile (cards), Paso 2 = ZIP/clone.
-  - Paso 1: cards con iconos SVG inline (Py azul, Angular rojo, Java ☕, Full Scan escudo, Custom engranaje), descripcion de herramientas y badge de stack. Hover resaltado via CSS .profile-card.
-  - Paso 2: sub-selector GitHub / GitLab con SVG logos; placeholder del input de URL cambia segun seleccion (setCloneSource()).
+- Botón "Nuevo Proyecto" en la nav navega a /projects-select (ya NO abre modal).
+- "Agregar proyecto" en profile-builder guarda el perfil en sessionStorage y navega a /projects-select.
+
+src/dashboard/projects.html (GET /projects-select) — página autónoma de selección:
+- Grid "Proyectos subidos compatibles": muestra todos los proyectos (filtra por perfil si hay sesión activa).
+- Si hay perfil en sessionStorage, muestra badge del perfil activo y filtra por tecnología compatible.
+- Formularios de "Nuevo proyecto": ZIP upload + Clone repo (GitHub / GitLab), mismos campos que antes.
+- Al seleccionar proyecto existente o crear uno nuevo: guarda el proyecto en sessionStorage (clave ai-devsecops.pendingProject) y navega a /#projects.
+- main.js boot: si detecta pendingProject en sessionStorage → llama loadProjects() + selectProject() + showAppView("projects") de forma transparente.
+
+src/dashboard/js/modal.js — reducido a:
+- Remediation modal (diff preview, PR creation, branch delete).
+- Reason modal (accept-risk / false-positive justification).
+- Audit modal (finding history).
+- Branch-confirm modal (destructive action guard).
+- Eliminado: todo el código wizard de proyecto (renderProfileCards, renderCompatibleProjects, chooseCompatibleProject, setWizardStep, uploadZipProject, cloneRepoProject, etc.).
 - Badge de origen del scanner: `detectTool(finding)` infiere la herramienta por `rule_id` namespace. SonarQube se detecta por formato `namespace:Snumber` (e.g. `python:S8415`). Dot-notation (`python.lang.*`, `gitlab.*`, `python.flask.*`) → Semgrep. `B\d{3}` → Bandit. Fallback al campo `finding.tool`. SonarQube=azul, Bandit=amarillo, Semgrep=celeste, ESLint=rojo, Pylint=verde. ✅
 - Panel Custom con DAST deshabilitado (Proximamente) y Quality habilitable; crea ScanProfile real con `quality_tool=pylint` para Python o `quality_tool=eslint` para Angular/TypeScript.
 - Tabla de hallazgos con paginacion (PAGE_SIZE=20), badge de severidad inline (CRIT/HIGH/MED/LOW pill rojo/naranja/amarillo/azul).

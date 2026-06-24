@@ -112,6 +112,8 @@ def ensure_sqlite_schema() -> None:
         with engine.begin() as connection:
             if "scan_profile_id" not in project_columns:
                 connection.execute(text("ALTER TABLE projects ADD COLUMN scan_profile_id INTEGER"))
+            if "source_project_id" not in project_columns:
+                connection.execute(text("ALTER TABLE projects ADD COLUMN source_project_id CHAR(32)"))
 
     if "scanprofile" in inspector.get_table_names():
         profile_columns = {col["name"] for col in inspector.get_columns("scanprofile")}

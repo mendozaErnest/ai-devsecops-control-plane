@@ -32,6 +32,7 @@ from src.ai_engine.remediator import (
     generate_patch,
     infer_technology_from_finding,
 )
+from src.ai_engine.patch_validation import validate_python_security_semantics
 from src.integrations.github_client import (
     load_env_file,
     GitHubClientError,
@@ -77,8 +78,9 @@ app = FastAPI()
 _logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DASHBOARD_INDEX = PROJECT_ROOT / "src" / "dashboard" / "index.html"
-DASHBOARD_STATIC = PROJECT_ROOT / "src" / "dashboard"
+DASHBOARD_INDEX    = PROJECT_ROOT / "src" / "dashboard" / "index.html"
+DASHBOARD_PROJECTS = PROJECT_ROOT / "src" / "dashboard" / "projects.html"
+DASHBOARD_STATIC   = PROJECT_ROOT / "src" / "dashboard"
 WORKSPACE_ROOT = PROJECT_ROOT / "workspace" / "uploads"
 
 app.mount("/static", StaticFiles(directory=str(DASHBOARD_STATIC)), name="static")
@@ -162,6 +164,10 @@ class ProjectProfileUpdate(BaseModel):
     scan_profile_id: int | None = None
 
 
+class ProjectForkRequest(BaseModel):
+    scan_profile_id: int | None = None
+
+
 class DastAgentScanRequest(BaseModel):
     target_url: str
     project_id: uuid.UUID | None = None
@@ -192,6 +198,11 @@ def on_startup():
 @app.get("/")
 async def index():
     return FileResponse(DASHBOARD_INDEX)
+
+
+@app.get("/projects-select")
+async def project_selector():
+    return FileResponse(DASHBOARD_PROJECTS)
 
 
 @app.get("/health")
@@ -773,6 +784,12 @@ def validate_remediation_patch(remediation_text: str, finding_details: dict) -> 
         safe, reason = is_safe_to_apply(original_content, patched_content)
         if not safe:
             return False, reason
+        if technology == "python":
+            semantic_safe, semantic_reason = validate_python_security_semantics(
+                original_content, patched_content, finding_details
+            )
+            if not semantic_safe:
+                return False, semantic_reason
     except GitHubClientError as exc:
         return False, exc.user_message
     except Exception as exc:
@@ -802,6 +819,18 @@ def cached_remediation_is_reusable(patch_diff: str, finding_details: dict) -> bo
         return False
     if looks_like_python_only_prose(patch_content):
         return False
+    if technology == "python":
+        original_function = str(
+            finding_details.get("expected_function_source")
+            or finding_details.get("code_snippet")
+            or ""
+        )
+        if original_function:
+            semantic_safe, _ = validate_python_security_semantics(
+                original_function, patch_content, finding_details
+            )
+            if not semantic_safe:
+                return False
     return True
 
 
@@ -984,7 +1013,11 @@ class _NullAdapter:
 @app.get("/api/projects")
 async def list_projects():
     with Session(engine) as session:
-        projects = session.exec(select(Project).order_by(Project.created_at.desc())).all()
+        projects = session.exec(
+            select(Project)
+            .where(Project.source_project_id == None)  # noqa: E711
+            .order_by(Project.created_at.desc())
+        ).all()
         project_ids = [p.id for p in projects]
         last_scans = get_last_scans_for_projects(session, project_ids)
         return [
@@ -1039,6 +1072,28 @@ async def update_project_profile(project_id: uuid.UUID, body: ProjectProfileUpda
             get_project_findings(session, project.id),
             last_scans.get(project.id),
         )
+
+
+@app.post("/api/projects/{project_id}/fork")
+async def fork_project(project_id: uuid.UUID, body: ProjectForkRequest):
+    with Session(engine) as session:
+        original = session.get(Project, project_id)
+        if not original:
+            raise HTTPException(status_code=404, detail="Project not found")
+        root_id = original.source_project_id or str(original.id)
+        new_project = Project(
+            name=original.name,
+            source_type=original.source_type,
+            target_path=original.target_path,
+            technology=original.technology,
+            scan_profile_id=body.scan_profile_id,
+            source_project_id=root_id,
+        )
+        session.add(new_project)
+        session.commit()
+        session.refresh(new_project)
+        last_scans = get_last_scans_for_projects(session, [new_project.id])
+        return project_to_response(new_project, [], last_scans.get(new_project.id))
 
 
 @app.get("/api/projects/{project_id}/findings")
@@ -1512,7 +1567,7 @@ async def remediate_finding(finding_id: uuid.UUID):
         )
 
     _t0 = time.monotonic()
-    patch = await generate_patch(finding_details)
+    patch = await generate_patch(finding_details, validator=validate_remediation_patch)
     record_remediation("ollama", latency_seconds=time.monotonic() - _t0)
     valid_patch, validation_reason = validate_remediation_patch(patch, finding_details)
 
