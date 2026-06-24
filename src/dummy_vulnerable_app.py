@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 
 import requests
 import yaml
+import secrets
 
 
 # Vulnerability: hardcoded password.
@@ -106,8 +107,10 @@ def hash_password_md5(password):
 
 
 def hash_password_sha1(password):
-    # Vulnerability: broken cryptography for password hashing with SHA1.
-    return hashlib.sha1(password.encode("utf-8")).hexdigest()
+    # Use PBKDF2-HMAC with a per-value salt instead of insecure SHA1.
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 600_000)
+    return f"{salt.hex()}:{digest.hex()}"
 
 
 def generate_session_token():
