@@ -72,6 +72,8 @@ from src.metrics.security_metrics import (
 )
 from src.ml.risk_scorer import score_finding as _score_finding, train_model as _train_model
 
+FINDING_NOT_FOUND = "Finding not found"
+
 load_env_file()
 
 app = FastAPI()
@@ -1497,7 +1499,7 @@ async def remediate_finding(finding_id: uuid.UUID):
     with Session(engine) as session:
         finding = session.get(Finding, finding_id)
         if not finding:
-            raise HTTPException(status_code=404, detail="Finding not found")
+            raise HTTPException(status_code=404, detail=FINDING_NOT_FOUND)
 
         finding_details = build_finding_details(session, finding)
 
@@ -1613,7 +1615,7 @@ async def get_remediation_pr(finding_id: uuid.UUID):
     with Session(engine) as session:
         finding = session.get(Finding, finding_id)
         if not finding:
-            raise HTTPException(status_code=404, detail="Finding not found")
+            raise HTTPException(status_code=404, detail=FINDING_NOT_FOUND)
 
         remediation = session.exec(
             select(Remediation)
@@ -1652,7 +1654,7 @@ async def get_finding_pr_diff(finding_id: uuid.UUID):
     with Session(engine) as session:
         finding = session.get(Finding, finding_id)
         if not finding:
-            raise HTTPException(status_code=404, detail="Finding not found")
+            raise HTTPException(status_code=404, detail=FINDING_NOT_FOUND)
 
         remediation = session.exec(
             select(Remediation)
@@ -1691,7 +1693,7 @@ async def get_remediation_preview_diff(finding_id: uuid.UUID):
     with Session(engine) as session:
         finding = session.get(Finding, finding_id)
         if not finding:
-            raise HTTPException(status_code=404, detail="Finding not found")
+            raise HTTPException(status_code=404, detail=FINDING_NOT_FOUND)
 
         finding_details = build_finding_details(session, finding)
 
@@ -1738,7 +1740,7 @@ async def create_remediation_pr(finding_id: uuid.UUID):
         finding = session.get(Finding, finding_id)
 
         if not finding:
-            raise HTTPException(status_code=404, detail="Finding not found")
+            raise HTTPException(status_code=404, detail=FINDING_NOT_FOUND)
 
         remediations = session.exec(
             select(Remediation)
@@ -1875,7 +1877,7 @@ async def delete_remediation_pr_branch(finding_id: uuid.UUID):
         finding = session.get(Finding, finding_id)
 
         if not finding:
-            raise HTTPException(status_code=404, detail="Finding not found")
+            raise HTTPException(status_code=404, detail=FINDING_NOT_FOUND)
 
         remediations = session.exec(
             select(Remediation)
@@ -1922,7 +1924,7 @@ def _set_finding_lifecycle_status(
         finding = session.get(Finding, finding_id)
 
         if not finding:
-            raise HTTPException(status_code=404, detail="Finding not found")
+            raise HTTPException(status_code=404, detail=FINDING_NOT_FOUND)
 
         from_status = finding.status
         finding.status = new_status
@@ -1954,7 +1956,7 @@ async def get_finding_audit(finding_id: uuid.UUID):
         finding = session.get(Finding, finding_id)
 
         if not finding:
-            raise HTTPException(status_code=404, detail="Finding not found")
+            raise HTTPException(status_code=404, detail=FINDING_NOT_FOUND)
 
         events = session.exec(
             select(FindingAuditEvent)
@@ -1976,7 +1978,7 @@ async def get_finding_file_content(finding_id: uuid.UUID):
     with Session(engine) as session:
         finding = session.get(Finding, finding_id)
         if not finding:
-            raise HTTPException(status_code=404, detail="Finding not found")
+            raise HTTPException(status_code=404, detail=FINDING_NOT_FOUND)
         if not finding.file_path:
             raise HTTPException(status_code=404, detail="Finding has no file_path")
     try:
