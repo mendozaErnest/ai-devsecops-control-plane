@@ -185,7 +185,7 @@ def bind_public_socket(server):
 
 def enable_debug_mode(app):
     # Vulnerability: debug=True can expose internals and interactive consoles.
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="127.0.0.1", port=5000, debug=True)
 
 
 def make_world_writable(path):
