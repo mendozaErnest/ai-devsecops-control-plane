@@ -19,8 +19,11 @@
 
 [Quick Start](#-quick-start) · [Architecture](#-architecture) · [Security Engines](#-security-engines) · [AI Remediation](#-ai-remediation) · [Agentic DAST](#-agentic-dast) · [Roadmap](#-roadmap)
 
-<!-- TODO: Replace with real dashboard GIF (30s: scan → finding → AI patch → PR opened) -->
-<!-- ![Demo](docs/assets/demo.gif) -->
+## 🎥 Demo
+
+<video src="https://github.com/user-attachments/assets/8dde8854-4de2-4ff5-9c5b-497723605428" width="800" controls></video>
+
+> Scan-to-PR workflow: dashboard de hallazgos → filtro por severidad crítica → detalle de vulnerabilidad → PR de remediación automático.
 
 </div>
 
