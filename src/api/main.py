@@ -72,6 +72,8 @@ from src.metrics.security_metrics import (
 )
 from src.ml.risk_scorer import score_finding as _score_finding, train_model as _train_model
 
+PROJECT_NOT_FOUND = "Project not found"
+
 load_env_file()
 
 app = FastAPI()
@@ -1036,7 +1038,7 @@ async def get_project(project_id: uuid.UUID):
         project = session.get(Project, project_id)
 
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
         last_scans = get_last_scans_for_projects(session, [project_id])
         return project_to_response(
@@ -1052,7 +1054,7 @@ async def update_project_profile(project_id: uuid.UUID, body: ProjectProfileUpda
         project = session.get(Project, project_id)
 
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
         if body.scan_profile_id is None:
             project.scan_profile_id = None
@@ -1079,7 +1081,7 @@ async def fork_project(project_id: uuid.UUID, body: ProjectForkRequest):
     with Session(engine) as session:
         original = session.get(Project, project_id)
         if not original:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
         root_id = original.source_project_id or str(original.id)
         new_project = Project(
             name=original.name,
@@ -1102,7 +1104,7 @@ async def get_project_findings_endpoint(project_id: uuid.UUID):
         project = session.get(Project, project_id)
 
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
         findings = get_project_findings(session, project.id)
         remediated_finding_ids = latest_valid_remediation_ids(session, findings)
@@ -1131,7 +1133,7 @@ async def scan_project_endpoint(project_id: uuid.UUID, request: ScanRequest | No
         project = session.get(Project, project_id)
 
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
         target_path = validate_scan_target(project.target_path)
         project.target_path = target_path
@@ -1277,7 +1279,7 @@ async def scan_code(request: ScanRequest | None = None):
         with Session(engine) as session:
             project = session.get(Project, request.project_id)
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
         if project.target_path:
             target_path = validate_scan_target(project.target_path)
             with Session(engine) as session:
@@ -2005,7 +2007,7 @@ async def get_project_report(project_id: uuid.UUID):
         project = session.get(Project, project_id)
 
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail=PROJECT_NOT_FOUND)
 
         findings = get_project_findings(session, project.id)
 
